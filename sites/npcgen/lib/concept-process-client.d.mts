@@ -1,0 +1,1 @@
+export function createConceptProcessClient(fetchAdapter:(input:string,init?:RequestInit)=>Promise<Response>,apiPath?:string):(operation:string,body?:Record<string,unknown>,query?:Record<string,string>)=>Promise<any>;

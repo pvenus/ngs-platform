@@ -1,10 +1,1175 @@
 {
-  "schemaVersion": "prerequisite-source-snapshot.v1",
-  "sourceCommit": "093489982ad6c32ceba806dfe32e6c9d43bad3b1",
+  "scope": "source-only-unconfigured-frontend-and-prerequisites",
+  "fileCountIncludingManifest": 306,
+  "backendConnected": false,
   "files": {
+    ".gitignore": {
+      "bytes": 382,
+      "sha256": "80fc4f33c94be7090be459729a77455288f271d69d3cb3015526174f81166fa4"
+    },
+    "LICENSE-STATUS.md": {
+      "bytes": 1007,
+      "sha256": "a24ae42750e22ecada7db27cce5dea325e9e169c4d5b22640fd8889ce20f6afc"
+    },
     "README.md": {
-      "bytes": 1377,
-      "sha256": "5eb3bfe32c293ac3026b605c684c0b646a35f7f3acf10db8c45dfecb2ed29c23"
+      "bytes": 3230,
+      "sha256": "3fd4fba36932346a12ba74df221de372b4093119736ef2f8c29ac72ba09fcfa5"
+    },
+    "THIRD-PARTY-NOTICES.md": {
+      "bytes": 2143,
+      "sha256": "b4d9f37961814ea85bbc54b9c4f2f3f908d3abcf67cfc10633344dff2bf3e589"
+    },
+    "dev/build-space-candidate.mjs": {
+      "bytes": 3601,
+      "sha256": "458dfd70a95509d97fe7ff8f1df9f7ca6d1bc0c3b11882cd5a40ab3c9464afa8"
+    },
+    "dev/check-dependencies.py": {
+      "bytes": 5190,
+      "sha256": "7a216259d1bac153e2961e590f3d1f01995e7b779637b587149ab13e3658ed71"
+    },
+    "dev/preview-clean.mjs": {
+      "bytes": 1870,
+      "sha256": "48d20e6a46ac9db7ccbe410d31f609377aa0855de289d9e47cba7ac4c8b85f18"
+    },
+    "sites/npcgen/app/attachment-picker.tsx": {
+      "bytes": 4236,
+      "sha256": "57b019ff7164c1d40752ce1b597f13d38bf1c10f5fbca9b3d49e874a6b687884"
+    },
+    "sites/npcgen/app/catalog/adapter.ts": {
+      "bytes": 18808,
+      "sha256": "5faf6ca413e486f9e018961e05deb09896ef79a1d0da5ae580ed1a400dcbbb08"
+    },
+    "sites/npcgen/app/catalog/assembly-play-modal.tsx": {
+      "bytes": 2096,
+      "sha256": "38f8863892ce44a2a696bd47a779ca50e071c15a09b5a7f60f8db15b6ed8367f"
+    },
+    "sites/npcgen/app/catalog/assembly-request-panel.tsx": {
+      "bytes": 16544,
+      "sha256": "b38b3270f59938adcc54542ce629f2f4daa1c1ead92afec69fb3b3b257bdf23f"
+    },
+    "sites/npcgen/app/catalog/audio-workspace-model.mjs": {
+      "bytes": 383,
+      "sha256": "8d58b6b675b3886e34ee470c3fcf2b076d6b9a72ad1a3cc24174e675efc75aa2"
+    },
+    "sites/npcgen/app/catalog/audio-workspace.tsx": {
+      "bytes": 11111,
+      "sha256": "0f053c2c18ae279e84750a2c262545665733f1856c8083f8300d9df40be2870b"
+    },
+    "sites/npcgen/app/catalog/candidate-actions.tsx": {
+      "bytes": 3711,
+      "sha256": "ad09d6dd72c761c48cd85f46bf80a3ca9bba2798b3d75549b3f003a91e0ab0c9"
+    },
+    "sites/npcgen/app/catalog/catalog-history-model.ts": {
+      "bytes": 3381,
+      "sha256": "2405fab11fa9f6dbf510ad2a5a2199019a0a31ef41837a6475ce0868d3eb4eb6"
+    },
+    "sites/npcgen/app/catalog/catalog-history.tsx": {
+      "bytes": 10140,
+      "sha256": "e61422d95f78c5018748bbce541a8a49ac0f703b7aa0ada8ccfaa1f47821b886"
+    },
+    "sites/npcgen/app/catalog/category-loading.tsx": {
+      "bytes": 2848,
+      "sha256": "94eb1da52afc260fcf27dfbce9ef329305ccc5f0c32dd5ca3e6326338d4d333b"
+    },
+    "sites/npcgen/app/catalog/category-revision-model.ts": {
+      "bytes": 5952,
+      "sha256": "2f98994c462de47aa363338f7194442e3d1e63d94e990950378570782f12cd17"
+    },
+    "sites/npcgen/app/catalog/category-revision.tsx": {
+      "bytes": 13183,
+      "sha256": "e686fba4f5799182811d4ec47fd8c79a86eba1c978a6f355302b14fc3d91ac3b"
+    },
+    "sites/npcgen/app/catalog/category-routing.ts": {
+      "bytes": 1391,
+      "sha256": "c4029cb30b7afe085e7b9748df28ddfbe8165515971ac6bce54f33bb4051834c"
+    },
+    "sites/npcgen/app/catalog/chapter-frame-storage.mjs": {
+      "bytes": 1153,
+      "sha256": "19ae1bf1b2f3a99bfbc65ecd3048a6fa005c9e948d503229ad03712a701d1b05"
+    },
+    "sites/npcgen/app/catalog/concept-body-preview.tsx": {
+      "bytes": 2482,
+      "sha256": "a9faf8f444f733ccf604872c97298c832a66daadda01f096e791c37681da564a"
+    },
+    "sites/npcgen/app/catalog/concept-category-intro.tsx": {
+      "bytes": 2343,
+      "sha256": "a2ec3169aa6ea7d5e9cd4e8919988feaa3f0e0bb090582087a3f336d94a3f0cd"
+    },
+    "sites/npcgen/app/catalog/concept-category-selection.ts": {
+      "bytes": 662,
+      "sha256": "fb34ae71f4893397ec086505b7c63337630e595eeafbe0987dcfe641b8088fe9"
+    },
+    "sites/npcgen/app/catalog/concept-confirmation.tsx": {
+      "bytes": 2522,
+      "sha256": "5abfc0da96dc0d1e0090b0f30f27bd4d63c4efd225a4012f59447bc83947e198"
+    },
+    "sites/npcgen/app/catalog/concept-group-editor.tsx": {
+      "bytes": 2073,
+      "sha256": "429a6eee591b2db74b137d4771a1cc8e3e2c9e015f836383dd3b8b5cdf54ffd4"
+    },
+    "sites/npcgen/app/catalog/concept-group-operation-dialog.tsx": {
+      "bytes": 16110,
+      "sha256": "3a89cfaebbb72ab79c83ecdf9d3a055baf7a49150c313602b9b78f038945bb09"
+    },
+    "sites/npcgen/app/catalog/concept-group-position.ts": {
+      "bytes": 3256,
+      "sha256": "945e275ccfbd3975db4f8777688535c6ed5a17e833cbd4718d5f6ebcc4488781"
+    },
+    "sites/npcgen/app/catalog/concept-proposals.tsx": {
+      "bytes": 26053,
+      "sha256": "e20081ca26127fb5cb7791fc6132b000a185c462085d6c8ade96d05c34e60077"
+    },
+    "sites/npcgen/app/catalog/concept-summary.ts": {
+      "bytes": 1021,
+      "sha256": "c1dd0755bdda9ef5f8fba9d86e288980df1f35cf513a88ce7439e7f90e713315"
+    },
+    "sites/npcgen/app/catalog/concept.tsx": {
+      "bytes": 14907,
+      "sha256": "4a9f0cca10f23fb07c3f57025eeb1c9a254fd31a45e1bbf0a45b9a86b385090f"
+    },
+    "sites/npcgen/app/catalog/content-operations-api.ts": {
+      "bytes": 585,
+      "sha256": "d1cc74f53289851d28d78b03e8a1e1a950ab83c32a7147ab6e38f25d3f467d44"
+    },
+    "sites/npcgen/app/catalog/content-provenance.tsx": {
+      "bytes": 861,
+      "sha256": "55f6a5e85c781d8fb3845ee3f83969a56d2564fc311746164240de67f1ce65ea"
+    },
+    "sites/npcgen/app/catalog/editor.tsx": {
+      "bytes": 13600,
+      "sha256": "d6454a1f809df534d6caa9f6e284a98b5033f3f03074ab8bb88e34bcc2cbadd6"
+    },
+    "sites/npcgen/app/catalog/episode-visual-manager.tsx": {
+      "bytes": 2585,
+      "sha256": "cdb02a712ec3a638a9a22a61388769fa6ead6ed87e57c6e7e74baec069da3f4b"
+    },
+    "sites/npcgen/app/catalog/fields.tsx": {
+      "bytes": 7037,
+      "sha256": "895b940225a571c6bd8b7e332597212628e5fa0d0c856b8055d155760e2f7a0c"
+    },
+    "sites/npcgen/app/catalog/full-episode-requests.tsx": {
+      "bytes": 9231,
+      "sha256": "41ce2d11bac14fea14b3d1675c5cb31cd87876c4d63a097e7d2aaf5141c29d10"
+    },
+    "sites/npcgen/app/catalog/game-build-panel.tsx": {
+      "bytes": 6542,
+      "sha256": "e1bc00617bcc51cf3da5ea6db6ed117494ec289beb3dd03715ff52a82c67af4e"
+    },
+    "sites/npcgen/app/catalog/hierarchy-navigation.tsx": {
+      "bytes": 2807,
+      "sha256": "9ecc52136eee642436c044b57610685536e19d49e7d8503ef67da2263f05cd7c"
+    },
+    "sites/npcgen/app/catalog/history-request-model.ts": {
+      "bytes": 8872,
+      "sha256": "e92ff52a5656820878ba77392d276dc3f79be161058ee59f3e9029f8a517ca19"
+    },
+    "sites/npcgen/app/catalog/history-request-view.tsx": {
+      "bytes": 7249,
+      "sha256": "2255438f5d4d016e5c556e6db4ff96846207cab4670cc89d8965b3fad5139669"
+    },
+    "sites/npcgen/app/catalog/home.tsx": {
+      "bytes": 4874,
+      "sha256": "9a62748b4f9be51c93721a27638c9e415ae92b59ba8fc1f929cc19c0e990963f"
+    },
+    "sites/npcgen/app/catalog/investigation/compound-scene.mjs": {
+      "bytes": 16704,
+      "sha256": "6401cec70f3298eacd59c4d0af25c3eee566bfcdcd6a34488d5058de826ac2c6"
+    },
+    "sites/npcgen/app/catalog/investigation/gentle-presence.mjs": {
+      "bytes": 8234,
+      "sha256": "1727ce2fbff3ff9c9015cad21ab02bda95ea0e782cead22a110be29a83d11c52"
+    },
+    "sites/npcgen/app/catalog/investigation/investigation-media.d.mts": {
+      "bytes": 90,
+      "sha256": "74622c4baea5d9bc39a74ec9f599aa4d08da32456003b7252d21fdb9964a5f54"
+    },
+    "sites/npcgen/app/catalog/investigation/investigation-media.mjs": {
+      "bytes": 711,
+      "sha256": "7c257d01147d3a25f8deb27af0b55ba6fca08f4ee248bde420bc85f0a1d476c2"
+    },
+    "sites/npcgen/app/catalog/investigation/investigation.css": {
+      "bytes": 23768,
+      "sha256": "b8bd9005f44a52da2d2c29da6c57720039497975b5ddd7a2fc79bb3d698c904b"
+    },
+    "sites/npcgen/app/catalog/investigation/investigation.d.mts": {
+      "bytes": 611,
+      "sha256": "1191e44c46cc81a10a9cd19480f595a325218e69a586c9f4e2c3b14d301a0d27"
+    },
+    "sites/npcgen/app/catalog/investigation/investigation.mjs": {
+      "bytes": 18051,
+      "sha256": "dd7f8ac51075995a722be3a17ea07c68374f64ebc4b72dd12b1fb15643e282ea"
+    },
+    "sites/npcgen/app/catalog/investigation/lantern-echo.mjs": {
+      "bytes": 18584,
+      "sha256": "7e05cd275788a0d12c55a1bae8fd652cf0d0f0e0dd2591fa86356001d710f5b7"
+    },
+    "sites/npcgen/app/catalog/investigation/linked-presence.mjs": {
+      "bytes": 21459,
+      "sha256": "f0176ad5ed8572b0fd71102c04dd225a2d896f083af405051099a08af4849228"
+    },
+    "sites/npcgen/app/catalog/investigation/object-inquiry.mjs": {
+      "bytes": 30368,
+      "sha256": "49413f6f3198ade0591fc6c8e082788a697adb2a3990cb16c5657d134d5ca7a0"
+    },
+    "sites/npcgen/app/catalog/investigation/reveal-geometry.mjs": {
+      "bytes": 1459,
+      "sha256": "61d10d92d8f9aee81c398dcf9577873d10db4ff056a04464bab918b771e95051"
+    },
+    "sites/npcgen/app/catalog/investigation/spirit-response.mjs": {
+      "bytes": 11314,
+      "sha256": "6dd2f6fec48b3af057af553a8b2bc84a83bd972221961f4cce7006824de239b4"
+    },
+    "sites/npcgen/app/catalog/investigation/spirit-trails.css": {
+      "bytes": 1334,
+      "sha256": "ab0be87b96144515904706c7d0f6d576b61856a3c4614b629e709a9d001a98c6"
+    },
+    "sites/npcgen/app/catalog/investigation/spirit-trails.mjs": {
+      "bytes": 8493,
+      "sha256": "b27d0e9a144e7f78b2b1394736eec8479143253fca700f5339eee96ae8fda6b3"
+    },
+    "sites/npcgen/app/catalog/investigation/spiritual-imprint.mjs": {
+      "bytes": 8320,
+      "sha256": "9c35d86bda97291117c3f3b1a178348a6572ce60f2741199385b0f3603b49e66"
+    },
+    "sites/npcgen/app/catalog/investigation/stone-bond.mjs": {
+      "bytes": 7633,
+      "sha256": "510848f42d1f13c5e5980d15cfc3673848622a239c5704d66e6f92c41a470ab6"
+    },
+    "sites/npcgen/app/catalog/investigation/view-reconstruction.mjs": {
+      "bytes": 12396,
+      "sha256": "a01f7158e591952b7e2a280ff48ab47ab8ff1af44dc0628d30a4fd46e49cad30"
+    },
+    "sites/npcgen/app/catalog/investigation-player.tsx": {
+      "bytes": 3645,
+      "sha256": "3651b6520a9ddd3c0ca65a93ed9ac276485d360f768780a4f318eb1ee2341b12"
+    },
+    "sites/npcgen/app/catalog/investigation-sprite-images.d.mts": {
+      "bytes": 148,
+      "sha256": "38abdff5ee76a25cef8fe49a5e6508f22441979186f370f884b7752cf5b2ed3a"
+    },
+    "sites/npcgen/app/catalog/investigation-sprite-images.mjs": {
+      "bytes": 719,
+      "sha256": "6ba07e10c95d3bf964587f8b0faddb76b82f0d718a65f0be380bf8b7d01bd6f1"
+    },
+    "sites/npcgen/app/catalog/knowledge-workspace.tsx": {
+      "bytes": 9318,
+      "sha256": "592d81f2e1d7d0f8273f08510167295d65e16bf96deb755d3d08c6624ec1d08d"
+    },
+    "sites/npcgen/app/catalog/lazy-resources.tsx": {
+      "bytes": 5769,
+      "sha256": "afbc4b9477d826d5e5a804ec3b29d43f3695aea6a3dbc4a7e9ff38cabbbb3021"
+    },
+    "sites/npcgen/app/catalog/local-completed-portrait.tsx": {
+      "bytes": 2089,
+      "sha256": "38a9e9759f74beaad36f7b98a758730dd28270fba1799ddd76174b42ce547053"
+    },
+    "sites/npcgen/app/catalog/ngs-play-sessions.mjs": {
+      "bytes": 1885,
+      "sha256": "eaeca23cf90e96a1ea4fe53f342a3f2cb20417657a677b28ca2e507c7a2d511c"
+    },
+    "sites/npcgen/app/catalog/ngs-story-player.tsx": {
+      "bytes": 28991,
+      "sha256": "025191e7d499d019829efe7c5dc8ef99860271fe920d42c1d8776fefde35bf6f"
+    },
+    "sites/npcgen/app/catalog/ngs-story-runtime.mjs": {
+      "bytes": 2583,
+      "sha256": "90b68031913c3589a760ee0d57f03ef72d38d0611db693779efb07e12a5d02b1"
+    },
+    "sites/npcgen/app/catalog/node-image-model.ts": {
+      "bytes": 1467,
+      "sha256": "274ef0a4abaa590f21a1bccc32e34e7da75526a714288fb75db3225d24ff8d19"
+    },
+    "sites/npcgen/app/catalog/npc-appearance-model.ts": {
+      "bytes": 3389,
+      "sha256": "47e35c92b1561e3e6ba0a99fac83844f485f4a3ccba6d2c8fbeb8ea8b2f2e216"
+    },
+    "sites/npcgen/app/catalog/npc-catalog-hook.tsx": {
+      "bytes": 8667,
+      "sha256": "4d1f44e08fec567d947475ba818b10ac67bd31cb70b870d44dab1b0e672ad2fa"
+    },
+    "sites/npcgen/app/catalog/npc-catalog-refresh.tsx": {
+      "bytes": 5198,
+      "sha256": "fea4f41cf6697c3fde36b8fe81e172ecf9188919a4e359c5fdc4c9baf919a023"
+    },
+    "sites/npcgen/app/catalog/npc-category-requests.tsx": {
+      "bytes": 20393,
+      "sha256": "9a00568f19cf7a8ba0b44236307454b6b9f88139db73621d9282cfb2b7db22f6"
+    },
+    "sites/npcgen/app/catalog/npc-detail.tsx": {
+      "bytes": 10262,
+      "sha256": "704ed32c68c2aea2c96a235137252b0c2abd3a4a81aa7759f060d251e9ec1e63"
+    },
+    "sites/npcgen/app/catalog/npc-lifecycle.tsx": {
+      "bytes": 8681,
+      "sha256": "ba1bdd3564bd58b1abb61facb544441a5a0c55b6a9f80c9dce76ed8174753271"
+    },
+    "sites/npcgen/app/catalog/npc-media-gallery.css": {
+      "bytes": 4010,
+      "sha256": "1f88cd74daa181f04aa0aab725b3f7145761485d065b0c12a64c66ceaee35c99"
+    },
+    "sites/npcgen/app/catalog/npc-media-gallery.tsx": {
+      "bytes": 14741,
+      "sha256": "3ea30fe9c3772c653620a67e7555c3edfbe03fdbacedad579cbf64c27fb86262"
+    },
+    "sites/npcgen/app/catalog/npc-planning.tsx": {
+      "bytes": 11006,
+      "sha256": "1b68aa97728e4b2982c5c14646a82f9edc72548b9085049100ffc93d75d66fb7"
+    },
+    "sites/npcgen/app/catalog/npc-read-modal.tsx": {
+      "bytes": 1914,
+      "sha256": "c7f11e9c0a58e27b8c76553076953ede75094568b78e1f399b5e7217b34ce237"
+    },
+    "sites/npcgen/app/catalog/npc-relations.tsx": {
+      "bytes": 3241,
+      "sha256": "5ddb6b9e9811c8be5a892108d2c52a64c404eca0d1ff0b463ef53501a1938d55"
+    },
+    "sites/npcgen/app/catalog/npc-request-target.ts": {
+      "bytes": 837,
+      "sha256": "943551de2f0f1c8d3a7d34feafefbe4e5cbe5394f82a263bb3c4837d0012a835"
+    },
+    "sites/npcgen/app/catalog/npc-roster.tsx": {
+      "bytes": 3743,
+      "sha256": "776e6a127b1abd8273fd3fcd55b40157d54aed1964ad1bb11b97e7e074cc800d"
+    },
+    "sites/npcgen/app/catalog/npc-rules.tsx": {
+      "bytes": 2193,
+      "sha256": "f96a655ed71137d5000b8067d9681ee3aeedf9d7cc7580efdb9e6c452ed40a86"
+    },
+    "sites/npcgen/app/catalog/planning-category-mapping.ts": {
+      "bytes": 1356,
+      "sha256": "fd0a784fd4e6d99b46060307ed05173fb4cbe339670c4942cc361af61bdafcfa"
+    },
+    "sites/npcgen/app/catalog/portrait-image-cache.tsx": {
+      "bytes": 6450,
+      "sha256": "952671866a15f3c7eb76bb36eeec6a12fb6371a33721834317f96d68b5f2c157"
+    },
+    "sites/npcgen/app/catalog/portrait-staged-review.tsx": {
+      "bytes": 7216,
+      "sha256": "0b518b1fb6e6c72f79030f30b8338bbc61fbcdf90915cd829911925bb5b2c056"
+    },
+    "sites/npcgen/app/catalog/portraits.tsx": {
+      "bytes": 26095,
+      "sha256": "1e30cdef02671eb32d67d60dfabe632dbf5849366711a3bd4022fd38a3ae95d6"
+    },
+    "sites/npcgen/app/catalog/production-category.tsx": {
+      "bytes": 18524,
+      "sha256": "c54a1c8bca9b6e4694d8f32c231c20ec3dc30a947fe2d13650979997a5548196"
+    },
+    "sites/npcgen/app/catalog/project-icon.tsx": {
+      "bytes": 10890,
+      "sha256": "b2bafc59d201fc30236c0ad69b6667630b4a70c03b7aa76c93225f4c5c60bd6b"
+    },
+    "sites/npcgen/app/catalog/project-pixel-comparison.tsx": {
+      "bytes": 2383,
+      "sha256": "7eee83d68b5d261b4571f035d2d11c1ee85734beae2666bb2e0fadfdb57fa556"
+    },
+    "sites/npcgen/app/catalog/project-portrait-comparison.tsx": {
+      "bytes": 4021,
+      "sha256": "ead6ecc9bcf72db125c42b7f2b4134245484d01cbf39acbc0b41ac9a97aa1c30"
+    },
+    "sites/npcgen/app/catalog/project-request-review.tsx": {
+      "bytes": 56744,
+      "sha256": "452a857f8e223089eba5003e9cc15718a49d02d4821a43106d38e6bbc8cf0dcc"
+    },
+    "sites/npcgen/app/catalog/proposal-model.ts": {
+      "bytes": 6653,
+      "sha256": "4a10e2816e1abf4710c14bd22b30e000a2b3b4bdeb4acc1dd44df2646ac9f1ad"
+    },
+    "sites/npcgen/app/catalog/proposal-request-kind.tsx": {
+      "bytes": 369,
+      "sha256": "790e7947ac40c9355e953758ba225398efa175837618f0f37bc05d370e8b6021"
+    },
+    "sites/npcgen/app/catalog/proposal-review-dialog.css": {
+      "bytes": 7532,
+      "sha256": "ebb6b7291929048f79f01ae3ffb2a272fa13ef45a5f04c385f9bbaac30c0de85"
+    },
+    "sites/npcgen/app/catalog/proposal-review-dialog.tsx": {
+      "bytes": 3604,
+      "sha256": "85ddb6572b08ffa6a689a80d39e033f1a31c8b289871730bc53b898ac842f36f"
+    },
+    "sites/npcgen/app/catalog/proposal-set-review.tsx": {
+      "bytes": 11804,
+      "sha256": "ee27d2837d2389f38b93ad6ca4eabe06143816fe0998885f50a671836fc3d118"
+    },
+    "sites/npcgen/app/catalog/puzzle-appearance.tsx": {
+      "bytes": 4228,
+      "sha256": "9e8cded28811b4ec48f6c4a711b00f54644a0aae652ca385e00f6be5f395560e"
+    },
+    "sites/npcgen/app/catalog/puzzle-csharp-workspace.tsx": {
+      "bytes": 11547,
+      "sha256": "89cc307c0973bb7465b3fa1433bc2b36fcd1f804c34245b26ea31b0c1a008ee9"
+    },
+    "sites/npcgen/app/catalog/puzzle-design-api.ts": {
+      "bytes": 1046,
+      "sha256": "f76868a41882c6a352c0779c3f484dfea39456b3771afa6d00ca2c2a4f038219"
+    },
+    "sites/npcgen/app/catalog/puzzle-design-workspace.tsx": {
+      "bytes": 24611,
+      "sha256": "f15a03e6c086695147911052c6d07be3ba3b796e9f79eb7b2d92d42e7bf8decf"
+    },
+    "sites/npcgen/app/catalog/puzzle-episode-draft.tsx": {
+      "bytes": 4971,
+      "sha256": "00bdcb1eda3a493230a5f4a0be92099d6dc5f56eb0fb5888de6c871e7e32e36e"
+    },
+    "sites/npcgen/app/catalog/puzzle-instance-resources.ts": {
+      "bytes": 4679,
+      "sha256": "408147017774a50fabddb9120d6a14b116274f62b0cf1b63e6187617a741a2bc"
+    },
+    "sites/npcgen/app/catalog/puzzle-json-dialog.tsx": {
+      "bytes": 1808,
+      "sha256": "caa188fa19bffcdbd608f1c3ac4274806e85d1c1a7fa55b7223a4511a28db1dc"
+    },
+    "sites/npcgen/app/catalog/puzzle-live-preview.tsx": {
+      "bytes": 26525,
+      "sha256": "93d89ce3ef9d4dbef58208d2666027c2f8ff807bcf932c0e8e289c7175ac027e"
+    },
+    "sites/npcgen/app/catalog/puzzle-preview-message.d.mts": {
+      "bytes": 431,
+      "sha256": "0c306346eac6ffc6e204852ab5b1af974762c8432beaa0a6958caf57a30188df"
+    },
+    "sites/npcgen/app/catalog/puzzle-preview-message.mjs": {
+      "bytes": 1109,
+      "sha256": "5ebf8cd75e46676af463e11a4cdbfc75248dc85588f719c948ce06184b245ba4"
+    },
+    "sites/npcgen/app/catalog/puzzle-test-contract.d.mts": {
+      "bytes": 1055,
+      "sha256": "f602c74b618b79831e35885555a58d13f50faf3ee836688c96fb2f075e5f68d6"
+    },
+    "sites/npcgen/app/catalog/puzzle-test-contract.mjs": {
+      "bytes": 6617,
+      "sha256": "51432a7012a77923b1c160838f584515796de2486bbfbcdbb62af7eafbd55cac"
+    },
+    "sites/npcgen/app/catalog/puzzle-test-player.tsx": {
+      "bytes": 8191,
+      "sha256": "fd79c4c1420ba473deb331b21a5d462415c3e9eea6cea70d709cef398566808e"
+    },
+    "sites/npcgen/app/catalog/read-access.tsx": {
+      "bytes": 3132,
+      "sha256": "91dda07032321b3254daef4cbd4a28bc1dff61eb211cc5d5e809e4dcc5025277"
+    },
+    "sites/npcgen/app/catalog/request-comparison-shell.css": {
+      "bytes": 2036,
+      "sha256": "87dbd868d80a1959410b0488b033d014b5341bada191577201537566c7084f27"
+    },
+    "sites/npcgen/app/catalog/request-review-context.tsx": {
+      "bytes": 466,
+      "sha256": "719d4d0cbccb723dd533db58b6d6e345ccc7c8f40675397b6c90ef9733fdba9d"
+    },
+    "sites/npcgen/app/catalog/request-status.tsx": {
+      "bytes": 2979,
+      "sha256": "64715d6d91a741fb89aff2459741642a4215d78fe4b2bf75f9fa82a518439c45"
+    },
+    "sites/npcgen/app/catalog/request-ui-model.ts": {
+      "bytes": 2569,
+      "sha256": "50bd3794c0d94c4f985d3d539e2eb0113bdb97ae2d0e3fded6cb6d2e6f14f7c5"
+    },
+    "sites/npcgen/app/catalog/rpg-ambient.mjs": {
+      "bytes": 12051,
+      "sha256": "3a9d2e1768f5120d25d56ce39c0e1806de347a62eeddb759de1cb941a1a86d08"
+    },
+    "sites/npcgen/app/catalog/rpg-scene-contract.mjs": {
+      "bytes": 6780,
+      "sha256": "bfca85d12a0ebd035879f37a775086746a87fd76200df092f2d392098cb9bf62"
+    },
+    "sites/npcgen/app/catalog/rpg-scene.css": {
+      "bytes": 3371,
+      "sha256": "de497ca9f13be80e9790ffa729ae3c8ab3a4c2442f8658cfb37a23975b056eb6"
+    },
+    "sites/npcgen/app/catalog/rpg-scene.tsx": {
+      "bytes": 10990,
+      "sha256": "42a7125ff30a448296986e2280ddb859bc7c13bf178433dbb6bcbb79312192ce"
+    },
+    "sites/npcgen/app/catalog/rpg-travel.mjs": {
+      "bytes": 582,
+      "sha256": "356db264df1e06823b2c81abc709a6b0d00b7af781a3b08ca4eb21fc4cb4750d"
+    },
+    "sites/npcgen/app/catalog/saved-source-correction.tsx": {
+      "bytes": 6892,
+      "sha256": "f60e2ba3638057a0fe29d2f56039a0f8a394eec1e519b49a72b89b94e5d5f5f8"
+    },
+    "sites/npcgen/app/catalog/scene-encounter.css": {
+      "bytes": 2894,
+      "sha256": "ec42250fb85819ec5f9a7c897842451265dde15ce26227072bf8d66a98d737df"
+    },
+    "sites/npcgen/app/catalog/scene-encounter.mjs": {
+      "bytes": 1697,
+      "sha256": "31be99b09f1a1ff34408337f1e5a2010f934643a681ce63f70415a686171619b"
+    },
+    "sites/npcgen/app/catalog/scene-encounter.tsx": {
+      "bytes": 4376,
+      "sha256": "ff16d8bcafb82409e11b25757182e1713174996f305a7d300db7368d2bf92217"
+    },
+    "sites/npcgen/app/catalog/single-pixel-result.tsx": {
+      "bytes": 1188,
+      "sha256": "1d20d7ab128b4fc89753413e4715de3eb62c327d7eae9a024504c5020f72d775"
+    },
+    "sites/npcgen/app/catalog/story-candidate-preview.tsx": {
+      "bytes": 7660,
+      "sha256": "e54c2ac55a0e5a764f65baf7274f7d56016a31e8a2915c7e274d70a4aa669cc3"
+    },
+    "sites/npcgen/app/catalog/story-catalog-actions.tsx": {
+      "bytes": 7914,
+      "sha256": "94453674085ccd3afc35e636ed416f258016736378d9f93fd70a83aa251dbfb9"
+    },
+    "sites/npcgen/app/catalog/story-catalog-api.ts": {
+      "bytes": 340,
+      "sha256": "228607d5c76f7089ceba6cb0ffbce2650113ef6cc1b003142dc50458ef6eac5a"
+    },
+    "sites/npcgen/app/catalog/story-catalog-boundary.tsx": {
+      "bytes": 13229,
+      "sha256": "6d75b805e7750bd25b59fe743a57eb4740bf7f7bf677fe52d6b1a0d6cae7992f"
+    },
+    "sites/npcgen/app/catalog/story-catalog-npcs.tsx": {
+      "bytes": 1497,
+      "sha256": "a675ed5b800685681d436c6e015b48fdbe244253ec0b16e2159aded43554778c"
+    },
+    "sites/npcgen/app/catalog/story-catalog-puzzle-refs.tsx": {
+      "bytes": 1388,
+      "sha256": "475247e7ccaf61b6ffb72a337b5cfbd89b7c027e5f53a7dc691b99187bbbe606"
+    },
+    "sites/npcgen/app/catalog/story-catalog.css": {
+      "bytes": 3466,
+      "sha256": "35ca10ae62fa0789ba50d0b3f6939b5aa33b9fd2cb1c3e5d82fc3109e6c86761"
+    },
+    "sites/npcgen/app/catalog/story-cinematic.css": {
+      "bytes": 1331,
+      "sha256": "c2603b5cd7eea30e8ba16d88a61748a036d6929cd41b346f2352be766558d6e0"
+    },
+    "sites/npcgen/app/catalog/story-cinematic.d.mts": {
+      "bytes": 600,
+      "sha256": "410c5c769703927d8000bec3f1c31fb89612b7ac5691e578af8de034b69c1956"
+    },
+    "sites/npcgen/app/catalog/story-cinematic.mjs": {
+      "bytes": 2148,
+      "sha256": "6054da51d7bceb1242db8b1d79aa9844d0df254a06e3a428bbd4389da88262e7"
+    },
+    "sites/npcgen/app/catalog/story-cinematic.tsx": {
+      "bytes": 2739,
+      "sha256": "87957ce6df864ece8fe796992501b68ab3aa94fdfd9d76a05928ce3e8ead5c81"
+    },
+    "sites/npcgen/app/catalog/story-collection.css": {
+      "bytes": 430,
+      "sha256": "b44c47cf5a8e6f465c4a3be354672b26ccf799ec3445822ced73be6f4c757054"
+    },
+    "sites/npcgen/app/catalog/story-decision-ui.ts": {
+      "bytes": 3065,
+      "sha256": "6d09ea01b417bc599357ff1df902ccf98578c566b23d8f2a2f489e758fc0bbc4"
+    },
+    "sites/npcgen/app/catalog/story-engine.js": {
+      "bytes": 58784,
+      "sha256": "3af523e2334190ec885611f0b13ce363b8cccd790b7437233a53f9a32b64fdd8"
+    },
+    "sites/npcgen/app/catalog/story-episode-puzzles.tsx": {
+      "bytes": 26221,
+      "sha256": "2c0ea3947fc02e2eed3568b725fea3f0aac6a7483742decbc735ab3d741fbc7b"
+    },
+    "sites/npcgen/app/catalog/story-episode-revision.tsx": {
+      "bytes": 7638,
+      "sha256": "c108dce141e7e38b05daf4de0ec7db4035c2339eb6ac1a2be61b51d0d43058de"
+    },
+    "sites/npcgen/app/catalog/story-narrative-threads.mjs": {
+      "bytes": 1600,
+      "sha256": "5abd0d544263d7c136ff5c505ee019ccf725ce09b75e077ca32c507289b3071d"
+    },
+    "sites/npcgen/app/catalog/story-node-images.tsx": {
+      "bytes": 13714,
+      "sha256": "2ac7cd6721dac30ba97e728284d4b4ea18a147015c1a59adbcb4b8fa4518aa17"
+    },
+    "sites/npcgen/app/catalog/story-puzzle-contract.d.mts": {
+      "bytes": 746,
+      "sha256": "b4ae1f601879422b4d9e534d21f63b45b13365a64d9e418eb0fea12a29001c74"
+    },
+    "sites/npcgen/app/catalog/story-puzzle-contract.mjs": {
+      "bytes": 7092,
+      "sha256": "6755eebc0d6ceaf6d7ee5eb0965dc4cb713017fc61f836f018b834a547834f47"
+    },
+    "sites/npcgen/app/catalog/story-readable.tsx": {
+      "bytes": 11573,
+      "sha256": "b1242656e3582a3dfa5e0fc85aa8b855512c0b771897d0f5f5e3359a580f752c"
+    },
+    "sites/npcgen/app/catalog/story-rehearsal-state.ts": {
+      "bytes": 891,
+      "sha256": "8351882248df51bad5f06b4f73764018584c1c8a78bc210ae5913362ce3fb6b1"
+    },
+    "sites/npcgen/app/catalog/story-unit-view.tsx": {
+      "bytes": 2490,
+      "sha256": "9450d5feb77ad3c0a32653c0e2b9011c64f29bf8dc03d307196ce306e9dc08c8"
+    },
+    "sites/npcgen/app/catalog/story-workspace.tsx": {
+      "bytes": 43055,
+      "sha256": "c8af67cd532f13497854f0773844d9a9ed02f292b97ae19b64ecfec8f2d129d6"
+    },
+    "sites/npcgen/app/catalog/story.tsx": {
+      "bytes": 11091,
+      "sha256": "5ee1e8d4c76262a698406f877acfe3c84072896eed2fbab833e2583723ffcde0"
+    },
+    "sites/npcgen/app/catalog/tab-refresh.tsx": {
+      "bytes": 681,
+      "sha256": "d53bdbc349ea559765d014ce877171e768016de63baaeecff6fc1122f713c13c"
+    },
+    "sites/npcgen/app/catalog/unified-npc-comparison.tsx": {
+      "bytes": 1525,
+      "sha256": "eec779e158c597ec18b1ce1c307af63fd7dd3d1bf0e74213dd38f1843a0f61fb"
+    },
+    "sites/npcgen/app/catalog/use-npc-appearances.ts": {
+      "bytes": 3510,
+      "sha256": "97e95845ce10daef100e95366c409d56a18fd32f806857e893c372fd4229dbed"
+    },
+    "sites/npcgen/app/catalog/use-puzzle-preview.tsx": {
+      "bytes": 3458,
+      "sha256": "9e3cff7d67e45fbd96e155e0896c2ce1165405cf7dc3642ddc93347ff2ab4f77"
+    },
+    "sites/npcgen/app/catalog/workspace.tsx": {
+      "bytes": 35184,
+      "sha256": "fb6507925e0370158525c4bb631f66ab163704a442059ac78638e282ea875fd2"
+    },
+    "sites/npcgen/app/chatgpt-auth.ts": {
+      "bytes": 2881,
+      "sha256": "c27d7f1a8aca334080e03907bea1c4c2d319de56dd032414cf7adc2ace8bd7c5"
+    },
+    "sites/npcgen/app/frontend-session.tsx": {
+      "bytes": 6851,
+      "sha256": "174f269df01646c56fad0f7f4fb242f82f12cc60dc7f058774fc5d313892521d"
+    },
+    "sites/npcgen/app/globals.css": {
+      "bytes": 204396,
+      "sha256": "4a47932b9351d6612a93823786e0644dad1ea42d95a52846f16f01c5bcc5c485"
+    },
+    "sites/npcgen/app/intake-workspace.tsx": {
+      "bytes": 10457,
+      "sha256": "9b99767b9dfc71ccc010dc62ad525b86b2e0b29cc0ec7a0c8e92c23fc9fa0406"
+    },
+    "sites/npcgen/app/layout.tsx": {
+      "bytes": 866,
+      "sha256": "a4c21c841812791ea0eba070c41062ea0fc72e6d7fd6dc2744ce1e4bed994076"
+    },
+    "sites/npcgen/app/new-request-modal.tsx": {
+      "bytes": 7582,
+      "sha256": "a539bc936a596accd546723acf164f515a4e5403321757090e223499ab872ce7"
+    },
+    "sites/npcgen/app/ngs-version.tsx": {
+      "bytes": 2782,
+      "sha256": "1fed7835e1e036396648dae3fa785ba1379c55b011b7cb39c07aed10a389343f"
+    },
+    "sites/npcgen/app/page.tsx": {
+      "bytes": 266,
+      "sha256": "f8e9a5717d4c9251fea643564edf9ef367e6bb13f05cabae1e5c45a84814387f"
+    },
+    "sites/npcgen/app/prompt/page.tsx": {
+      "bytes": 276,
+      "sha256": "f9bed9840a4bd8035386d974bc9a1596246f0078175c4785e10a0b044ff91d32"
+    },
+    "sites/npcgen/app/prompt/pixel-comparison.css": {
+      "bytes": 2830,
+      "sha256": "251bb4e950944548e88624c50dcd75fd4993191480840d2c206a1e56f94896a2"
+    },
+    "sites/npcgen/app/prompt/pixel-sd-workspace.tsx": {
+      "bytes": 17086,
+      "sha256": "65fb47f6ee2f9d20b6614e7829686e62f8ad9a2f39f13e42b108bf1ebe1e7c42"
+    },
+    "sites/npcgen/app/prompt/portrait-draft.tsx": {
+      "bytes": 7010,
+      "sha256": "412875b6636507a1210f193a0ee2f9b84401aaac79ca98b0eba5d69b43efac82"
+    },
+    "sites/npcgen/app/prompt/workspace.tsx": {
+      "bytes": 9310,
+      "sha256": "d575d558c560fecf10e6d50165f6c4c378794a5c6ee9719cdda10fd3ddbce6e6"
+    },
+    "sites/npcgen/app/request-form-actions.tsx": {
+      "bytes": 789,
+      "sha256": "19dba2eb8fe8e9d124c3a6d4d6ad0a88ef7433c726fa121d4135f9cc069ebefa"
+    },
+    "sites/npcgen/app/status-console.tsx": {
+      "bytes": 2963,
+      "sha256": "b55c334dd19c9cc356975b44ec05215eb1618bd72b09a7cdfbd0448a078d7e7d"
+    },
+    "sites/npcgen/app/transfers/page.tsx": {
+      "bytes": 287,
+      "sha256": "dd2d22d7ca52479739ba29d619935712e9cfdffa3749dc063ba258a46e8bc720"
+    },
+    "sites/npcgen/app/ui-icons.tsx": {
+      "bytes": 2531,
+      "sha256": "724b5d796aa7b621c347ec5e7abff106bc36e3e2f1c5a2046dc0ed18b054888f"
+    },
+    "sites/npcgen/app/workspace.tsx": {
+      "bytes": 12510,
+      "sha256": "bf060f8387751a2ebff58928aa0803900bd11d968ae37a348b46424feddb45e0"
+    },
+    "sites/npcgen/build/resource-design-entry.d.mts": {
+      "bytes": 276,
+      "sha256": "5ab4a981be9464cd3d8ab1c3de5a77cf7922b89e8d5fe6351dd3f97d8df43636"
+    },
+    "sites/npcgen/build/resource-design-entry.mjs": {
+      "bytes": 1486,
+      "sha256": "c2e38b0349bc67be7f8e072c69612c780939d8c00c427c210598e8a2bd9c978f"
+    },
+    "sites/npcgen/build/sites-vite-plugin.LICENSE": {
+      "bytes": 1063,
+      "sha256": "7de1e115d165f176e68f962acdb809b5ab8d8ae78d3981e0701392b2ac50c713"
+    },
+    "sites/npcgen/build/sites-vite-plugin.ts": {
+      "bytes": 7227,
+      "sha256": "228a3cb091c18dcaa476cbccc85bfdefa89fc868008498290e1ffdf4640b7c44"
+    },
+    "sites/npcgen/build/space-candidate-boundary.mjs": {
+      "bytes": 2908,
+      "sha256": "648f2e2224157fe96057fb2deea5bff2c025e2cd53413d642bcd15d81b69b06d"
+    },
+    "sites/npcgen/build/space-worker.ts": {
+      "bytes": 274,
+      "sha256": "7e6e66e6783cd2308e1754871d64ca03928cb2e064fad3bdc6bb9085ac6e4ec5"
+    },
+    "sites/npcgen/cloudflare-env.d.ts": {
+      "bytes": 172,
+      "sha256": "0f1a0b5578ca67a325afbc898da17640cb8957de3311a47739d5ac7e53febb0f"
+    },
+    "sites/npcgen/components/ui/badge.tsx": {
+      "bytes": 1776,
+      "sha256": "46a0de5224f6a5d5d63d45246534288518dce888f031064bff925bbc7fe6ad97"
+    },
+    "sites/npcgen/components/ui/button.tsx": {
+      "bytes": 2392,
+      "sha256": "cc36af0f8b5019c33cc039fbf03bb952a513072b15b55b53c592b78af3e5f4c4"
+    },
+    "sites/npcgen/components/ui/input.tsx": {
+      "bytes": 962,
+      "sha256": "8c4612a7c41319ac5049daa3b34b080f9784b6245c17780eb87c127e58e473db"
+    },
+    "sites/npcgen/components/ui/select.tsx": {
+      "bytes": 6353,
+      "sha256": "0b796a108a4eb5ba52d9ad938b7aea36dc56ae66c703a6d0a23dbc24f96daff3"
+    },
+    "sites/npcgen/components/ui/skeleton.tsx": {
+      "bytes": 276,
+      "sha256": "ba48dd5be5a6a1378bd4e011028654b5bf419f1e7d20ee4b9f8330c1264e7239"
+    },
+    "sites/npcgen/components/ui/textarea.tsx": {
+      "bytes": 759,
+      "sha256": "253cdeb487c73beaaccdf47fc163e36e7d5b7ae6ddf09a4f64998a109a112979"
+    },
+    "sites/npcgen/lib/assembly-play-selection.mjs": {
+      "bytes": 1626,
+      "sha256": "ab71e609c6db3c636a9b445d07420d5ca1ff3faeeacb515820b3579092314716"
+    },
+    "sites/npcgen/lib/attachment-selection.ts": {
+      "bytes": 1569,
+      "sha256": "a6b5d7236049dacc74e56fbf4acb7e6aef368c7119b5422a156e8b39d1bcd096"
+    },
+    "sites/npcgen/lib/category-revision-contract.ts": {
+      "bytes": 1963,
+      "sha256": "3d9396c97d188c10a0402688d27a492b4e29c5469fdc00c9932c473f9ad0b020"
+    },
+    "sites/npcgen/lib/concept-group-add.ts": {
+      "bytes": 1461,
+      "sha256": "7bb91e29e8c53a7ae21d915c205174f137a357df4f312b13c912a89739d18c1a"
+    },
+    "sites/npcgen/lib/concept-group-operation.ts": {
+      "bytes": 4475,
+      "sha256": "485d23f11ea5a12e2666254307334f5b34b07704ec0d8d3cde0148186e07f75d"
+    },
+    "sites/npcgen/lib/concept-hierarchy.ts": {
+      "bytes": 6202,
+      "sha256": "1f07705fb6bd25a1185623d43e9ba773e388d6e0dca61617bd20a2870f70bbb3"
+    },
+    "sites/npcgen/lib/concept-process-client.d.mts": {
+      "bytes": 217,
+      "sha256": "73d30b3d85a1376a72ac7f9ff82ef1b4f10884fffc889b2ec95e66caeb2ace28"
+    },
+    "sites/npcgen/lib/concept-process-client.mjs": {
+      "bytes": 1375,
+      "sha256": "78aa19f7c6f0ff515846baf3c9bcd3bcc8f2d677cc3bb0fddef4bf03346049ef"
+    },
+    "sites/npcgen/lib/concept-request-reference.d.mts": {
+      "bytes": 123,
+      "sha256": "f2ed7988ca44bd4ef12249b41367030a288ea3ff0bec9cc685b02d8816eabc83"
+    },
+    "sites/npcgen/lib/concept-request-reference.mjs": {
+      "bytes": 1128,
+      "sha256": "15522a6f86a2de921f5a40336b947616531d1d2978ca28f1cf19293972993e84"
+    },
+    "sites/npcgen/lib/context-request-contract.ts": {
+      "bytes": 2383,
+      "sha256": "7fd73f578167ac64852cf33a2d46ce68b8c6f697616f4d1031b5752c6b231f40"
+    },
+    "sites/npcgen/lib/contracts.ts": {
+      "bytes": 2680,
+      "sha256": "94b02393f8ec7aa9a91c8153cac1b08284cd9a467a41c224499332dc9310e5de"
+    },
+    "sites/npcgen/lib/frontend-session-presentation.mjs": {
+      "bytes": 824,
+      "sha256": "145d0d5b7b4275a96dc08b824e6d5b90bd4c86f777f6da2cf20b53d642ae262d"
+    },
+    "sites/npcgen/lib/frontend-transport.mts": {
+      "bytes": 5919,
+      "sha256": "0bd04eb4de09ffe1fb991e3c03c88bb4de779827d0d5b48b9022ca835f56179f"
+    },
+    "sites/npcgen/lib/game-development-contract.mjs": {
+      "bytes": 1140,
+      "sha256": "2a131044f8deadfa7d07b52b8231674ec3861606233c7dfe599cbff18619873b"
+    },
+    "sites/npcgen/lib/master-concept-participants.json": {
+      "bytes": 241,
+      "sha256": "57f40e99fac0c35435fb201032254b9678a4b30612588900dcc6edac017db061"
+    },
+    "sites/npcgen/lib/master-concept-transport.ts": {
+      "bytes": 4644,
+      "sha256": "0a263033135513a04e070849e5e31f841adc0a43e31841632f07ff89041221fb"
+    },
+    "sites/npcgen/lib/media.ts": {
+      "bytes": 2039,
+      "sha256": "ec4a7a052742827992f5eac39c5be70e97e03c9f81c31f2b4dc8cd3bebc12689"
+    },
+    "sites/npcgen/lib/ngs-release.generated.json": {
+      "bytes": 184,
+      "sha256": "68d19763ea5bcf92b49917222b8fa5bed4fd87746f1ac7748ddc30d5596ddb95"
+    },
+    "sites/npcgen/lib/ngs-release.ts": {
+      "bytes": 955,
+      "sha256": "a3d5f795c613c28b0c59975d7be0303fbac2187ccb94605cabd37533e2b1c4df"
+    },
+    "sites/npcgen/lib/ngs-time.mjs": {
+      "bytes": 288,
+      "sha256": "a6a12dd06784f088c6f5a07a7da0169fdb3836bbccd95809ee2463202314c7f6"
+    },
+    "sites/npcgen/lib/npc-category-contract.ts": {
+      "bytes": 1764,
+      "sha256": "96f16101f6a8fd939d87bebde5a47615ea04dbe1dcf700529353093905159270"
+    },
+    "sites/npcgen/lib/npc-media-cache.d.mts": {
+      "bytes": 382,
+      "sha256": "c0674f16e9c181f4d22ad5546aa40894b38c80ad05f2b8fe9bc21331871dc3f7"
+    },
+    "sites/npcgen/lib/npc-media-cache.mjs": {
+      "bytes": 1344,
+      "sha256": "8252cd41b44bb81fb6edd671fe4461ec4dbd1b828e9ea882fd1559facb264786"
+    },
+    "sites/npcgen/lib/npc-media-gallery.d.mts": {
+      "bytes": 900,
+      "sha256": "9f73e78eca04f8eefe3cb4836e2254481684b2ab83b9a000c674ac003ae1acf8"
+    },
+    "sites/npcgen/lib/npc-media-gallery.mjs": {
+      "bytes": 2737,
+      "sha256": "0996c9d9bb8e8430609d81901479e17f82d0363948f2c8e5516c1f39ad538f4e"
+    },
+    "sites/npcgen/lib/pixel-batch-reference.d.mts": {
+      "bytes": 107,
+      "sha256": "d538889364978e088007dee30de40f326a274641377fd3b2f9f112b886848bbc"
+    },
+    "sites/npcgen/lib/pixel-batch-reference.mjs": {
+      "bytes": 1971,
+      "sha256": "5c811575d0ce4ccb3a9ebf0089afccfc751e2ff00e7e83e8ea0b5d635a93c729"
+    },
+    "sites/npcgen/lib/pixel-decision.d.mts": {
+      "bytes": 456,
+      "sha256": "b235d8a38c5b0a4b7e8766cf9fbccb9ab7aff67fa35e6cd29e0239f2031e1bb1"
+    },
+    "sites/npcgen/lib/pixel-decision.mjs": {
+      "bytes": 2119,
+      "sha256": "dc0ef0828e77754690601a3cbda27d73c6ab167014f788483feaf7af6cca3da2"
+    },
+    "sites/npcgen/lib/portrait-authority.mjs": {
+      "bytes": 1814,
+      "sha256": "39ef795764005835ec535babc0cb75a8aa69c3750fa052666656be0fffed6042"
+    },
+    "sites/npcgen/lib/portrait-batch-contract.ts": {
+      "bytes": 2938,
+      "sha256": "e770641793988b3144dfac0dcf4edcd200944c22c2b26e17fd92f0d4cb769ae2"
+    },
+    "sites/npcgen/lib/portrait-display.ts": {
+      "bytes": 1192,
+      "sha256": "d6966e458285a7739d966599c5a0745ee706d8f1ce3b069e263499bf28b67e2f"
+    },
+    "sites/npcgen/lib/portrait-journey.ts": {
+      "bytes": 4782,
+      "sha256": "6b777a7af5e6779bc4be8bc5e28f6aa83385914eb355443f6bd7cb2afe314ee7"
+    },
+    "sites/npcgen/lib/portrait-order.ts": {
+      "bytes": 3461,
+      "sha256": "261d6b5e54e9281464fa510789d31ad983d79165fb5a835d5440720b57ff0c6b"
+    },
+    "sites/npcgen/lib/portrait-process-transport.ts": {
+      "bytes": 5518,
+      "sha256": "505542302a8ed8b344f6bccef6baece7e9df2f73c566dc46b82c8dd4e22cf633"
+    },
+    "sites/npcgen/lib/portrait-read-message.ts": {
+      "bytes": 289,
+      "sha256": "c27ba407d813a861457a77ea91242da041efa2941e6533eefd796775e96148f3"
+    },
+    "sites/npcgen/lib/portrait-request-form.ts": {
+      "bytes": 418,
+      "sha256": "6221315ed62e250ba6227c71f4c1b9d08994083a14496cce9182b0767749c4ef"
+    },
+    "sites/npcgen/lib/portrait-request-groups.ts": {
+      "bytes": 3133,
+      "sha256": "cee6a0c9d6bdcccf83b908f0f1314c302cc2690ab31bbb9b22c4bea2187bf3f6"
+    },
+    "sites/npcgen/lib/portrait-space-participants.json": {
+      "bytes": 307,
+      "sha256": "77b651733172b467cbbf6877f7387c8d3a7482ddf0afa5c7b47ccd3eb953949b"
+    },
+    "sites/npcgen/lib/portrait-staged-review.d.mts": {
+      "bytes": 1005,
+      "sha256": "494777ff5d25f0e992a83532a43546f8ea6c75edbfd6f41027861deea36307ff"
+    },
+    "sites/npcgen/lib/portrait-staged-review.mjs": {
+      "bytes": 2820,
+      "sha256": "d7047164353880dbc414d6e679a024b434c39c30afd0c319d75eabb96c873655"
+    },
+    "sites/npcgen/lib/portrait-template.json": {
+      "bytes": 49,
+      "sha256": "a9d522c6a407675bc11a2c170dc6cb28f99aae43b67afdac52e16d17e6f56d5e"
+    },
+    "sites/npcgen/lib/private-identity-state.mjs": {
+      "bytes": 559,
+      "sha256": "4f53c534534477cc9fa91fe844fdf903a2aec3f4f6b419621610b4a05a560846"
+    },
+    "sites/npcgen/lib/project-bindings.json": {
+      "bytes": 354,
+      "sha256": "95c2628f22f2331a47cf75398d9fe3d09f50beda1c67f2ddbc329ac73ac3e3ec"
+    },
+    "sites/npcgen/lib/project-bindings.ts": {
+      "bytes": 897,
+      "sha256": "55e9ee0432bf94cc615df07312af0520ac4b842b3fa66e6ff97595aeca512fb7"
+    },
+    "sites/npcgen/lib/project-display-service.mjs": {
+      "bytes": 13231,
+      "sha256": "e16566d711ef8ea5999177553e43289059860cf49e0ec2f3ba3490d41ec75e82"
+    },
+    "sites/npcgen/lib/proposal-design-grounding.d.mts": {
+      "bytes": 112,
+      "sha256": "9b78dc634a284a953ffc996ca1f9a2e013138d55af0df7a4869bb6c545225847"
+    },
+    "sites/npcgen/lib/proposal-design-grounding.mjs": {
+      "bytes": 6311,
+      "sha256": "47a4b4cbe55f8054805a9eca30e92ed7d95f30dc9f68b68ac739c54adc192b64"
+    },
+    "sites/npcgen/lib/proposal-diversity-contract.d.mts": {
+      "bytes": 51,
+      "sha256": "38787ce95a66824f666afcf363deba6cd6b9c3175b0044fb6f208c8341836d12"
+    },
+    "sites/npcgen/lib/proposal-diversity-contract.mjs": {
+      "bytes": 4667,
+      "sha256": "61eb912c2543fea266e4dc7f0ce5fe77bb5388b1e79cf879ca5e71d3fb09a372"
+    },
+    "sites/npcgen/lib/proposal-request-lifecycle.d.mts": {
+      "bytes": 445,
+      "sha256": "9364000f3fb7503f89a4d3399eb8cc094d49f3151392b27e6dbaf184ce88653c"
+    },
+    "sites/npcgen/lib/proposal-request-lifecycle.mjs": {
+      "bytes": 2308,
+      "sha256": "30108571b8c243aa91842b0f6ae84ed3312b122d63a6a3fa9c6930ad6aabdd1f"
+    },
+    "sites/npcgen/lib/proposal-request-navigation.d.mts": {
+      "bytes": 91,
+      "sha256": "64f8c3cd64b668e294ec602ffe76fd030598e3aa840b879260d862c5d62971be"
+    },
+    "sites/npcgen/lib/proposal-request-navigation.mjs": {
+      "bytes": 216,
+      "sha256": "36a4e5a2a562fe6cfc95f9838b0da730048bcc5dfaaffb97f6e18149bd909da8"
+    },
+    "sites/npcgen/lib/proposal-review-dialog-controller.d.mts": {
+      "bytes": 268,
+      "sha256": "69ce20b15486419260f928d5a2b537ac0819458674aa9e73c59256905c5673a5"
+    },
+    "sites/npcgen/lib/proposal-review-dialog-controller.mjs": {
+      "bytes": 1227,
+      "sha256": "2f3f7268140d54d09c172aadf3951ab298a632ab7d559d75a1844e58c99a2772"
+    },
+    "sites/npcgen/lib/proposal-set-contract.ts": {
+      "bytes": 5756,
+      "sha256": "c68c27602f0915e3aa9b97de9ab0fffc336ceea434a1d7f13f89b8fc5c791e7d"
+    },
+    "sites/npcgen/lib/request-comparison-contract.d.mts": {
+      "bytes": 820,
+      "sha256": "ae61e9628be2639c592adc9e201b0f172ca5052825f3c0d79c7c2e786ceb7b4c"
+    },
+    "sites/npcgen/lib/request-comparison-contract.mjs": {
+      "bytes": 5111,
+      "sha256": "4e1deabe3bd1695a6464e821df9b83bd503d0f34282036756b0f07fd6d8442bf"
+    },
+    "sites/npcgen/lib/request-read-controller.d.mts": {
+      "bytes": 389,
+      "sha256": "a8f0d7ad6c953d96a8d11e755312b60d168e9329e40d032b74a79a1e81c15a0f"
+    },
+    "sites/npcgen/lib/request-read-controller.mjs": {
+      "bytes": 1974,
+      "sha256": "1a5c9774a66cf1d983e135d84fffae0801a3265bbc271b96edff1ecb01d2ee08"
+    },
+    "sites/npcgen/lib/request-service.ts": {
+      "bytes": 6148,
+      "sha256": "983bf305d117738fcb38803313fd1616ef10cb326bb89c459409d3496526ec17"
+    },
+    "sites/npcgen/lib/shared-runtime/content-operations.css": {
+      "bytes": 2937,
+      "sha256": "3dc6f26b396b06f0d01533a19af24560c682de951b8db5b9cb96a2f8ba05e22f"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-content-operation-ui.d.mts": {
+      "bytes": 668,
+      "sha256": "a1f9d9e42cc7b4746228162097005f96fdd3e40401b64fe617cb90a8ee20a50f"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-content-operation-ui.mjs": {
+      "bytes": 24158,
+      "sha256": "24f100de02c0833b413731f4f9a1ff92cfeb840ce368d1fbfd213012f4bcb4a1"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-content-provenance.d.mts": {
+      "bytes": 433,
+      "sha256": "a33af702bf5f6ac09e27290c71849a26815aef41a3bdcc090803370f252f5e7e"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-content-provenance.mjs": {
+      "bytes": 2891,
+      "sha256": "a272101a6159cb8f8e51b479b4711a03af867978a008b46eff597ba1053d9db8"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-content-tools.d.mts": {
+      "bytes": 205,
+      "sha256": "eae26ee7c84ad060839c82bc406df789bf19b72d17df0d880314058793f1c9a6"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-content-tools.mjs": {
+      "bytes": 10626,
+      "sha256": "40eb139123b16eb961ea856d6648caeeaaae16237bb9bdf7e931e010141a12c4"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-puzzle-type-tools.d.mts": {
+      "bytes": 207,
+      "sha256": "8aa19287970f0cf1b1b4868a094375859a302ff3bc03b6aa04c2ae8afe905dda"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-puzzle-type-tools.mjs": {
+      "bytes": 6801,
+      "sha256": "579f93ed420eefd9bb6cbbe37bf92fc84cc61d45eac0c807418ade5be83bf909"
+    },
+    "sites/npcgen/lib/shared-runtime/ngs-puzzle-type-view.mjs": {
+      "bytes": 3008,
+      "sha256": "d7cc030c374c587a802d473781b3ac337074d640cb475049041689428c2772ed"
+    },
+    "sites/npcgen/lib/shared-runtime/npc-catalog-appearances.d.mts": {
+      "bytes": 135,
+      "sha256": "fe2ec721d0c7619116455d93fd1593b64619979e611cbc6f9284d46a5ff726f0"
+    },
+    "sites/npcgen/lib/shared-runtime/npc-catalog-appearances.mjs": {
+      "bytes": 607,
+      "sha256": "f27b76f617a4608123f6a9105a824480f672e873f461156cb28519e9df53e7f6"
+    },
+    "sites/npcgen/lib/shared-runtime/npc-catalog-contract.d.mts": {
+      "bytes": 399,
+      "sha256": "2c8af4b8609c68c393a7d65e4d85ceac8925c423438672f45edc3369cda22aba"
+    },
+    "sites/npcgen/lib/shared-runtime/npc-catalog-contract.mjs": {
+      "bytes": 2311,
+      "sha256": "c6f99cacdc845ed97848be80549e90747493d3d9c6a1309b93696a1a7da95b44"
+    },
+    "sites/npcgen/lib/shared-runtime/npc-catalog-refresh-contract.d.mts": {
+      "bytes": 124,
+      "sha256": "8bb6cb28c9892d6dafe2f289f90c6ac4b9ebc737d4a575e0ff177f1555e65d7f"
+    },
+    "sites/npcgen/lib/shared-runtime/npc-catalog-refresh-contract.mjs": {
+      "bytes": 750,
+      "sha256": "0b378a09825404147dd4634558e1ac6c8b4665289fbc059845e7578ce5e14667"
+    },
+    "sites/npcgen/lib/shared-runtime/npc-catalog-view.d.mts": {
+      "bytes": 251,
+      "sha256": "90af7f2e38b497e357f1074e4344b3947026ddfd8e6a31a4ee97fc1e42271f1e"
+    },
+    "sites/npcgen/lib/shared-runtime/npc-catalog-view.mjs": {
+      "bytes": 1201,
+      "sha256": "a0e1a9c9f8ed006eeade5c269d50c6b6474372d3a9e45d85eec9b11981376f55"
+    },
+    "sites/npcgen/lib/shared-runtime/story-catalog-authoring.d.mts": {
+      "bytes": 320,
+      "sha256": "08c699670175045384a001fde68edb1215746a899be66a21f913c967495042ac"
+    },
+    "sites/npcgen/lib/shared-runtime/story-catalog-authoring.mjs": {
+      "bytes": 2104,
+      "sha256": "2d1eb559ab09dfd826bac5e2d71de207b1f5a12bbd2006e980b2b67ede30091c"
+    },
+    "sites/npcgen/lib/shared-runtime/story-catalog-contract.d.mts": {
+      "bytes": 1272,
+      "sha256": "76e4a0ce9733b1a5867fefa0718c12c61df196dbb260a3ea8118036d683f1ae0"
+    },
+    "sites/npcgen/lib/shared-runtime/story-catalog-contract.mjs": {
+      "bytes": 3388,
+      "sha256": "52873241a161826053b46e142e354bfca5a7e94ab35b1a197713c0bd793edf66"
+    },
+    "sites/npcgen/lib/shared-runtime/story-catalog-runtime.d.mts": {
+      "bytes": 446,
+      "sha256": "611ac83eabad244cea7fcff576bea39a2196d9de09cc2d661564e0bf982861e3"
+    },
+    "sites/npcgen/lib/shared-runtime/story-catalog-runtime.mjs": {
+      "bytes": 1114,
+      "sha256": "ec1e4024e71e12d6f102c37fd63e85e18c4c77b423a2a6126456cf97024f0f35"
+    },
+    "sites/npcgen/lib/shared-runtime/story-npc-authoring.d.mts": {
+      "bytes": 263,
+      "sha256": "596174cbd51c7c863e290eed4359084ec0e214753056e5648fac7841dd638eec"
+    },
+    "sites/npcgen/lib/shared-runtime/story-npc-authoring.mjs": {
+      "bytes": 1072,
+      "sha256": "b502b434ba9362f30cb64613cb0819f25a426e8386702a89045712cf45a68f71"
+    },
+    "sites/npcgen/lib/story-catalog-navigation.d.mts": {
+      "bytes": 749,
+      "sha256": "c313b73fd9d723e45aa66aaedfef2c620a328b6f1543344a7bd5c9e8ebc3a9f2"
+    },
+    "sites/npcgen/lib/story-catalog-navigation.mjs": {
+      "bytes": 2394,
+      "sha256": "8564e02e0668742ad6a909035d777a0502b87bbfafcf5cbc9b4174335b7ade98"
+    },
+    "sites/npcgen/lib/transfer-service.ts": {
+      "bytes": 9467,
+      "sha256": "33a4f5b3015271a305747977fee9180c24e95ef04f44e9acea8829bfe6f04bc5"
+    },
+    "sites/npcgen/lib/unified-portrait-request.ts": {
+      "bytes": 3433,
+      "sha256": "3b589c774913dc24f01db28285946c40b3b498daa9e6135f656255fd7dd269b2"
+    },
+    "sites/npcgen/lib/utils.ts": {
+      "bytes": 177,
+      "sha256": "53f3d3d070f0a9082934da25b875f9499855c2b0693868dd28be8c23d8730f68"
+    },
+    "sites/npcgen/next-env.d.ts": {
+      "bytes": 284,
+      "sha256": "217ce9348b523c3e6954fb50bb93364b58781d86742c995f3a5b03ba88b9ba72"
+    },
+    "sites/npcgen/package-lock.json": {
+      "bytes": 504152,
+      "sha256": "eedaeab6870c0f70f9db869fcaa24abae9b0f945cbc9acb8a43b6e7ed6bcbfca"
+    },
+    "sites/npcgen/package.json": {
+      "bytes": 1741,
+      "sha256": "edec34acd5b8a9b8fe4208cc59e7c281e6338a52590e33888013f4eb0eb888b3"
+    },
+    "sites/npcgen/postcss.config.mjs": {
+      "bytes": 94,
+      "sha256": "dfac7ac2d86d326a0e5adb024e7943c181393ed17a5fcb8f0315b24c7da6ddde"
+    },
+    "sites/npcgen/scripts/execution-profile.mjs": {
+      "bytes": 624,
+      "sha256": "2e71116f4d2b70cff8bb70436f8dd5c709ec7ff62893424530f404e0193d3630"
+    },
+    "sites/npcgen/scripts/install-ci.mjs": {
+      "bytes": 2146,
+      "sha256": "31e63d6e2b9d4b5687565e4cd771bcd2f7d0adc3d574a8131ef6899beed8b4b9"
+    },
+    "sites/npcgen/scripts/npm-install.mjs": {
+      "bytes": 7025,
+      "sha256": "9715c6a32d1d4a0289ef6376a0e819c3b6a6416b8a9877733d9fb4339ce626b6"
+    },
+    "sites/npcgen/scripts/sites-env.mjs": {
+      "bytes": 906,
+      "sha256": "5de99d6806b01f0ee0b941af3684d75dcf1afbbcff22cb95bfa2e584c5dafa88"
+    },
+    "sites/npcgen/tsconfig.json": {
+      "bytes": 800,
+      "sha256": "7199c6e4e400921e8049729840165a39f1476fa97901bed00239e7697bfe8da4"
+    },
+    "sites/npcgen/vendor/shadcn-tailwind-4.13.0.LICENSE.md": {
+      "bytes": 1063,
+      "sha256": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f"
+    },
+    "sites/npcgen/vendor/shadcn-tailwind-4.13.0.css": {
+      "bytes": 16041,
+      "sha256": "bc7d83425702955b4cb67cb14ede9d603f9d912376d57a2d81d661094d2a782a"
+    },
+    "sites/npcgen/vite.config.ts": {
+      "bytes": 1673,
+      "sha256": "2f227b372fd1c1bd8f421a38a3263265c53808b72e321641acdebee8a8c3ba6f"
     },
     "tools/runtime-prerequisites/README.md": {
       "bytes": 3515,

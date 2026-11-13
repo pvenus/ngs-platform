@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "ngs-portrait-participants.v1",
+  "siteProjectId": "",
+  "policyRevision": 0,
+  "projectId": "",
+  "featureId": "",
+  "participants": [
+    {
+      "emailHash": "",
+      "canonicalActor": "",
+      "role": ""
+    }
+  ],
+  "enabled": false,
+  "npcIds": [
+    ""
+  ],
+  "approval": ""
+}

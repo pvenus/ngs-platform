@@ -1,0 +1,6 @@
+import {z} from 'zod';
+import {validateConceptHierarchy,type ConceptHierarchy} from './concept-hierarchy';
+export const conceptGroupAdd=z.object({schemaVersion:z.literal('npc-concept-group-add.v1'),action:z.literal('concept.group.add'),title:z.string().transform(v=>v.normalize('NFC').trim()).pipe(z.string().min(1).max(100).refine(v=>!/[\u0000-\u001f\u007f]/.test(v))),displayOrder:z.number().int().min(0).max(99)}).strict();
+export type ConceptGroupAdd=z.infer<typeof conceptGroupAdd>;
+export function validateGroupAddition(value:unknown,hierarchy:ConceptHierarchy,categoryIds:string[]){const p=conceptGroupAdd.safeParse(value);if(!p.success)throw Error('GROUP_ADD_INVALID');const h=validateConceptHierarchy(hierarchy,categoryIds);if(h.groups.length>=100)throw Error('GROUP_LIMIT_REACHED');if(p.data.displayOrder>h.groups.length)throw Error('GROUP_ORDER_INVALID');if(h.groups.some(g=>g.title.normalize('NFC').trim()===p.data.title))throw Error('GROUP_TITLE_EXISTS');return p.data;}
+export function groupAdditionPhase(r:{status:string;publicationConfirmed?:boolean;commitReceipt?:unknown}){return r.status==='applied'?(r.publicationConfirmed===true&&!!r.commitReceipt?'동기화 완료':'처리 완료 · 동기화 확인 대기'):({requested:'요청 접수 · 처리 대기',accepted:'처리 승인됨',processing:'처리 중',conflict:'기준 충돌 · 새 요청 필요',failed:'처리 실패'} as Record<string,string>)[r.status]||'상태 확인 필요';}

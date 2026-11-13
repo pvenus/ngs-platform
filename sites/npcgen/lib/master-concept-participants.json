@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "ngs-master-participants.v1",
+  "siteProjectId": "",
+  "policyRevision": 0,
+  "projectId": "",
+  "featureId": "",
+  "participants": [
+    {
+      "emailHash": "",
+      "canonicalActor": "",
+      "role": ""
+    }
+  ]
+}

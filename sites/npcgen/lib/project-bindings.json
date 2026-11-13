@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "bindings": [
+    {
+      "canonicalProjectId": "",
+      "resourceArea": "",
+      "legacySourceProjectId": "",
+      "mirrorProjectId": "",
+      "localBindingId": "",
+      "scopeId": "",
+      "ownerRouteId": "",
+      "resources": [
+        ""
+      ],
+      "enabled": false,
+      "compatibilityAlias": false
+    }
+  ]
+}

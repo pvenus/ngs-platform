@@ -1,0 +1,29 @@
+.pixel-batch-comparison{container-type:inline-size;min-width:0;max-width:100%;overflow-wrap:anywhere}
+.proposal-review-detail article.pixel-batch-comparison{padding:0;border:0}
+.pixel-candidate-viewport{width:100%;max-width:100%;overflow-x:auto;padding-bottom:10px;overscroll-behavior-x:contain}
+.pixel-batch-comparison .pixel-candidate-grid{display:grid;grid-template-columns:repeat(3,minmax(284px,1fr));gap:12px;min-width:876px;align-items:stretch}
+.pixel-batch-comparison .pixel-candidate-card{display:grid;grid-template-rows:44px 32px 308px 52px auto;gap:8px;min-width:0;padding:12px;border:1px solid var(--border,#c7cebf);border-radius:10px;background:var(--card,#fff);overflow-wrap:anywhere;box-sizing:border-box}
+.pixel-batch-comparison .pixel-candidate-card h4{margin:0;font-size:14px;line-height:20px;align-self:center}
+.pixel-batch-comparison .pixel-candidate-origin{margin:0;font-size:12px;line-height:18px}
+.pixel-batch-comparison .pixel-candidate-image{display:grid;place-items:start center;min-width:0}
+.pixel-batch-comparison .pixel-candidate-image figure{width:256px;margin:0}
+.pixel-batch-comparison .pixel-candidate-image img{display:block;width:256px!important;height:256px!important;max-width:none!important;max-height:none!important;object-fit:contain;image-rendering:pixelated}
+.pixel-batch-comparison .pixel-candidate-image figcaption{padding:6px 0;font-size:11px;line-height:16px}
+.pixel-batch-comparison .pixel-candidate-actions{display:flex;align-items:start;min-width:0}
+.pixel-batch-comparison .pixel-candidate-actions button{width:100%;min-height:44px;margin:0;padding:8px;font-size:13px}
+.pixel-batch-comparison .pixel-candidate-meta{font-size:12px;line-height:1.6;min-width:0}
+.pixel-batch-comparison .pixel-candidate-meta p{font-size:12px;margin:6px 0}
+.pixel-batch-comparison pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font-size:11px}
+@container(max-width:900px){
+ .pixel-batch-comparison .pixel-candidate-grid{grid-template-columns:repeat(3,minmax(164px,1fr));min-width:516px}
+ .pixel-batch-comparison .pixel-candidate-card{grid-template-rows:44px 32px 180px 52px auto;padding:10px}
+ .pixel-batch-comparison .pixel-candidate-image figure{width:128px}
+ .pixel-batch-comparison .pixel-candidate-image img{width:128px!important;height:128px!important}
+}
+@media(max-height:800px){
+ .pixel-batch-comparison .pixel-candidate-card{grid-template-rows:44px 32px 180px 52px auto}
+ .pixel-batch-comparison .pixel-candidate-image figure{width:128px}
+ .pixel-batch-comparison .pixel-candidate-image img{width:128px!important;height:128px!important}
+}
+.pixel-batch-comparison .pixel-candidate-actions button{border:1px solid #648cb8;border-radius:8px;background:#e4effb;color:#184975;cursor:pointer}
+.pixel-batch-comparison .pixel-candidate-actions button:disabled{opacity:.55;cursor:wait}

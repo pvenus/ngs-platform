@@ -1,0 +1,15 @@
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import {previewInput,previewState,type PreviewInput,type PreviewState} from './puzzle-preview-message.mjs';
+export type {PreviewInput,PreviewState} from './puzzle-preview-message.mjs';
+/** Pure presentation broker: existing C# projection, no game session or save. */
+export function usePuzzlePreview(input:PreviewInput){
+ const frame=useRef<HTMLIFrameElement>(null),latest=useRef(''),booted=useRef(false),[src,setSrc]=useState(''),[ready,setReady]=useState(false),[state,setState]=useState<PreviewState|null>(null),[error,setError]=useState('');
+ const text=JSON.stringify(input);
+ useEffect(()=>{const controller=new AbortController();fetch('/story-runtime/registry.json',{cache:'no-store',signal:controller.signal}).then(async response=>{if(!response.ok)throw Error('공통 퍼즐 실행기를 확인하지 못했습니다.');const value:unknown=await response.json();if(!value||typeof value!=='object'||!('schemaVersion' in value)||value.schemaVersion!=='ngs.embedded-story-runtime.v1'||!('bundle' in value)||typeof value.bundle!=='string'||!/^wasm\.[a-f0-9]{24}$/.test(value.bundle))throw Error('공통 실행기 버전이 올바르지 않습니다.');if(!controller.signal.aborted)setSrc('/story-runtime/'+value.bundle+'/host.html');}).catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:String(e));});return()=>controller.abort();},[]);
+ useEffect(()=>{function receive(event:MessageEvent){if(event.origin!==location.origin||event.source!==frame.current?.contentWindow)return;const value=event.data;if(value?.type==='ngs.story.host-ready'){booted.current=true;setReady(true);setError('');return;}if(value?.type!=='ngs.puzzle.preview.result'||value.requestId!==latest.current)return;if(value.error){latest.current='';setState(null);setError('공통 실행기가 미리보기 입력을 거절했습니다.');return;}const next=previewState(value,latest.current);if(next){latest.current='';setState(next);setError('');}else{latest.current='';setState(null);setError('공통 실행기의 미리보기 결과를 검증하지 못했습니다.');}}window.addEventListener('message',receive);return()=>window.removeEventListener('message',receive);},[]);
+ useEffect(()=>{let timeout:ReturnType<typeof setTimeout>|undefined;const ticket=requestAnimationFrame(()=>{const value:unknown=JSON.parse(text);if(!previewInput(value)){latest.current='';setState(null);setError('입력값은 0–100, 목표·오차는 정수, 연동은 0.05–0.95 범위여야 합니다.');return;}if(!ready||!frame.current?.contentWindow)return;const requestId='preview.'+crypto.randomUUID();latest.current=requestId;frame.current.contentWindow.postMessage({type:'ngs.puzzle.preview.request',requestId,...value},location.origin);timeout=setTimeout(()=>{if(latest.current===requestId){setError('공통 실행기 미리보기 응답을 기다리고 있습니다.');}},10000);});return()=>{cancelAnimationFrame(ticket);if(timeout)clearTimeout(timeout);};},[text,ready]);
+ useEffect(()=>{if(!src)return;const timer=setTimeout(()=>{if(!booted.current)setError('공통 미리보기 실행기를 불러오지 못했습니다.');},15000);return()=>clearTimeout(timer);},[src]);
+ const broker=src?<iframe ref={frame} title="퍼즐 공통 연산 브로커" src={src} tabIndex={-1} style={{width:'100%',height:44,border:0,display:'block',pointerEvents:'none'}}/>:null;
+ return {state,ready,error,broker};
+}

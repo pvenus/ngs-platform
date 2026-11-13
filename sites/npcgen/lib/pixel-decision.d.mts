@@ -1,0 +1,2 @@
+export function pixelDecisionState(batch:Record<string,unknown>,choice?:string,frozen?:Record<string,unknown>|null,readOnly?:boolean):{state:string;valid:boolean;closed:boolean;completed:boolean;canChoose:boolean;canConfirm:boolean;canDiscard:boolean;canRestore:boolean;confirmReason:string;discardReason:string};
+export function pixelDecisionCommand(batch:Record<string,unknown>,action:'confirm'|'discard'|'restore',choice:string):Record<string,unknown>;

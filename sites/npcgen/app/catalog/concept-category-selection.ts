@@ -1,0 +1,3 @@
+/** Preserve the next valid sibling when an archived category disappears. */
+export function nextConceptCategory(selected:string,active:string[],previous:string[]){if(active.includes(selected))return selected;const at=previous.indexOf(selected);if(at>=0){const next=previous.slice(at+1).find(id=>active.includes(id));if(next)return next;const prior=previous.slice(0,at).reverse().find(id=>active.includes(id));if(prior)return prior;}return active[0]||'';}
+export function categorySelectionURL(href:string,groupId:string,next:string){const url=new URL(href);url.searchParams.set('conceptGroup',groupId);url.hash=next?encodeURIComponent(next):'';return url.href;}

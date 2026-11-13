@@ -1,0 +1,1 @@
+export function createProposalReviewDialogController(options:{dialog:()=>HTMLDialogElement|null;busy:()=>boolean;focusInitial:()=>void;opened?:()=>void}):{open(trigger:HTMLElement):boolean;close():boolean;cancel(event:any):void;closed():void;keyDown(event:any):void};

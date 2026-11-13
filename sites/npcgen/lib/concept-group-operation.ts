@@ -1,0 +1,22 @@
+import {z} from 'zod';
+import {validateConceptHierarchy,type ConceptHierarchy} from './concept-hierarchy';
+import {digest} from './contracts';
+const id=z.string().regex(/^[A-Za-z0-9._:-]{1,180}$/).refine(v=>!['__proto__','constructor','prototype'].includes(v));
+const title=z.string().transform(v=>v.normalize('NFC').trim()).pipe(z.string().min(1).max(100).refine(v=>!/[\u0000-\u001f\u007f]/.test(v)));
+const description=z.string().transform(v=>v.normalize('NFC').trim()).pipe(z.string().max(1000).refine(v=>!/[\u0000-\u001f\u007f]/.test(v)));
+export const categoryDisposition=z.discriminatedUnion('action',[z.object({categoryId:id,action:z.literal('archive')}).strict(),z.object({categoryId:id,action:z.literal('move'),targetGroupId:id}).strict()]);
+export type CategoryDisposition=z.infer<typeof categoryDisposition>;
+export const conceptGroupOperation=z.discriminatedUnion('action',[
+ z.object({schemaVersion:z.literal('npc-concept-group-operation.v1'),action:z.literal('concept.group.add'),title,description:description.optional(),displayOrder:z.number().int().min(0).max(99)}).strict(),
+ z.object({schemaVersion:z.literal('npc-concept-group-operation.v1'),action:z.literal('concept.group.update'),groupId:id,title:title.optional(),description:description.optional(),displayOrder:z.number().int().min(0).max(99).optional()}).strict(),
+ z.object({schemaVersion:z.literal('npc-concept-group-operation.v1'),action:z.literal('concept.group.delete'),groupId:id,moveToGroupId:id.optional(),categoryDispositions:z.array(categoryDisposition).max(100).optional()}).strict()
+]).refine(v=>v.action!=='concept.group.delete'||!(v.moveToGroupId&&v.categoryDispositions),'GROUP_CATEGORY_DISPOSITION_INVALID').refine(v=>v.action!=='concept.group.update'||v.title!==undefined||v.description!==undefined||v.displayOrder!==undefined,'GROUP_OPERATION_EMPTY');
+export type ConceptGroupOperation=z.infer<typeof conceptGroupOperation>;
+export function applyGroupOperation(value:unknown,hierarchy:ConceptHierarchy,categoryIds:string[],identity='synthetic.validation'):ConceptHierarchy{
+ const parsed=conceptGroupOperation.safeParse(value);if(!parsed.success)throw Error('GROUP_OPERATION_INVALID');const op=parsed.data,h=validateConceptHierarchy(hierarchy,categoryIds),groups=h.groups,g=groups.find(g=>g.id===(op.action==='concept.group.add'?identity:op.groupId));
+ if(op.action==='concept.group.add'){if(g)throw Error('GROUP_ID_EXISTS');if(groups.length>=100)throw Error('GROUP_LIMIT_REACHED');if(op.displayOrder>groups.length)throw Error('GROUP_ORDER_INVALID');groups.splice(op.displayOrder,0,{id:identity,title:op.title,...(op.description!==undefined?{description:op.description}:{}),categoryIds:[]});}
+ else if(op.action==='concept.group.update'){if(!g)throw Error('GROUP_NOT_FOUND');if(op.title!==undefined)g.title=op.title;if(op.description!==undefined)g.description=op.description;if(op.displayOrder!==undefined){if(op.displayOrder>=groups.length)throw Error('GROUP_ORDER_INVALID');groups.splice(groups.indexOf(g),1);groups.splice(op.displayOrder,0,g);}}
+ else{if(!g)throw Error('GROUP_NOT_FOUND');if(groups.length===1)throw Error('LAST_GROUP_REQUIRED');if(op.categoryDispositions){const dispositions=new Map(op.categoryDispositions.map(item=>[item.categoryId,item]));if(dispositions.size!==op.categoryDispositions.length||dispositions.size!==g.categoryIds.length||g.categoryIds.some(cid=>!dispositions.has(cid)))throw Error('GROUP_CATEGORY_DISPOSITION_MISMATCH');const archived=[...(h.archivedCategoryIds||[])];for(const cid of g.categoryIds){const item=dispositions.get(cid)!;if(item.action==='archive')archived.push(cid);else{const to=groups.find(x=>x.id===item.targetGroupId&&x.id!==g.id);if(!to)throw Error('GROUP_MOVE_TARGET_INVALID');to.categoryIds.push(cid);}}if(archived.length||h.archivedCategoryIds)h.archivedCategoryIds=archived;}else{const to=groups.find(x=>x.id===op.moveToGroupId&&x.id!==g.id);if(op.moveToGroupId!==undefined&&!to||g.categoryIds.length&&!to)throw Error('GROUP_MOVE_TARGET_REQUIRED');if(to)to.categoryIds.push(...g.categoryIds);}groups.splice(groups.indexOf(g),1);}
+ if(new Set(groups.map(g=>g.title.normalize('NFC').trim())).size!==groups.length)throw Error('GROUP_TITLE_EXISTS');return validateConceptHierarchy(h,categoryIds);
+}
+export async function operationGroupId(op:ConceptGroupOperation,projectId:string,requestId:string){return op.action==='concept.group.add'?'group.add.'+await digest({action:'concept.group.add',projectId,requestId}):op.groupId;}

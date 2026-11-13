@@ -1,0 +1,10 @@
+export type PuzzleOutcome={status:'aligned'|'aborted';bell:number;cloth:number;facts:number};
+export type PuzzleRun={id:string;phase:'active'|'paused'|'aligned'|'aborted';delivered:boolean;outcome:PuzzleOutcome|null;state?:{bell:number;cloth:number;facts:number};at:string};
+export type PuzzleRuntime={context:Record<string,unknown>;source:{id:string;revision:number;setHash:string};src:string;scope:string};
+export function sha(value:unknown):Promise<string>;
+export function puzzleContext(configuration:Record<string,unknown>,inputs:{bell:number;cloth:number;hint:string},mode:'standalone'|'story-draft'|'story',bindingKey:string,registry:unknown):Promise<PuzzleRuntime>;
+export function validOutcome(value:unknown):value is PuzzleOutcome;
+export function newPuzzleRun():PuzzleRun;
+export function readPuzzleRuns(storage:Storage,key:string):PuzzleRun[];
+export function commitPuzzleRun(storage:Storage,key:string,run:PuzzleRun):PuzzleRun;
+export function claimPuzzleOutcome(storage:Storage,key:string,runId:string,outcome:PuzzleOutcome):PuzzleRun|null;

@@ -1,26 +1,70 @@
-# NGS platform
+# NGS Platform
 
-**Incomplete: only isolated runtime prerequisite tools are published; this is not runnable NGS/Workers/Space deployment.**
+This is a buildable, loopback-previewable source-only frontend snapshot,
+not a complete operating NGS installation. It derives from
+runtime source revision `09836498ed936d070cd0773de9f6a4ab1a256f13`.
 
-This initial source-only subset contains private-path macOS arm64 prerequisite
-preparers for Python, uv and Node/npm. See
-[tool usage and boundaries](tools/runtime-prerequisites/README.md).
-Run the documented commands from `tools/runtime-prerequisites/`.
+## Install, compile and preview
 
-It does not include the NGS application, Workers services, Space deployment,
-models, game assets, operational data, identities or credentials. Completing
-prerequisite preparation does not complete or activate NGS.
+Use Node 22.13+ and Python 3.9+. Node 24.21.0/npm 11.19.0 were tested on Apple Silicon.
 
-The tools were narrowly exported from source commit
-`093489982ad6c32ceba806dfe32e6c9d43bad3b1`. Safety helpers were AST-selected into
-`archive_common.py`, integration-only install examples were removed, and internal
-provenance paths were omitted. This is a transformed standalone export, not the
-full project's original bootstrap directory. Keeping it under
-`tools/runtime-prerequisites/` avoids silently replacing a future NGS bootstrap.
+```sh
+cd sites/npcgen
+npm run install:ci
+npm run build
+cd ../..
+node dev/preview-clean.mjs 8788
+```
 
-## Licensing
+Open `http://127.0.0.1:8788`. Stop the preview with Ctrl-C. The preview is local
+only; it passes no owner credentials and disables remote bindings. Its file
+watcher uses one-second polling to avoid the macOS sandbox watch-descriptor limit.
+No global OS or package-manager security setting is changed.
 
-No license is assigned here to the newly authored helper code. It must not be
-assumed to be open-source-licensed merely because it is visible. Official uv MIT
-and Apache-2.0 notices are retained unchanged; they apply to uv, not this helper
-code. The tool README explains archive and third-party notice handling.
+Compilation creates a new `.dev-runtime/space-candidate-*` directory, marked
+`configuration: unconfigured`, `deployable: false`, `backendConnected: false`.
+It checks the npm lock installation, TypeScript, RSC/client and SSR builds.
+The archive intentionally contains no dependencies or compiled artifacts.
+
+## What this can and cannot do
+
+The UI shell loads. It has no authenticated user, projects, private transport,
+local service gateway, business database, model or worker. API/MCP calls and
+login routes return 503; writes, including server actions, return 405.
+Those are intentional boundaries, not a suggestion to bypass authentication.
+Do not select this bundle as an operational NGS runtime or copy its empty settings
+over an existing installation. Connect real services only through separately
+reviewed identity, authorization, data and transport configuration.
+
+The export contains the UI entry import closure, not every legacy application
+route. Existing user/grant/site settings were replaced with empty disabled
+values; generated release stamps were cleared. Some game-specific display text
+was generalized. Proprietary branding images, media, game data, prompt-package
+payloads, app/API/MCP route implementations, backend/worker implementations,
+private settings, models and Git history are absent.
+
+A compilation and loopback health pass is not a complete UI/content acceptance
+test. Large-chunk and dynamic-import compiler warnings remain. On npm 11.19.0,
+seven dependencies reported lifecycle scripts without allowScripts coverage;
+no persistent approval was added. Check a newer npm policy separately rather
+than disabling it globally.
+
+Read THIRD-PARTY-NOTICES.md and LICENSE-STATUS.md for source and third-party terms.
+
+## Runtime prerequisite tools
+
+Optional pinned macOS arm64 Python, uv and Node preparers are in
+[tools/runtime-prerequisites](tools/runtime-prerequisites/README.md).
+They do not activate backend services or download model weights.
+
+## Project split
+
+NGS is the request/copy-oriented frontend. Backend orchestration belongs to
+`ngs-services`; functional workers belong to the single `ngs-workers` project.
+Those projects are separate setup dependencies, not bundled implementations here.
+
+## Repository boundaries
+
+Only source and configuration templates are published. Generated images, audio,
+video, databases, model weights, private operational settings and old Git history
+are excluded. This publication does not change existing local services.

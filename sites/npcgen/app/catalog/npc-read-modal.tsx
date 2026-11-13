@@ -1,0 +1,9 @@
+'use client';
+import {useEffect,useId,useRef,type ReactNode} from 'react';
+/** A read-only dialog pauses while the existing request dialog owns the top layer. */
+export function NpcReadModal({title,context,children,suspended,onClose,onEdit,editLabel}:{title:string;context:string;children:ReactNode;suspended:boolean;onClose:()=>void;onEdit?:()=>void;editLabel?:string}){
+ const opener=useRef<HTMLElement|null>(null);
+ const dialog=useRef<HTMLDialogElement>(null),titleId=useId(),close=useRef(onClose);close.current=onClose;
+ useEffect(()=>{if(suspended)return;const el=dialog.current!;if(!opener.current)opener.current=document.activeElement as HTMLElement|null;const trigger=opener.current,scroll={x:scrollX,y:scrollY},previous={position:document.body.style.position,top:document.body.style.top,width:document.body.style.width,overflow:document.body.style.overflow};el.showModal();document.body.style.position='fixed';document.body.style.top=`-${scroll.y}px`;document.body.style.width='100%';document.body.style.overflow='hidden';el.querySelector<HTMLButtonElement>('.npc-read-close')?.focus({preventScroll:true});return()=>{el.close();Object.assign(document.body.style,previous);if(trigger?.isConnected)trigger.focus({preventScroll:true});window.scrollTo(scroll.x,scroll.y);};},[suspended]);
+ return <dialog ref={dialog} className="new-request-modal npc-read-modal" aria-labelledby={titleId} onCancel={e=>{e.preventDefault();close.current();}}><div className="new-request-heading"><div><p className="meta">{context} · 조회</p><h2 id={titleId}>{title}</h2></div><button type="button" className="npc-read-close" onClick={()=>close.current()}>닫기</button></div><div className="new-request-body npc-read-body">{children}</div>{onEdit&&<div className="npc-read-actions"><button type="button" data-action-tone="confirm" onClick={onEdit}>{editLabel||'선택한 항목 수정 요청'}</button></div>}</dialog>;
+}

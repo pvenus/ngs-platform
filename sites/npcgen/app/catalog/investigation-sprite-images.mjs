@@ -1,0 +1,3 @@
+import{rpgIssues}from'./rpg-scene-contract.mjs';
+export function sceneSpritePins(flow){const pins=new Map();for(const n of flow.nodes||[]){if(!n.encounter)continue;if(rpgIssues(n.encounter,n).length)throw Error('INVESTIGATION_SCENE_PIN');for(const a of n.encounter.actors){const p=a.sprite,prior=pins.get(p.fileAssetId);if(prior&&JSON.stringify(prior)!==JSON.stringify(p))throw Error('INVESTIGATION_SPRITE_CONFLICT');pins.set(p.fileAssetId,p);}}return[...pins.values()];}
+export function investigationSprite(ref,pins){const p=pins.find(p=>p.fileAssetId===ref.fileAssetId);if(!p)return null;if(p.version!==ref.version||p.mime!==ref.mime||p.sha256!==ref.sha256)throw Error('INVESTIGATION_SPRITE_PIN_MISMATCH');return p;}

@@ -1,0 +1,13 @@
+export const MEDIA_PAGE_SIZE=15;
+const row=v=>v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+const rows=v=>Array.isArray(v)?v.map(row):[];
+export function mediaPage(items,page=0){const total=items.length,pages=Math.ceil(total/MEDIA_PAGE_SIZE),current=Math.min(Math.max(0,Number.isInteger(page)?page:0),Math.max(0,pages-1));return{total,pages,current,items:items.slice(current*MEDIA_PAGE_SIZE,current*MEDIA_PAGE_SIZE+MEDIA_PAGE_SIZE)};}
+export function npcMedia(npc,snapshot,batches=[]){const all=new Map();const add=m=>{if(!all.has(m.id))all.set(m.id,m)};
+ for(const p of [...rows(npc.portraits),...rows(npc.media)]){if(typeof p.assetId!=='string')continue;const r=snapshot.resources.find(r=>r.kind==='asset'&&r.assetId===p.assetId);if(!r||!['image/png','image/jpeg','image/webp','image/gif'].includes(r.mime))continue;add({id:'published:'+p.assetId,name:typeof p.label==='string'?p.label:p.assetId,kind:r.mime==='image/gif'?'animation':p.kind==='pixel'?'pixel':'portrait',npcId:npc.id,npcName:npc.name,representative:p.assetId===npc.activePortraitId,mime:r.mime,sha256:r.sha256,size:r.size,width:p.width,height:p.height,assetId:p.assetId,reader:'published',sourceRef:p.sourceRef,metadata:{portrait:p,resource:r}});}
+ for(const b of batches){if(row(row(b.request).source).npcId!==npc.id)continue;const rep=row(b.representative);rows(b.results).forEach((child,i)=>{for(const n of rows(child.normalizations)){const r=row(n.resource);if(row(n.pipeline).finalReady!==true||typeof r.id!=='string')continue;const after=row(row(n.result).after),isRep=row(rep.resource).id===r.id;add({id:r.id,name:String(npc.name||npc.id)+' · 픽셀 '+(i+1)+'안',kind:'pixel',npcId:npc.id,npcName:npc.name,representative:isRep,mime:'image/png',sha256:r.sha256,size:r.size,width:after.width,height:after.height,assetId:r.id,reader:'pixel-normalize',requestId:n.requestId,batchId:b.requestId,representativeVersion:isRep?rep.version:undefined,metadata:{resource:r,source:n.request,result:n.result,publication:n.publication,adopted:child.adopted,representative:isRep?rep:undefined}})}});}
+ return [...all.values()].sort((a,b)=>Number(b.representative)-Number(a.representative)||a.kind.localeCompare(b.kind,'en')||a.id.localeCompare(b.id,'en'));
+}
+export function mediaUrlState(search,hashNpc,items){const q=new URLSearchParams(search),id=q.get('mediaPreview');return{page:Number(q.get('mediaPage')||0),selected:items.some(m=>m.id===id)&&q.get('mediaNpc')===hashNpc?id:null,detail:q.get('mediaDetail')==='1'};}
+
+/** Current authoritative references only; publication/confirmation history is not representative admission. */
+export function npcRepresentativeMedia(npc,snapshot,batches=[]){return npcMedia(npc,snapshot,batches).filter(m=>m.representative===true);}

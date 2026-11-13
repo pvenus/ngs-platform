@@ -1,0 +1,1 @@
+type Row=Record<string,unknown>;type Rpc=(v:Row)=>Promise<Row>;export function openAudioTools(rpc:Rpc):Promise<void>;export function openLifecycleTools(rpc:Rpc,options?:{targetKey?:string}):Promise<void>;
