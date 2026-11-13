@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "ngs.trusted-python.v1",
+  "version": "3.12.14",
+  "build": "20260901",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.12.14%2B20260901-aarch64-apple-darwin-install_only_stripped.tar.gz",
+  "sha256": "81a359f1cfadd4da11766534c5913791cea55f26e1bb902cacd2a531bb1e4b2b",
+  "archiveRoot": "python",
+  "interpreter": "python/bin/python3.12",
+  "licenseFile": "python/lib/python3.12/LICENSE.txt",
+  "maxArchiveBytes": 67108864,
+  "maxExpandedBytes": 1073741824,
+  "maxMembers": 100000,
+  "provenance": {
+    "publisher": "Astral python-build-standalone; CPython upstream",
+    "checksumBasis": "Exact archive URL and SHA256 read from an owner-trusted uv 0.12.14 embedded Python download catalog; version/build/architecture were cross-checked against an existing installation. Official archive bytes subsequently matched the pin during isolated preparation. This is not independent signature verification.",
+    "catalogToolVersion": "uv 0.12.14",
+    "catalogToolExecutableSha256": "23d5af1a7e4109b6156449e133cd18060b0dcc23f29aa8db013ad5eb0db47afc"
+  },
+  "license": {
+    "python": "Python Software Foundation License Version 2 and historical component licenses; retain the bundled Python LICENSE.txt.",
+    "bundledDependencies": "Standalone distributions include non-Python components with their own licenses. Python's license does not relicense those components; preserve all included notices. This manifest is not an exhaustive dependency-license clearance.",
+    "distributionReference": "https://github.com/astral-sh/python-build-standalone",
+    "pythonReference": "https://docs.python.org/3.12/license.html"
+  },
+  "uvInstaller": "Separate explicit preparation: prepare_trusted_uv.py pins official uv 0.13.7 for a new private path. Existing owner-trusted uv is also supported; no operating executable is upgraded."
+}

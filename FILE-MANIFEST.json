@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "prerequisite-source-snapshot.v1",
+  "sourceCommit": "093489982ad6c32ceba806dfe32e6c9d43bad3b1",
+  "files": {
+    "README.md": {
+      "bytes": 1377,
+      "sha256": "5eb3bfe32c293ac3026b605c684c0b646a35f7f3acf10db8c45dfecb2ed29c23"
+    },
+    "tools/runtime-prerequisites/README.md": {
+      "bytes": 3515,
+      "sha256": "aedd4c12f6eb8a4fa30f2c20be1351f18e480d82983a1fdf7e4be669e0bf7589"
+    },
+    "tools/runtime-prerequisites/bootstrap/archive_common.py": {
+      "bytes": 2332,
+      "sha256": "1996d02f976e1ca6eaa73eb37872997db005f7cf3fcfd5d92d93e8ba10539fe5"
+    },
+    "tools/runtime-prerequisites/bootstrap/notices/uv-0.13.7/LICENSE-APACHE": {
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "tools/runtime-prerequisites/bootstrap/notices/uv-0.13.7/LICENSE-MIT": {
+      "bytes": 1077,
+      "sha256": "860e3d7a86b84e6a7012c7a635fc64df475cebc6cce34dfeb73a5982ec58176c"
+    },
+    "tools/runtime-prerequisites/bootstrap/prepare_trusted_node.py": {
+      "bytes": 6315,
+      "sha256": "c57ca4802f25c3d2a5ce287e59f1ae3cfb3983b085d93741cdee28c575ed24a2"
+    },
+    "tools/runtime-prerequisites/bootstrap/prepare_trusted_python.py": {
+      "bytes": 11802,
+      "sha256": "db6ea5043cf8c0430a2946e8ecab4aaf6282fed004e1ff23e6d9b2775ee2c778"
+    },
+    "tools/runtime-prerequisites/bootstrap/prepare_trusted_uv.py": {
+      "bytes": 6751,
+      "sha256": "1f647c1d0591d18f2cc45d60cd3787c19a317ed86b22ce5e77b8589c4e6e1079"
+    },
+    "tools/runtime-prerequisites/bootstrap/tests/test_trusted_node.py": {
+      "bytes": 3360,
+      "sha256": "b7b231e3e0e96430ecd2a91ebd91cfdead77e2d07847f1f3cdf5020c99af40c4"
+    },
+    "tools/runtime-prerequisites/bootstrap/tests/test_trusted_python.py": {
+      "bytes": 5189,
+      "sha256": "dfc6f8e8053b9c1438ff4f9f9ec364e92a36e830477d5fd9008d23162220cdb9"
+    },
+    "tools/runtime-prerequisites/bootstrap/tests/test_trusted_uv.py": {
+      "bytes": 3505,
+      "sha256": "8d0f25c79dc9cc7cb05f85c385c2d6166a2274ba6138c68f870e1a09cfa85c44"
+    },
+    "tools/runtime-prerequisites/bootstrap/trusted-node.lock.json": {
+      "bytes": 1770,
+      "sha256": "9cec147be37d0dc34e80f539d373c1b0124db6d91772f67d5c140f50fc253838"
+    },
+    "tools/runtime-prerequisites/bootstrap/trusted-python.lock.json": {
+      "bytes": 1945,
+      "sha256": "01d032a5c1073f96cc1c2de0d629d8b06e3344daea5386f7472452dbef27f6a1"
+    },
+    "tools/runtime-prerequisites/bootstrap/trusted-uv.lock.json": {
+      "bytes": 1802,
+      "sha256": "07259f7f175a8d34451d65a1e9c0841670f138a44e96528c3b1ad51b97679381"
+    }
+  }
+}

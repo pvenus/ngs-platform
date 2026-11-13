@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "ngs.trusted-node.v1",
+  "version": "24.21.0",
+  "npmVersion": "11.19.0",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-arm64.tar.xz",
+  "sha256": "6239d4cf92d864487ec8cd3615038f7b67e7f58b77b21cd2f09ea9fbd68065fe",
+  "archiveRoot": "node-v24.21.0-darwin-arm64",
+  "node": "node-v24.21.0-darwin-arm64/bin/node",
+  "npmCli": "node-v24.21.0-darwin-arm64/lib/node_modules/npm/bin/npm-cli.js",
+  "npmBin": "node-v24.21.0-darwin-arm64/bin/npm",
+  "filePins": {
+    "bin/node": "e4b5a3af0e05c75de2eae013904145f40fe7fc2a6e6f17510128bf45cca4e79b",
+    "lib/node_modules/npm/bin/npm-cli.js": "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7",
+    "LICENSE": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace",
+    "lib/node_modules/npm/LICENSE": "7610d223851f421d315df5e77974f1c68a04b97e02060e5bbbcf13d95e3ca257",
+    "lib/node_modules/npm/package.json": "09dfcf187178ce1ab3ea6194c80d3ae082ad2a86dc1269ac963f94429e718122"
+  },
+  "maxArchiveBytes": 67108864,
+  "maxExpandedBytes": 536870912,
+  "maxMembers": 10000,
+  "provenance": {
+    "checksumSource": "https://nodejs.org/dist/v24.21.0/SHASUMS256.txt",
+    "inspection": "Existing NVM cached tar.xz, 27,386,080 bytes, SHA256 matches official checksum. 5,888 members: regular files, directories and internal symlinks. Per-file pins computed from this checksum-verified archive, without extracting or executing it."
+  },
+  "licenses": {
+    "node": "MIT and bundled third-party notices in archive LICENSE",
+    "npm": "Artistic-2.0 and dependencies under respective terms in lib/node_modules/npm/LICENSE",
+    "scope": "All archive files/notices retained. Not comprehensive redistribution clearance."
+  }
+}

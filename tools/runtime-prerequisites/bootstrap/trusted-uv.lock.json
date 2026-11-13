@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "ngs.trusted-uv.v1",
+  "version": "0.13.7",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "url": "https://github.com/astral-sh/uv/releases/download/0.13.7/uv-aarch64-apple-darwin.tar.gz",
+  "sha256": "81b811b57e4624df7ed3aac148e0359100d9962f3d9dce00aec533dc2e086731",
+  "archiveRoot": "uv-aarch64-apple-darwin",
+  "executables": {
+    "uv": "uv-aarch64-apple-darwin/uv",
+    "uvx": "uv-aarch64-apple-darwin/uvx"
+  },
+  "licenseFiles": [
+    "notices/LICENSE-MIT",
+    "notices/LICENSE-APACHE"
+  ],
+  "maxArchiveBytes": 67108864,
+  "maxExpandedBytes": 268435456,
+  "maxMembers": 100,
+  "notices": {
+    "LICENSE-MIT": {
+      "url": "https://raw.githubusercontent.com/astral-sh/uv/0.13.7/LICENSE-MIT",
+      "sha256": "860e3d7a86b84e6a7012c7a635fc64df475cebc6cce34dfeb73a5982ec58176c",
+      "bytes": 1077,
+      "bundledPath": "notices/uv-0.13.7/LICENSE-MIT"
+    },
+    "LICENSE-APACHE": {
+      "url": "https://raw.githubusercontent.com/astral-sh/uv/0.13.7/LICENSE-APACHE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357,
+      "bundledPath": "notices/uv-0.13.7/LICENSE-APACHE"
+    }
+  },
+  "provenance": {
+    "checksumSources": [
+      "https://github.com/astral-sh/uv/releases/download/0.13.7/uv-aarch64-apple-darwin.tar.gz.sha256",
+      "https://raw.githubusercontent.com/astral-sh/versions/main/v1/uv.ndjson"
+    ],
+    "archiveInspection": "Downloaded 14,347,867 bytes and verified checksum; exact members directory plus uv (27,864,912 bytes) and uvx (334,512 bytes). No licenses inside archive.",
+    "licenseBasis": "Official same-tag MIT and Apache-2.0 license files collected separately and bundled unchanged. Preserve both notices; this is not comprehensive third-party redistribution clearance."
+  }
+}
