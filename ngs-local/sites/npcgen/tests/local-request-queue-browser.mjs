@@ -28,3 +28,14 @@ test('audio and NPC forms accept local storage without an official request id',a
  assert.equal(npc.waitingConfirmation,false);
  assert.equal(plan.waiting,false);
 });
+
+test('exact Space queue receipts are temporary acknowledgments, never official receipts',async()=>{
+ const queued={queueId:'ngs.space.00000000-0000-4000-8000-000000000000',status:'queued'};
+ const local={...queued,queueId:queued.queueId.replace('space','local')};
+ assert.equal(isQueuedRequest(Response.json(queued,{status:202}),queued),true);
+ assert.equal(isQueuedRequest(Response.json(local,{status:202}),local),true);
+ assert.equal(isQueuedRequest(Response.json(queued,{status:201}),queued),false);
+ assert.equal(isQueuedRequest(Response.json({...queued,officialRequestId:'x'},{status:202}),{...queued,officialRequestId:'x'}),false);
+ const intake=createAudioIntake(async()=>Response.json(queued,{status:202}),{uuid:()=>crypto.randomUUID()});
+ assert.deepEqual(await intake.send(()=>({})),queued);
+});
