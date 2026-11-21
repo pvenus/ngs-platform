@@ -11,7 +11,6 @@ import {localProjectFolderRoute,projectFolderRoutes} from './local-project-folde
 import {validFolderPath} from './local-recursive-folders.mjs';
 import {localProjectWorkspace,openLocalWorkspaceProject} from './local-project-workspace.mjs';
 import {localNpcWorkspace} from './local-npc-workspace.mjs';
-import {npcWorkspaceRead} from './npc-workspace.mjs';
 import {dispatchWorkspaceRead,workspaceReadRoute} from './workspace-read-registry.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
 import {openLocalRequestQueue} from './local-request-queue.mjs';
@@ -223,7 +222,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
     if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
     const result=await dispatchWorkspaceRead({pathname:url.pathname,query:url.searchParams,
-     openProject:id=>openLocalWorkspaceProject(root,id),npcRead:npcWorkspaceRead,
+     openProject:id=>openLocalWorkspaceProject(root,id),
      authorize:projectId=>projectPermission(session.principal,projectId,undefined,false)});
     res.setHeader('X-NPCGen-Frontend-Context',session.contextId);
     if(result.json)return json(200,result.json);

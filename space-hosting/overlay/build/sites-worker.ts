@@ -4,6 +4,7 @@ import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catal
 import { appProject, siteAppMaster } from "../lib/app-master";
 import { masterPrincipal } from "../lib/master-concept-transport";
 import { spaceReplicaView } from "./space-replica-view.mjs";
+import { spaceWorkspaceReadResponse } from "./space-workspace-read-response.mjs";
 import { PromptService } from "../lib/prompt-service";
 import { createSpaceFileReplica, spaceFileSyncTools } from "./space-file-replica.mjs";
 import { browserQueueResponse, machineResponse, machineTokenConfigured } from "./space-machine-routes.mjs";
@@ -24,12 +25,21 @@ export default {
     const replicaReads = env.NPCGEN_SPACE_REPLICA_READ_ENABLED === "1" && !!fileReplica && machineTokenConfigured(secret);
     const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools});
     if (machine) return machine;
-    const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,authorizeWrite:async user=>{
+    const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,authorizeWrite:async user=>{
       try { const grant=await masterPrincipal(user); return grant.role==="owner" && grant.projectId==="binari"; }
       catch { return false; }
     }});
     if (browserQueue) return browserQueue;
     if (replicaReads) {
+      const workspace = await spaceWorkspaceReadResponse(request,fileReplica,{authorize:async (user,projectId,resource)=>{
+        if (projectId !== "binari" || !await authorize(user)) return false;
+        if(!resource) return false;
+        try {
+          await new PromptService(db!,user.userId,undefined,siteAppMaster(user)).resourcePolicy(projectId,resource);
+          return true;
+        } catch { return false; }
+      }});
+      if(workspace) return workspace;
       const view = await spaceReplicaView(request,fileReplica,{authorize:async (user,projectId)=>{
         if (projectId !== "binari" || !await authorize(user)) return false;
         if (new URL(request.url).pathname === "/api/space/audio-concepts") {

@@ -6,6 +6,6 @@ type Storage = {
 type User={userId:string;email:string};
 type ReadOptions={query:URLSearchParams;authorize:(id:string)=>Promise<void>;openProject:(id:string)=>unknown};
 export function spaceWorkspaceReadResponse(request:Request,replica:Storage|undefined,options:{
- authorize:(user:User,projectId:string,view:string)=>Promise<boolean>;
+ authorize:(user:User,projectId:string,resource:string|null)=>Promise<boolean>;
  npcRead?:(options:ReadOptions)=>Promise<unknown>;
 }):Promise<Response|null>;

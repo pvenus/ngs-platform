@@ -1,5 +1,5 @@
 /** Authenticate the existing hosted audience; delegate all DTOs to the common registry. */
-import {dispatchWorkspaceRead,workspaceReadRoute} from '../ngs-local/sites/npcgen/build/workspace-read-registry.mjs';
+import {dispatchWorkspaceRead,workspaceReadResource,workspaceReadRoute} from '../ngs-local/sites/npcgen/build/workspace-read-registry.mjs';
 import {openSpaceWorkspaceProject} from './space-workspace-read-storage.mjs';
 const headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin'};
 const failure=(code,status)=>Object.assign(Error(code),{status});
@@ -16,7 +16,7 @@ export async function spaceWorkspaceReadResponse(request,replica,{authorize,npcR
   const result=await dispatchWorkspaceRead({pathname:url.pathname,query:url.searchParams,npcRead,
    openProject:id=>openSpaceWorkspaceProject(replica,id),
    authorize:async id=>{
-    if(id!=='binari'||await authorize?.({userId,email},id,url.searchParams.get('tab')??route)!==true)
+    if(id!=='binari'||await authorize?.({userId,email},id,workspaceReadResource(route==='npc'?'npcs':url.searchParams.get('tab')))!==true)
      throw failure('PROJECT_OR_RESOURCE_DENIED',403);
    }});
   if(result.json)return Response.json(result.json,{headers});
