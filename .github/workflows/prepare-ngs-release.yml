@@ -1,0 +1,42 @@
+name: Prepare NGS release candidate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    if: github.repository == 'pvenus/ngs-platform' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out exact pushed commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up exact Node runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.21.0
+      - name: Install locked Workerd fixture dependencies only
+        run: npm ci --prefix ngs-local/local-miniflare --ignore-scripts --no-audit --no-fund
+      - name: Validate Local and checked-in Space source contracts
+        run: bash tools/release/validate-ngs-source.sh
+      - name: Prepare the source-only candidate
+        run: python3 tools/release/prepare-ngs-release.py "$RUNNER_TEMP/ngs-candidate"
+      - name: Publish immutable candidate for OPS review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ngs-local-source-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ngs-candidate/ngs-local.tar
+            ${{ runner.temp }}/ngs-candidate/release.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 14
+          compression-level: 0
