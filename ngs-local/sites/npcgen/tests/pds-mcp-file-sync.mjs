@@ -246,3 +246,107 @@ test('source chunk concurrency capped globally and unrelated compare is never qu
  assert.equal(Math.max(...max),2);
  assert.deepEqual(seen,[0,1,'npc_folders_compare',2,3,4,5,6,7]);
 });
+
+test('batch count and byte bounds retain order, with larger files on their original stream',async()=>{
+ const scope='binari',big=Buffer.alloc(1024*1024+1,42),mid=Buffer.alloc(260*1024,45),tiny=Buffer.from('1');
+ const files=new Map([
+  ...Array.from({length:34},(_,i)=>['f'+i,tiny]),['mid1',mid],['mid2',mid],
+  ['large',big],['tail1',mid],['tail2',mid],
+ ]);
+ const rows=[...files].map(([name,bytes])=>row(name,bytes)),passes=[],reads=[];
+ const pds={
+  async compare(){return {scope,groups:[{folder:'',files:rows}],deleted:[]};},
+  file(_scope,path){
+   reads.push(path);const data=files.get(path);
+   return {body:new ReadableStream({start(c){c.enqueue(data.subarray(0,1024*1024));
+    if(data.length>1024*1024)c.enqueue(data.subarray(1024*1024));c.close();}})};
+  },
+ };
+ const ngs=async(name,args)=>{
+  if(name==='ngs_file_sync_begin')return receipt(scope);
+  if(name==='ngs_file_sync_finish')return {ok:true,written:files.size};
+  assert.equal(args.syncId,id);
+  if(name==='ngs_file_sync_file_batch'){
+   assert.ok(args.files.length<=32);
+   assert.ok(args.files.reduce((n,f)=>n+f.size,0)<=512*1024);
+   for(const f of args.files)assert.deepEqual(Buffer.from(f.dataBase64,'base64'),files.get(f.path));
+   passes.push(args.files.map(f=>f.path));
+   return {results:args.files.map(f=>({path:f.path,sha256:f.sha256,status:'accepted'}))};
+  }
+  assert.equal(name,'ngs_file_sync_file_chunk');assert.equal(args.path,'large');
+  passes.push([args.path,args.offset]);
+  return {nextOffset:args.offset===0?1024*1024:null};
+ };
+ assert.deepEqual(await pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true,batchFileLimit:32,batchByteLimit:512*1024}),
+  {ok:true,written:files.size,failed:0});
+ assert.deepEqual(passes,[
+  Array.from({length:32},(_,i)=>'f'+i),['f32','f33','mid1'],['mid2'],['large',0],['large',1024*1024],['tail1'],['tail2'],
+ ]);
+ assert.deepEqual(reads,[...files.keys()]);
+ await assert.rejects(pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true,batchFileLimit:33}),/PDS_NGS_FILE_SYNC_INVALID/);
+ await assert.rejects(pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true,batchByteLimit:2*1024*1024+1}),/PDS_NGS_FILE_SYNC_INVALID/);
+});
+
+test('definite batch rejection retries only failed member at offset zero and retains accepted receipts',async()=>{
+ const scope='binari',body=Buffer.from('content'),files=['good','retry','also-good'].map(path=>row(path,body)),events=[];
+ const pds={
+  async compare(){return {scope,groups:[{folder:'',files}],deleted:[]};},
+  file(){return {body:new ReadableStream({start(c){c.enqueue(body);c.close();}})};},
+ };
+ const ngs=async(name,args)=>{
+  events.push([name,args.path,args.offset]);
+  if(name==='ngs_file_sync_begin')return receipt(scope);
+  if(name==='ngs_file_sync_file_batch')return {results:args.files.map(({path,sha256})=>path==='retry'?
+   {path,sha256,status:'failed',code:'NGS_FILE_SYNC_UNAVAILABLE'}:{path,sha256,status:'accepted'})};
+  if(name==='ngs_file_sync_file_reset')return {ok:true};
+  if(name==='ngs_file_sync_file_chunk')return {nextOffset:null};
+  if(name==='ngs_file_sync_finish')return {ok:true,written:files.length};
+  assert.fail(name);
+ };
+ assert.deepEqual(await pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true}),{ok:true,written:3,failed:0});
+ assert.deepEqual(events,[
+  ['ngs_file_sync_begin',undefined,undefined],['ngs_file_sync_file_batch',undefined,undefined],
+  ['ngs_file_sync_file_reset','retry',undefined],['ngs_file_sync_file_chunk','retry',0],['ngs_file_sync_finish',undefined,undefined],
+ ]);
+});
+
+test('lost or malformed batch ACK reconciles exact same-pass writes; unresolved ACK skips finish/tombstones',async()=>{
+ const scope='binari',body=Buffer.from('content'),files=['a','b'].map(path=>row(path,body));
+ const obsolete={path:'deleted',sha256:sha('old')};
+ let comparisons;
+ for(const resolved of [true,false]){
+  const calls=[];
+  comparisons=0;
+  const pds={
+   async compare(){return ++comparisons===1?{scope,groups:[{folder:'',files}],deleted:[obsolete]}:{scope,groups:[],deleted:[obsolete]};},
+   file(){return {body:new ReadableStream({start(c){c.enqueue(body);c.close();}})};},
+  };
+  const ngs=async(name,args)=>{
+   calls.push([name,args.path,args.offset]);
+   if(name==='ngs_file_sync_begin')return receipt(scope,[obsolete]);
+   assert.equal(args.syncId,id);
+   if(name==='ngs_file_sync_file_batch'){
+    if(resolved)throw Error('NETWORK_ACK_LOST');
+    return {results:[{path:'a',sha256:files[0].sha256,status:'accepted'}]};
+   }
+   if(name==='ngs_file_sync_file_chunk'){
+    assert.equal(args.offset,0);
+    assert.equal(args.sha256,files[0].sha256);
+    if(!resolved&&args.path==='b')throw Error('NETWORK_ACK_LOST');
+    return {nextOffset:null};
+   }
+   if(name==='ngs_file_sync_remove')return {removed:true};
+   if(name==='ngs_file_sync_finish')return {ok:true,written:2};
+   if(name==='ngs_file_sync_abort')return {ok:true};
+   assert.fail(name);
+  };
+  const work=pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true});
+  if(resolved)assert.deepEqual(await work,{ok:true,written:2,failed:0});
+  else await assert.rejects(work,/NGS_FILE_SYNC_BATCH_ACK_UNRESOLVED/);
+  assert.deepEqual(calls.map(row=>row[0]),[
+   'ngs_file_sync_begin','ngs_file_sync_file_batch','ngs_file_sync_file_chunk','ngs_file_sync_file_chunk',
+   ...(resolved?['ngs_file_sync_remove','ngs_file_sync_finish']:['ngs_file_sync_abort']),
+  ]);
+  assert.equal(comparisons,resolved?2:1);
+ }
+});
