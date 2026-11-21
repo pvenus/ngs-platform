@@ -21,7 +21,10 @@ export default {
     const fileReplica = db && env.BUCKET ? createSpaceFileReplica({db,bucket:env.BUCKET}) : undefined;
     const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools});
     if (machine) return machine;
-    const browserQueue = await browserQueueResponse(request,{db,secret,authorize});
+    const browserQueue = await browserQueueResponse(request,{db,secret,authorize,authorizeWrite:async user=>{
+      try { const grant=await masterPrincipal(user); return grant.role==="owner" && grant.projectId==="binari"; }
+      catch { return false; }
+    }});
     if (browserQueue) return browserQueue;
     const shared = sharedNgsResponse(request, {catalogRelay:true});
     if (shared) return shared;

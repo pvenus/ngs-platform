@@ -84,7 +84,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,replicaReads=false}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -107,6 +107,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,replicaR
   }
   need(request.method==='POST'&&!url.search,405,'METHOD_NOT_ALLOWED');
   need(request.headers.get('Origin')===url.origin,403,'ORIGIN_FORBIDDEN');
+  need(typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true,403,'SPACE_QUEUE_WRITE_NOT_GRANTED');
   need(await sameToken(request.headers.get('X-NPCGen-Csrf'),tokens.csrfToken)&&
     request.headers.get('X-NPCGen-Frontend-Context')===tokens.contextId,403,'CSRF_INVALID');
   const {value}=await body(request,small);

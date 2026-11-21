@@ -20,7 +20,7 @@ function store(t){
  };}};}};
 }
 function fixture(t){
- const db=store(t),options={db,secret:token,authorize:async user=>user.userId!=='denied'};
+ const db=store(t),options={db,secret:token,authorize:async user=>user.userId!=='denied',authorizeWrite:async user=>user.userId==='a'};
  const browser=(...input)=>browserQueueResponse(request(...input),options);
  const machine=(method,params={},extra={})=>machineResponse(request('/api/space-machine-mcp','POST',{'X-NGS-Machine-Token':token,...extra},
   {jsonrpc:'2.0',id:1,method,params}),options);
@@ -37,6 +37,9 @@ test('native browser queue is actor-bound, same-origin only, idempotent, and not
  assert.equal((await browser('/api/requests','POST',{...h,Origin:'https://wrong.example'},command)).status,403);
  assert.equal((await browser('/api/requests','POST',{...h,'X-NPCGen-Csrf':'x'},command)).status,403);
  assert.equal((await browser('/api/requests','POST',{...h,...b},command)).status,403);
+ const bs=await (await browser('/__npcgen_session','GET',b)).json();
+ assert.equal((await browser('/api/requests','POST',{...b,Origin:origin,
+  'X-NPCGen-Csrf':bs.csrfToken,'X-NPCGen-Frontend-Context':bs.contextId},command)).status,403);
  const submit=await browser('/api/requests','POST',h,command),receipt=await submit.json(),q=receipt.queueId;
  assert.equal(submit.status,202);assert.deepEqual(receipt,{queueId:q,status:'queued'});assert.match(q,/^ngs\.space\./);
  assert.deepEqual(await (await browser('/api/requests','POST',h,command)).json(),receipt);
