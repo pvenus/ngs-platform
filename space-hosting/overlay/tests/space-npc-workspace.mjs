@@ -1,29 +1,28 @@
 /** Shared NPC registry over actual workerd D1/R2, not a separate Space projection. */
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {readFileSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 const here=p=>new URL(p,import.meta.url);
 const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../../../sites/npcgen/package.json'))('miniflare');
 const source=(path,relative)=>({type:'ESModule',path,contents:readFileSync(here(relative),'utf8')});
 const shared='ngs-local/sites/npcgen/build/';
+const sharedRoot=existsSync(here('../'+shared+'npc-workspace.mjs'))?'../':'../../../';
 const files=['npc-workspace.mjs','project-workspace-view.mjs','workspace-read-storage.mjs','workspace-read-registry.mjs','local-concept-category-contract.mjs'];
 const mini=new Miniflare({compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  d1Databases:['DB'],r2Buckets:['BUCKET'],modules:[
  {type:'ESModule',path:'test.mjs',contents:`
   import {createSpaceFileReplica} from './build/space-file-replica.mjs';
   import {spaceWorkspaceReadResponse} from './build/space-workspace-read-response.mjs';
-  import {npcWorkspaceRead} from './${shared}npc-workspace.mjs';
   export default {async fetch(req,env) {
    const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
-   return await spaceWorkspaceReadResponse(req,replica,{npcRead:npcWorkspaceRead,
-    authorize:(user,id)=>user.userId==='fake-authorized'&&id==='binari'})??new Response(null,{status:404});
+   return await spaceWorkspaceReadResponse(req,replica,{authorize:(user,id,resource)=>user.userId==='fake-authorized'&&id==='binari'&&resource==='npcs'})??new Response(null,{status:404});
   }};
  `},
  source('build/space-file-replica.mjs','../build/space-file-replica.mjs'),
  source('build/space-workspace-read-storage.mjs','../build/space-workspace-read-storage.mjs'),
  source('build/space-workspace-read-response.mjs','../build/space-workspace-read-response.mjs'),
- ...files.map(file=>source(shared+file,'../../../'+shared+file)),
+ ...files.map(file=>source(shared+file,sharedRoot+shared+file)),
  ]});
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const png=Buffer.from([137,80,78,71,13,10,26,10,20]),id='npc.synthetic',decoy='npc.not-listed',prefix='npcs/'+id+'/';
