@@ -31,13 +31,13 @@ test('native browser queue is actor-bound, same-origin only, idempotent, and not
  assert.equal((await browser('/__npcgen_session')).status,401);
  assert.equal((await browser('/__npcgen_session','GET',headers('denied'))).status,403);
  const session=await (await browser('/__npcgen_session','GET',a)).json();
- assert.equal(session.readOnly,true);assert.equal(session.backend,'space');assert.equal(session.queueEnabled,true);
+ assert.equal(session.readOnly,true);assert.equal(session.backend,'space');assert.equal(session.queueEnabled,true);assert.equal(session.requestWritable,true);
  assert.ok(!JSON.stringify(session).includes(token));
  const h={...a,Origin:origin,'X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId};
  assert.equal((await browser('/api/requests','POST',{...h,Origin:'https://wrong.example'},command)).status,403);
  assert.equal((await browser('/api/requests','POST',{...h,'X-NPCGen-Csrf':'x'},command)).status,403);
  assert.equal((await browser('/api/requests','POST',{...h,...b},command)).status,403);
- const bs=await (await browser('/__npcgen_session','GET',b)).json();
+ const bs=await (await browser('/__npcgen_session','GET',b)).json();assert.equal(bs.requestWritable,false);
  assert.equal((await browser('/api/requests','POST',{...b,Origin:origin,
   'X-NPCGen-Csrf':bs.csrfToken,'X-NPCGen-Frontend-Context':bs.contextId},command)).status,403);
  const submit=await browser('/api/requests','POST',h,command),receipt=await submit.json(),q=receipt.queueId;

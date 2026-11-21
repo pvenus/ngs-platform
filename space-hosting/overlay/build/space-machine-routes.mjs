@@ -97,7 +97,8 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   if(url.pathname===session){
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,...tokens});
+   const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));
