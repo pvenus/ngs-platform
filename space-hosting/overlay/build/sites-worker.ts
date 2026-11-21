@@ -14,6 +14,12 @@ import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
 export default {
   async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
+    if (env.NPCGEN_SPACE_MAINTENANCE === "1") {
+      const headers = { "cache-control": "no-store", "content-type": "text/html; charset=utf-8" };
+      return new Response(request.method === "HEAD" ? null :
+        '<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NGS 점검 중</title><main><h1>NGS 점검 중</h1><p>파일 동기화 성능을 개선하고 있습니다.</p></main></html>',
+        { status: 503, headers });
+    }
     const db = env.DB;
     const secret = env.NPCGEN_SPACE_MACHINE_TOKEN;
     const authorize = async (user:{userId:string}) => {
