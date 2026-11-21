@@ -4,7 +4,7 @@ import {createServer} from 'node:http';
 import {test} from 'node:test';
 import {createFolderMcpClient} from '../build/folder-mcp-client.mjs';
 import {createLoopbackFileUpload} from '../build/file-sync-raw-client.mjs';
-import {pushProjectFiles,pushSpaceProjectFiles,shareFileTransferSlot,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
+import {pushProjectFiles,pushSpaceProjectFiles,shareFileTransferSlot,sharePdsChunkSlots,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
 
 const id='ngs.sync.6f56d34f-62ca-42a7-a173-14700d922865',scope='binari',MiB=1024*1024;
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -139,4 +139,111 @@ test('watch intersects PDS discovery and retains one-minute cadence and independ
  await watchPdsMcpFileSync({pds,ngs,upload:()=>assert.fail(),projects:['binari','missing'],signal:controller.signal,
   now:()=>clock,sleep:async ms=>{clock+=ms},onResult:()=>{if(pass===2)controller.abort();}});
  assert.deepEqual(calls,[0,60_000]);
+});
+
+test('up to ten actual whole binary POSTs across Local+Space, with fair queued admission and exact SHA',async t=>{
+ const fileSlot=shareFileTransferSlot(10),launches=[],rows=[],opened=[],held=[];
+ const reachedCap=Promise.withResolvers();
+ const full=Buffer.alloc(16*1024,33),bytes=label=>Buffer.concat([Buffer.from(label),full]);
+ for(const tag of ['l','s'])for(let i=0;i<14;i++)rows.push(tag+'-'+String(i).padStart(2,'0'));
+ const scopes=tag=>rows.filter(p=>p.startsWith(tag)).map(path=>row(path,bytes(path)));
+ let active=0,peak=0,sent=0,gate=true;
+ const server=createServer(async(req,res)=>{
+  const path=Buffer.from(req.headers['x-ngs-file-path'],'base64url').toString('utf8');
+  assert.equal(req.method,'POST');assert.equal(req.url,'/api/ngs-file-sync-file');
+  assert.equal(req.headers['transfer-encoding'],undefined);
+  active++;peak=Math.max(peak,active);launches.push(path);
+  const chunks=[];for await(const c of req)chunks.push(c);
+  const got=Buffer.concat(chunks);assert.deepEqual(got,bytes(path));
+  assert.equal(sha(got),req.headers['x-ngs-file-sha256']);
+  if(gate){
+   const hold=Promise.withResolvers();held.push(hold);
+   if(held.length===10)reachedCap.resolve();
+   await hold.promise;
+  }
+  active--;sent++;res.writeHead(200,{'Content-Type':'application/json'}).end('{"ok":true}');
+ });
+ await new Promise(ok=>server.listen(0,'127.0.0.1',ok));
+ t.after(()=>{for(const h of held)h.resolve();return new Promise(ok=>server.close(ok));});
+ const upload=createLoopbackFileUpload('http://127.0.0.1:'+server.address().port+'/mcp');
+ const pds=tag=>({
+  compare:async()=>({scope,groups:[{folder:'',files:scopes(tag)}],deleted:[]}),
+  file(_scope,path){opened.push(path);return stream(bytes(path));},
+ });
+ const ngs=async name=>{
+  if(name==='ngs_file_sync_begin')return receipt(scope);
+  if(name==='ngs_file_sync_finish')return {ok:true,written:14};
+  assert.equal(name,'ngs_file_sync_plan');return {ok:true};
+ };
+ const local=pushProjectFiles({scope,pds:pds('l'),ngs,upload,fileSlot,parallelism:10});
+ await reachedCap.promise;
+ const remote=pushSpaceProjectFiles({scope,pds:pds('s'),ngs,upload,fileSlot,parallelism:10});
+ await new Promise(setImmediate);
+ assert.equal(opened.length,10,'queued files do not spool until a shared slot is active');
+ gate=false;
+ for(const h of held)h.resolve();
+ assert.deepEqual(await Promise.all([local,remote]),Array(2).fill({ok:true,written:14,failed:0}));
+ assert.equal(peak,10);assert.equal(sent,28);assert.equal(new Set(launches).size,28);
+ assert.ok(opened.slice(10,14).some(p=>p.startsWith('s')),'Space starts before Local finishes');
+ for(const tag of ['l','s'])assert.deepEqual(opened.filter(p=>p.startsWith(tag)).sort(),scopes(tag).map(r=>r.path));
+});
+
+test('fatal ambiguous reply drains other in-flight paths before exactly one abort; no new tombstones',async()=>{
+ const bytes=Buffer.from('verified'),stale={path:'old',sha256:sha('old')},calls=[],started=[];
+ const otherActive=Promise.withResolvers(),hold=Promise.withResolvers(),unknownSecond=Promise.withResolvers();
+ let fails=0;
+ const data=Array.from({length:12},(_,i)=>['file'+i,bytes]);
+ const pds={...fakePDS(data),compare:async()=>({scope,groups:[{folder:'',files:data.map(([p,b])=>row(p,b))}],deleted:[stale]})};
+ const ngs=async(name,args)=>{
+  calls.push(name);
+  if(name==='ngs_file_sync_begin')return receipt(scope,[stale]);
+  if(name==='ngs_file_sync_file_failed'||name==='ngs_file_sync_remove'||name==='ngs_file_sync_finish')assert.fail('unknown final cannot acknowledge');
+  return {ok:true};
+ };
+ const upload=async(meta,f)=>{
+  assert.deepEqual(await stagedBody(f),bytes);started.push(meta.path);
+  if(meta.path==='file0'){
+   await otherActive.promise;
+   if(++fails===2)unknownSecond.resolve();
+   throw Error('NGS_SPACE_FILE_UPLOAD_UNAVAILABLE');
+  }
+  if(started.filter(x=>x!=='file0').length===9)otherActive.resolve();
+  await hold.promise;return {ok:true};
+ };
+ const check=assert.rejects(pushSpaceProjectFiles({scope,pds,ngs,upload,fileSlot:shareFileTransferSlot(10),parallelism:10}),/NGS_FILE_SYNC_FILE_ACK_UNRESOLVED/);
+ await unknownSecond.promise;await new Promise(r=>setTimeout(r,25));
+ assert.ok(!calls.includes('ngs_file_sync_abort'),'abort waits for the other nine writes');
+ hold.resolve();await check;
+ assert.equal(calls.filter(n=>n==='ngs_file_sync_abort').length,1);
+ assert.equal(started.length,11);assert.equal(new Set(started).size,10);assert.equal(fails,2);
+});
+
+test('two PDS file-chunk RPC slots shared; compare is not queued on transfer slots',async()=>{
+ const blocker=Promise.withResolvers(),allSlots=Promise.withResolvers(),started=[];
+ let active=0,peak=0;
+ const call=sharePdsChunkSlots(async(name,n)=>{
+  if(name!=='npc_folder_file_chunk')return 'compare-ready';
+  active++;peak=Math.max(active,peak);started.push(n);
+  if(started.length===2)allSlots.resolve();
+  await blocker.promise;active--;return n;
+ });
+ const settled=Promise.all(Array.from({length:20},(_,i)=>call('npc_folder_file_chunk',i)));
+ await allSlots.promise;
+ assert.deepEqual(started,[0,1]);
+ assert.equal(await call('npc_folders_compare'),'compare-ready');
+ blocker.resolve();
+ assert.deepEqual(await settled,Array.from({length:20},(_,i)=>i));
+ assert.equal(peak,2);
+});
+
+test('slot admission preserves each destination FIFO and rotates when both have pending work',async()=>{
+ const slot=shareFileTransferSlot(2),events=[],one=Promise.withResolvers(),two=Promise.withResolvers();
+ const head=slot(()=>one.promise,'local'),worker=slot(()=>two.promise,'local');
+ const tail=[
+  slot(()=>{events.push('l1');},'local'),slot(()=>{events.push('l2');},'local'),
+  slot(()=>{events.push('s1');},'space'),slot(()=>{events.push('s2');},'space'),
+ ];
+ one.resolve();await Promise.all([head,...tail]);
+ assert.deepEqual(events,['s1','l1','s2','l2']);
+ two.resolve();await worker;
 });

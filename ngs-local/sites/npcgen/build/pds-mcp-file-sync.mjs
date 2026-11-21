@@ -14,7 +14,7 @@ import {validFolderPath} from './local-recursive-folders.mjs';
 import {createSpaceMachineMcp,createSpaceFileSyncUpload,spaceMachineConfiguration,fileTools} from './space-machine-mcp.mjs';
 import {createLoopbackFileUpload} from './file-sync-raw-client.mjs';
 
-const maxChunk=1024*1024,maxEntries=32768;
+const maxChunk=1024*1024,maxEntries=32768,maxActiveFiles=10;
 const direct=run=>run();
 const hash=/^[a-f0-9]{64}$/;
 const id=/^ngs\.sync\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -96,8 +96,9 @@ async function control(ngs,name,args){
  if(!exact(reply,'ok')||reply.ok!==true)throw invalid();
 }
 
-async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,onFileError=()=>{}}){
- if(typeof scope!=='string'||!project.test(scope)||typeof fileSlot!=='function'||typeof upload!=='function')throw invalid();
+async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,destination='local',parallelism=1,onFileError=()=>{}}){
+ if(typeof scope!=='string'||!project.test(scope)||typeof fileSlot!=='function'||typeof upload!=='function'||
+    !['local','space'].includes(destination)||!Number.isInteger(parallelism)||parallelism<1||parallelism>maxActiveFiles)throw invalid();
  let syncId;
  try{
   const start=await ngs('ngs_file_sync_begin',{scope},{limit:48*1024*1024});
@@ -106,9 +107,7 @@ async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,onFi
   const {files,deleted}=changes(await pds.compare(scope,start.files,{includeDeleted:true}),scope,previous);
   await control(ngs,'plan',{syncId,totalFiles:files.length});
   let failed=0;
-  for(const row of files){
-   await fileSlot(async()=>{
-    signal?.throwIfAborted();
+  await runFiles(files,parallelism,fileSlot,destination,signal,async row=>{
     let uncertain=false,reason,attempts=1;
     const send=async bodyFactory=>{
      try{
@@ -151,8 +150,8 @@ async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,onFi
     await control(ngs,'file_failed',{syncId,path:row.path});
     failed++;
     onFileError(scope,row,reason,attempts);
-   });
-  }
+  });
+  signal?.throwIfAborted();
   if(deleted.length){
    // Canonical source may have restored a file while changed files were being sent.
    const candidates=new Map(deleted.map(row=>[row.path,row.sha256]));
@@ -175,17 +174,53 @@ async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,onFi
 
 export const pushProjectFiles=pushDestination;
 export const pushObjectProjectFiles=pushDestination;
-export const pushSpaceProjectFiles=pushObjectProjectFiles;
+export const pushSpaceProjectFiles=options=>pushDestination({...options,destination:'space'});
 
-// A file, including its recovery, holds the shared slot until it settles.
-// Local and Space keep independent passes and can alternate at file boundaries.
-export function shareFileTransferSlot(){
- let tail=Promise.resolve();
- return run=>{
-  const next=tail.then(run);
-  tail=next.then(()=>{},()=>{});
-  return next;
- };
+// A file holds an active slot from the first source read through receipt or
+// recovery. Waiters hold only metadata, not temporary files or request bodies.
+export function shareFileTransferSlot(limit=1){
+ if(!Number.isInteger(limit)||limit<1||limit>maxActiveFiles)throw invalid();
+ const pending=new Map();
+ let active=0,last;
+ function drain(){
+  while(active<limit&&pending.size){
+   // Rotate between ready destinations, preserving FIFO within each one.
+   const keys=[...pending.keys()],key=keys.find(x=>x!==last)??keys[0];
+   const queue=pending.get(key),job=queue.shift();if(!queue.length)pending.delete(key);
+   last=key;active++;
+   Promise.resolve().then(job.run).then(
+    value=>{active--;job.resolve(value);queueMicrotask(drain);},
+    error=>{active--;job.reject(error);queueMicrotask(drain);});
+  }
+ }
+ return (run,destination='local')=>new Promise((resolve,reject)=>{
+  const queue=pending.get(destination)??[];queue.push({run,resolve,reject});pending.set(destination,queue);drain();
+ });
+}
+async function runFiles(rows,parallelism,slot,destination,signal,send){
+ let cursor=0,stopped=false,firstError;
+ const remember=e=>{if(!stopped){stopped=true;firstError=e;}};
+ async function worker(){
+  try{
+   while(!stopped&&cursor<rows.length){
+    signal?.throwIfAborted();const row=rows[cursor++];
+    await slot(async()=>{
+     if(stopped)return;
+     try{signal?.throwIfAborted();await send(row);}
+     catch(e){remember(e);throw e;}
+    },destination);
+   }
+  }catch(e){remember(e);}
+ }
+ // No finish, delete or abort until every in-flight path in this pass
+ // settles. A stopped pass never opens a new file when queued slots rotate.
+ await Promise.all(Array.from({length:Math.min(parallelism,rows.length)},worker));
+ if(stopped)throw firstError;
+}
+
+export function sharePdsChunkSlots(call){
+ const slot=shareFileTransferSlot(2);
+ return (name,...args)=>name==='npc_folder_file_chunk'?slot(()=>call(name,...args)):call(name,...args);
 }
 
 // One canonical compare slot is shared by the two destinations. Only compare is queued:
@@ -200,7 +235,7 @@ export function sharePdsCompareSlot(pds){
 }
 
 function senderPds(pdsUrl,signal){
- return createFolderMcpClient({call:loopbackJsonMCP(pdsUrl,{
+ return createFolderMcpClient({call:sharePdsChunkSlots(loopbackJsonMCP(pdsUrl,{
   clientName:'pds-canonical-reader',signal,decodeToolError(name,result){
    if(name!=='npc_folders_compare'||result?.content?.length!==1||result.content[0]?.type!=='text')return null;
    const text=result.content[0]?.text;
@@ -210,13 +245,13 @@ function senderPds(pdsUrl,signal){
     return exact(value,'error,status')&&value.error==='FOLDER_BUSY'&&value.status===503?Error('FOLDER_BUSY'):null;
    }catch{return null;}
   },
- })});
+ }))});
 }
 
 /** Repeat, using discovery only within the configured canonical project allowlist. */
 export async function watchPdsMcpFileSync({
  projects,pdsUrl=DEFAULT_PROJECT_FOLDER_MCP_URL,ngsUrl,
- now=()=>performance.now(),sleep=pause,signal,fileSlot,onResult=()=>{},onError=()=>{},onFileError,push=pushProjectFiles,
+ now=()=>performance.now(),sleep=pause,signal,fileSlot,parallelism=1,onResult=()=>{},onError=()=>{},onFileError,push=pushProjectFiles,
  pds=senderPds(pdsUrl,signal),
  ngs=loopbackJsonMCP(ngsUrl,{clientName:'pds-ngs-file-sender',signal}),
  upload=ngsUrl?createLoopbackFileUpload(ngsUrl,{signal}):undefined,
@@ -240,7 +275,7 @@ export async function watchPdsMcpFileSync({
    for(const scope of projects){
     if(signal?.aborted)return;
     if(!discovered.has(scope))continue;
-    try{onResult(scope,await push({scope,pds,ngs,upload,signal,fileSlot,onFileError}));}
+    try{onResult(scope,await push({scope,pds,ngs,upload,signal,fileSlot,parallelism,onFileError}));}
     catch(error){if(!signal?.aborted)onError(scope,error);}
    }
   }catch(error){if(!signal?.aborted)onError(null,error);}
@@ -273,7 +308,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const {PDS_MCP_URL,NGS_FILE_SYNC_MCP_URL,NGS_FILE_SYNC_PROJECTS}=process.env;
  const controller=new AbortController(),health=startOpsHealthReport({serverName:'pds-mcp'});
  const signal=controller.signal;
- const fileSlot=shareFileTransferSlot();
+ const fileSlot=shareFileTransferSlot(maxActiveFiles);
  const pds=sharePdsCompareSlot(senderPds(PDS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,signal));
  for(const action of ['SIGTERM','SIGINT'])process.once(action,()=>controller.abort());
  let space;
@@ -281,12 +316,12 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   try{
    const config={...spaceMachineConfiguration(),signal};
    const ngs=createSpaceFileSyncDestination(config),upload=createSpaceFileSyncUpload(config);
-   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,upload,signal,fileSlot,push:pushSpaceProjectFiles,
+   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,upload,signal,fileSlot,parallelism:maxActiveFiles,push:pushSpaceProjectFiles,
     ...reportFileLoop('space')}).catch(()=>reportFileLoop('space').onError(null));
   }catch{reportFileLoop('space').onError(null,Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED'));}
  }
  try{
   await watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
-   pds,signal,fileSlot,push:pushProjectFiles,...reportFileLoop('local')});
+   pds,signal,fileSlot,parallelism:maxActiveFiles,push:pushProjectFiles,...reportFileLoop('local')});
  }finally{controller.abort();await space;health.stop();}
 }
