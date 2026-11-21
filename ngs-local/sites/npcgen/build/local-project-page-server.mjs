@@ -82,19 +82,31 @@ export function configuration(env=process.env){
  if(!Number.isInteger(port)||port<1||port>65535)throw failure('LOCAL_PROJECT_PORT_INVALID',503);
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
- return {port,root,mcpUrl:env.NGS_PROJECT_OPS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,
+ const fileSyncMode=env.NGS_FILE_SYNC_MODE??'pull';
+ if(!['pull','push'].includes(fileSyncMode))throw failure('NGS_FILE_SYNC_MODE_INVALID',503);
+ return {port,root,fileSyncMode,mcpUrl:env.NGS_PROJECT_OPS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,
   requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
 }
 
-export function createLocalProjectPageServer({root,mcpUrl,requestQueueDb,requestQueue,audioWorkspaceEnabled=false,brandMarkPath}){
- const pds=createFolderMcpClient({call:loopbackFolderMCP(mcpUrl)});
+export function createLocalProjectPageServer({root,mcpUrl,requestQueueDb,requestQueue,audioWorkspaceEnabled=false,brandMarkPath,fileSyncMode='pull'}){
+ const pushReplica=fileSyncMode==='push';
+ if(!pushReplica&&fileSyncMode!=='pull')throw failure('NGS_FILE_SYNC_MODE_INVALID',503);
+ const pds=pushReplica?null:createFolderMcpClient({call:loopbackFolderMCP(mcpUrl)});
  const projects=approvedProjectReads();
  prepareFreshParent(root);
  const projectCatalog=createLocalProjectFolders({root,pds,diskFreshness:false});
- const recursive=createRecursiveFolderSync({root,pds,projectCatalog,
-  readableProjects:projects.map(project=>project.id)});
- const catalog={...projectCatalog,compare:recursive.compareTop,refresh:recursive.applyTop,list:recursive.list,refreshes:recursive.refreshes};
+ const recursive=pushReplica?{
+  // Keep existing browser contracts without letting the UI initiate a second writer.
+  compareInner:async scope=>({scope,groups:[],unavailable:[]}),
+  applyInner:async()=>{throw failure('NGS_FILE_SYNC_PUSH_OWNED',409);},
+ }:createRecursiveFolderSync({root,pds,projectCatalog,readableProjects:projects.map(project=>project.id)});
+ const listLocal=allowed=>projectCatalog.list(allowed).map(project=>({...project,needsRefresh:false}));
+ const catalog=pushReplica?{...projectCatalog,list:listLocal,
+  discover:async()=>listLocal(()=>true).map(project=>project.projectId),
+  compare:async()=>({groups:[],unavailable:[]}),
+  refresh:async()=>{throw failure('NGS_FILE_SYNC_PUSH_OWNED',409);},
+ }:{...projectCatalog,compare:recursive.compareTop,refresh:recursive.applyTop,list:recursive.list,refreshes:recursive.refreshes};
  const auth=createLoopbackAuth({loadReadProjects:()=>projects});
  const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
  const queue=requestQueue??ownedQueue;

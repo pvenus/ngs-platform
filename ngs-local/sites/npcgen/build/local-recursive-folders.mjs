@@ -80,6 +80,9 @@ async function inventory(root,scope){
  if(home)await walk('',home);
  return result;
 }
+// Use the same private path, file identity, and integrity checks for offline
+// replica reception. Cross-process writer exclusivity is an activation gate.
+export const localReplicaFilePrimitives=Object.freeze({stat,pin,directory,checkedFile,digest,inventory,validateProjectFolderFile});
 const groupName=path=>path.includes('/')?path.split('/')[0]:'';
 function standardized(answer,scope,local){
  if(!answer||Object.keys(answer).sort().join(',')!=='deleted,groups,scope'||answer.scope!==scope||

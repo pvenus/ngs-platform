@@ -64,7 +64,7 @@ export async function localProjectFolderRoute(req,res,{origin,catalog,session,au
   allowed(latest(),input.projectId);
   let result;
   try{result=await catalog.refresh(input.projectId);}catch(error){
-   if(['PROJECT_FOLDER_COMPARE_REQUIRED','FOLDER_SYNC_COMPARE_REQUIRED'].includes(error.message))throw reject(error.message,409);
+   if(['PROJECT_FOLDER_COMPARE_REQUIRED','FOLDER_SYNC_COMPARE_REQUIRED','NGS_FILE_SYNC_PUSH_OWNED'].includes(error.message))throw reject(error.message,409);
    throw reject('PROJECT_FOLDER_REFRESH_UNAVAILABLE',503);
   }
   allowed(latest(),input.projectId);
