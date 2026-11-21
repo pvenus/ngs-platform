@@ -4,10 +4,14 @@ import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from '../ngs-loc
 export const machineTokenConfigured=validMachineToken;
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
 const chunkTool='ngs_file_sync_file_chunk',small=32*1024;
+const deploymentStatusTool=Object.freeze({name:'space_ngs_deployment_status',
+ description:'Read the NGS canonical source revision currently serving this request and the last publication time when verified.',
+ inputSchema:{type:'object',properties:{},additionalProperties:false}});
+const validCommit=value=>typeof value==='string'&&value.length===40&&/^[0-9a-f]{40}$/.test(value);
 const chunkRpc=4*Math.ceil(1024*1024/3)+32*1024;
 const privateHeaders={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin'};
 const json=(value,status=200,commitSha)=>Response.json(value,{status,headers:{...privateHeaders,
- ...(typeof commitSha==='string'&&commitSha.length===40&&/^[0-9a-f]{40}$/.test(commitSha)?{'X-NGS-Commit-Sha':commitSha}:{})}});
+ ...(validCommit(commitSha)?{'X-NGS-Commit-Sha':commitSha}:{})}});
 const fail=(status,error)=>json({error},status);
 const need=(allowed,status=400,code='SPACE_REQUEST_INVALID')=>{if(!allowed)throw Object.assign(Error(code),{status});};
 const postJSON=req=>/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers.get('content-type')??'');
@@ -87,10 +91,16 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   if(method==='server/discover')return rpc(id,{supportedVersions:['2026-07-28'],capabilities:{tools:{}}});
   if(method==='initialize')return rpc(id,{protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'ngs-space-machine',version:'1'}});
   if(method==='ping')return rpc(id,{});
-  if(method==='tools/list'&&(!params||fields(params,['_meta'])))return rpc(id,{tools:[...machineTools,...configuredFileTools]});
+  if(method==='tools/list'&&(!params||fields(params,['_meta'])))return rpc(id,{tools:[...machineTools,deploymentStatusTool,...configuredFileTools]});
   if(method!=='tools/call')return rpcError(id,-32601,'Method not found');
   if(!fields(params,['name','arguments','_meta'])||typeof params.name!=='string'||!record(params.arguments))
    return rpcError(id,-32602,'Invalid tool or arguments');
+  if(params.name===deploymentStatusTool.name){
+   if(!exact(params.arguments,[]))return rpcError(id,-32602,'Invalid tool or arguments');
+   // The compiled source stamp is the serving artifact, not a mutable Site env.
+   // Sites control-plane activation is not available to this Worker.
+   return rpcResult(id,{commitSha:validCommit(commitSha)?commitSha:null,deployedAt:null});
+  }
   try{
    if(machineTools.some(tool=>tool.name===params.name))return rpcResult(id,await new SpaceRequestQueue(db).call(params.name,params.arguments),
     false,params.name==='space_requests_pending'?commitSha:undefined);

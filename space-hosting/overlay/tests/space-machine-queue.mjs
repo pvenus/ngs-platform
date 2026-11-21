@@ -60,7 +60,7 @@ test('machine auth cannot come from visitor headers, browser Origin, or wrong to
  assert.equal((await machine('tools/list',{}, {'Sec-Fetch-Site':'same-origin'})).status,403);
  assert.equal((await machineResponse(request('/api/requests','POST',{'X-NGS-Machine-Token':token},{}),{db,secret:token})).status,404);
  const methods=await (await machine('tools/list')).json();
- assert.deepEqual(methods.result.tools.map(tool=>tool.name),['space_requests_pending','space_requests_get','space_requests_ack']);
+ assert.deepEqual(methods.result.tools.map(tool=>tool.name),['space_requests_pending','space_requests_get','space_requests_ack','space_ngs_deployment_status']);
  assert.equal((await (await machine('tools/call',{name:'npc_mirror_dispatch',arguments:{}})).json()).error.code,-32602);
  assert.equal((await (await machine('tools/call',{name:'space_requests_pending',arguments:{projectId:'other'}})).json()).result.isError,true);
 });
@@ -100,4 +100,27 @@ test('only successful authorized pending responses carry compiled canonical sour
  assert.equal(denied.status,403);assert.equal(denied.headers.get('X-NGS-Commit-Sha'),null);
  assert.equal((await probe(sha,'tools/list',{})).headers.get('X-NGS-Commit-Sha'),null);
  assert.equal((await probe(sha,'tools/call',{...args,arguments:{projectId:'other'}})).headers.get('X-NGS-Commit-Sha'),null);
+});
+
+
+test('authenticated deployment status reports only the serving artifact and no invented deployment time',async ()=>{
+ const sha='b7e1'.repeat(10),forged='f'.repeat(40),name='space_ngs_deployment_status';
+ const probe=(commitSha,extra={},arguments_={},route='/api/space-machine-mcp')=>machineResponse(
+  request(route,'POST',{'X-NGS-Machine-Token':token,'X-NGS-Commit-Sha':forged,...extra},
+   {jsonrpc:'2.0',id:12,method:'tools/call',params:{name,arguments:arguments_}}),{secret:token,commitSha});
+ const expected={commitSha:sha,deployedAt:null};
+ const valid=await probe(sha);
+ assert.equal(valid.status,200);
+ assert.equal(valid.headers.get('Cache-Control'),'private, no-store');
+ assert.equal(valid.headers.get('X-NGS-Commit-Sha'),null); // Existing queue wire is separate.
+ const reply=await valid.json();
+ assert.deepEqual(reply.result.structuredContent,expected);
+ assert.deepEqual(JSON.parse(reply.result.content[0].text),expected);
+ for(const value of [undefined,sha.toUpperCase(),sha+'\n',sha.slice(0,7)])
+  assert.deepEqual((await (await probe(value)).json()).result.structuredContent,{commitSha:null,deployedAt:null});
+ assert.equal((await probe(sha,{'X-NGS-Machine-Token':'wrong'})).status,403);
+ assert.equal((await probe(sha,{Origin:origin})).status,403);
+ assert.equal((await probe(sha,{}, {},'/mcp')).status,404);
+ const malformed=await probe(sha,{}, {commitSha:forged});
+ assert.equal((await malformed.json()).error.code,-32602);
 });

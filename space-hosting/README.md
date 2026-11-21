@@ -12,3 +12,14 @@ variable. Omit the second argument when canonical provenance is unknown; the
 authenticated `space_requests_pending` result then carries no
 `X-NGS-Commit-Sha` header. Browser endpoints, file sync, and failed or unrelated
 machine calls never report it.
+
+
+The same authenticated machine MCP also offers
+`space_ngs_deployment_status({})`. It returns
+`{commitSha: string | null, deployedAt: string | null}`. The commit identifies
+the canonical NGS artifact serving this request, which may differ from the
+latest saved Site version. The current implementation always returns
+`deployedAt: null`: no trusted Sites publication timestamp is available inside
+the Worker. Consumers needing actual publication time must read the native
+Sites deployment status for the matching production version. Do not infer
+it from a Git commit, build date, queue poll, or request time.
