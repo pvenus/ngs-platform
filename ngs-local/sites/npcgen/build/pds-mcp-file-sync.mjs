@@ -14,7 +14,7 @@ import {validFolderPath} from './local-recursive-folders.mjs';
 import {createSpaceMachineMcp,createSpaceFileSyncUpload,spaceMachineConfiguration,fileTools} from './space-machine-mcp.mjs';
 import {createLoopbackFileUpload} from './file-sync-raw-client.mjs';
 
-const maxChunk=1024*1024,maxEntries=32768,maxActiveFiles=10;
+const maxChunk=1024*1024,maxEntries=32768,maxActiveFiles=20;
 const direct=run=>run();
 const hash=/^[a-f0-9]{64}$/;
 const id=/^ngs\.sync\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;

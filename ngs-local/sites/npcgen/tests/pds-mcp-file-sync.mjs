@@ -141,11 +141,12 @@ test('watch intersects PDS discovery and retains one-minute cadence and independ
  assert.deepEqual(calls,[0,60_000]);
 });
 
-test('up to ten actual whole binary POSTs across Local+Space, with fair queued admission and exact SHA',async t=>{
- const fileSlot=shareFileTransferSlot(10),launches=[],rows=[],opened=[],held=[];
+test('up to twenty actual whole binary POSTs across Local+Space, with fair queued admission and exact SHA',async t=>{
+ assert.throws(()=>shareFileTransferSlot(21),/PDS_NGS_FILE_SYNC_INVALID/);
+ const fileSlot=shareFileTransferSlot(20),launches=[],rows=[],opened=[],held=[];
  const reachedCap=Promise.withResolvers();
  const full=Buffer.alloc(16*1024,33),bytes=label=>Buffer.concat([Buffer.from(label),full]);
- for(const tag of ['l','s'])for(let i=0;i<14;i++)rows.push(tag+'-'+String(i).padStart(2,'0'));
+ for(const tag of ['l','s'])for(let i=0;i<24;i++)rows.push(tag+'-'+String(i).padStart(2,'0'));
  const scopes=tag=>rows.filter(p=>p.startsWith(tag)).map(path=>row(path,bytes(path)));
  let active=0,peak=0,sent=0,gate=true;
  const server=createServer(async(req,res)=>{
@@ -158,7 +159,7 @@ test('up to ten actual whole binary POSTs across Local+Space, with fair queued a
   assert.equal(sha(got),req.headers['x-ngs-file-sha256']);
   if(gate){
    const hold=Promise.withResolvers();held.push(hold);
-   if(held.length===10)reachedCap.resolve();
+   if(held.length===20)reachedCap.resolve();
    await hold.promise;
   }
   active--;sent++;res.writeHead(200,{'Content-Type':'application/json'}).end('{"ok":true}');
@@ -172,19 +173,19 @@ test('up to ten actual whole binary POSTs across Local+Space, with fair queued a
  });
  const ngs=async name=>{
   if(name==='ngs_file_sync_begin')return receipt(scope);
-  if(name==='ngs_file_sync_finish')return {ok:true,written:14};
+  if(name==='ngs_file_sync_finish')return {ok:true,written:24};
   assert.equal(name,'ngs_file_sync_plan');return {ok:true};
  };
- const local=pushProjectFiles({scope,pds:pds('l'),ngs,upload,fileSlot,parallelism:10});
+ const local=pushProjectFiles({scope,pds:pds('l'),ngs,upload,fileSlot,parallelism:20});
  await reachedCap.promise;
- const remote=pushSpaceProjectFiles({scope,pds:pds('s'),ngs,upload,fileSlot,parallelism:10});
+ const remote=pushSpaceProjectFiles({scope,pds:pds('s'),ngs,upload,fileSlot,parallelism:20});
  await new Promise(setImmediate);
- assert.equal(opened.length,10,'queued files do not spool until a shared slot is active');
+ assert.equal(opened.length,20,'queued files do not spool until a shared slot is active');
  gate=false;
  for(const h of held)h.resolve();
- assert.deepEqual(await Promise.all([local,remote]),Array(2).fill({ok:true,written:14,failed:0}));
- assert.equal(peak,10);assert.equal(sent,28);assert.equal(new Set(launches).size,28);
- assert.ok(opened.slice(10,14).some(p=>p.startsWith('s')),'Space starts before Local finishes');
+ assert.deepEqual(await Promise.all([local,remote]),Array(2).fill({ok:true,written:24,failed:0}));
+ assert.equal(peak,20);assert.equal(sent,48);assert.equal(new Set(launches).size,48);
+ assert.ok(opened.slice(20,24).some(p=>p.startsWith('s')),'Space starts before Local finishes');
  for(const tag of ['l','s'])assert.deepEqual(opened.filter(p=>p.startsWith(tag)).sort(),scopes(tag).map(r=>r.path));
 });
 
