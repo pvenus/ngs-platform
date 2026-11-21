@@ -6,7 +6,7 @@ import {dirname,isAbsolute,join} from 'node:path';
 import {localReplicaFilePrimitives as fs,moveReplicaFileToTrash,validFolderPath} from './local-recursive-folders.mjs';
 
 const policy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
-const idleTimeout=120_000,maxFile=64*1024*1024,chunkSize=1024*1024,maxInventoryBytes=16*1024*1024;
+const idleTimeout=120_000,maxFile=Number.MAX_SAFE_INTEGER,chunkSize=1024*1024,maxInventoryBytes=16*1024*1024;
 export const maxFileSyncRpcBytes=4*Math.ceil(chunkSize/3)+32*1024;
 export const fileSyncChunkTool='ngs_file_sync_file_chunk';
 const scopePattern=/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
@@ -89,7 +89,7 @@ export function createLocalFileSyncReceiver({root,projects,now=()=>performance.n
     args.offset<0||args.offset>args.size||typeof args.dataBase64!=='string'||args.dataBase64.length>4*Math.ceil(chunkSize/3))
    fail();
   const bytes=Buffer.from(args.dataBase64,'base64');
-  if(bytes.toString('base64')!==args.dataBase64||bytes.length>chunkSize||args.offset+bytes.length>args.size||
+  if(bytes.toString('base64')!==args.dataBase64||bytes.length>chunkSize||bytes.length>args.size-args.offset||
     !bytes.length&&args.size!==0)fail();
   const {path,sha256,size,offset}=args;
   if(s.removed.has(path))stale();

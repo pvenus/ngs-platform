@@ -267,3 +267,19 @@ with ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
  assert.deepEqual(Buffer.from(await previous.arrayBuffer()),original);
  assert.equal(await (await bucket.get('legacy/untouched')).text(),'older untouched bytes');
 });
+
+test('Space file transport exposes only an exact allowed error, not arbitrary remote detail',async()=>{
+ for(const [result,want] of [
+  [{status:409,error:'NGS_FILE_SYNC_BUSY'},'NGS_FILE_SYNC_BUSY'],
+  [{status:400,error:'NGS_FILE_SYNC_BUSY'},'NGS_SPACE_MACHINE_MCP_UNAVAILABLE'],
+  [{status:409,error:'PRIVATE_DETAIL'},'NGS_SPACE_MACHINE_MCP_UNAVAILABLE'],
+  [{status:409,error:'NGS_FILE_SYNC_BUSY',extra:'private'},'NGS_SPACE_MACHINE_MCP_UNAVAILABLE'],
+ ]){
+  const call=createSpaceMachineMcp({token:key,platformToken:platform,send:async(_url,init)=>{
+   const body=JSON.parse(init.body);
+   assert.equal(body.params.name,'ngs_file_sync_file_reset');
+   return Response.json({jsonrpc:'2.0',id:body.id,result:{isError:true,structuredContent:result}});
+  }});
+  await assert.rejects(call('ngs_file_sync_file_reset',{syncId:'fixture',path:'a'}),{message:want});
+ }
+});

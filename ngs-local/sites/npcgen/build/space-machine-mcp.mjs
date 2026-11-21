@@ -4,8 +4,14 @@ import {dirname,isAbsolute,resolve} from 'node:path';
 export const SPACE_SITE_MCP_URL='https://vinus-npcgen.park-venus0518.chatgpt.site/api/space-machine-mcp';
 const protocol='2026-07-28';
 export const queueTools=Object.freeze(['space_requests_pending','space_requests_ack','space_requests_get']);
-export const fileTools=Object.freeze(['ngs_file_sync_begin','ngs_file_sync_file_chunk','ngs_file_sync_remove','ngs_file_sync_finish','ngs_file_sync_abort']);
+export const fileTools=Object.freeze(['ngs_file_sync_begin','ngs_file_sync_file_chunk','ngs_file_sync_file_reset','ngs_file_sync_remove','ngs_file_sync_finish','ngs_file_sync_abort']);
 const tools=new Set([...queueTools,...fileTools]);
+const fileErrors=new Map([
+ ['NGS_FILE_SYNC_INVALID',400],['NGS_FILE_SYNC_SCOPE_DENIED',403],['NGS_FILE_SYNC_TOOL_UNKNOWN',404],
+ ['NGS_FILE_SYNC_BUSY',409],['NGS_FILE_SYNC_INVALID_SESSION',409],['NGS_FILE_SYNC_REPLICA_CHANGED',409],
+ ['NGS_FILE_SYNC_CONTENT_MISMATCH',409],['NGS_FILE_SYNC_OFFSET_INVALID',409],['NGS_FILE_SYNC_INCOMPLETE',409],
+ ['SPACE_MACHINE_OPERATION_UNAVAILABLE',503],
+]);
 const maxBody=4*Math.ceil(1024*1024/3)+32*1024,maxReply=48*1024*1024;
 const configError=()=>Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED');
 const unavailable=()=>Error('NGS_SPACE_MACHINE_MCP_UNAVAILABLE');
@@ -88,8 +94,13 @@ export function createSpaceMachineMcp({
   }
   const envelope=await responseJSON(response,limit);
   if(!exact(envelope,['jsonrpc','id','result'])||envelope.jsonrpc!=='2.0'||envelope.id!==id||
-   envelope.result?.isError!==false||!object(envelope.result.structuredContent))
-   throw unavailable();
+   !object(envelope.result?.structuredContent))throw unavailable();
+  if(envelope.result.isError===true&&fileTools.includes(name)){
+   const err=envelope.result.structuredContent;
+   if(exact(err,['error','status'])&&typeof err.error==='string'&&fileErrors.get(err.error)===err.status)
+    throw Error(err.error);
+  }
+  if(envelope.result.isError!==false)throw unavailable();
   return envelope.result.structuredContent;
  };
 }

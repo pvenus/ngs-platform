@@ -138,3 +138,17 @@ test('opt-in extends only exact file MCP; default and non-file JSON limit stay i
  assert.equal((await request(prefix+'begin',{scope:'binari'},{Origin:'http://127.0.0.1:5274'})).status,403);
  assert.equal((await request(prefix+'begin',{scope:'binari'},{'X-Forwarded-For':'127.0.0.1'})).status,403);
 });
+
+test('bounded streaming sync accepts a file over 64 MiB, hides partial bytes and re-inventories exact SHA',async t=>{
+ const f=fixture(t),receipt=await f.begin({scope:'binari'}),piece=Buffer.alloc(1024*1024,72),last=Buffer.from('large');
+ const digest=createHash('sha256');
+ for(let i=0;i<64;i++)digest.update(piece);
+ const sha256=digest.update(last).digest('hex');
+ const path='large.bin',size=64*piece.length+last.length,bound={syncId:receipt.syncId,path,size,sha256};
+ for(let i=0;i<64;i++)assert.deepEqual(await f.file_chunk(chunk(bound,piece,i*piece.length)),{nextOffset:(i+1)*piece.length});
+ assert.equal(existsSync(join(f.project,path)),false);
+ assert.deepEqual(await f.file_chunk(chunk(bound,last,64*piece.length)),{nextOffset:null});
+ assert.equal(statSync(join(f.project,path)).size,size);
+ assert.deepEqual(await f.finish({syncId:receipt.syncId}),{ok:true,written:1});
+ assert.deepEqual((await f.begin({scope:'binari'})).files.find(x=>x.path===path),{path,sha256});
+});

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {test} from 'node:test';
 import {createFolderMcpClient} from '../build/folder-mcp-client.mjs';
-import {pushProjectFiles,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
+import {pushProjectFiles,pushSpaceProjectFiles,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
 
 const id='ngs.sync.6f56d34f-62ca-42a7-a173-14700d922865';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -153,4 +153,42 @@ test('two destinations share only the one PDS compare slot and recover after a r
  assert.deepEqual(events,[['entered',0],['entered',1],['entered',1]]);
  remoteFinish.resolve();
  assert.deepEqual(await second,{ok:true,written:0});
+});
+
+test('Space failed middle chunk retries at zero, and repeat failure or uncertain reset never blocks unrelated file',async()=>{
+ const scope='binari',two=Buffer.alloc(1024*1024+1,65),names=['recover','defer','no-reset','unrelated'];
+ const selections=names.map(x=>row('files/'+x,x==='unrelated'?Buffer.from('ok'):two)),started=new Map(),offsets=[],failed=[],reset=[];
+ const pds={
+  compare:async()=>({scope,groups:[{folder:'files',files:selections}],deleted:[]}),
+  file(_scope,path){
+   const key=path.split('/').at(-1),b=key==='unrelated'?Buffer.from('ok'):two;
+   started.set(key,(started.get(key)??0)+1);
+   return {body:new ReadableStream({start(c){c.enqueue(b.subarray(0,1024*1024));if(b.length>1024*1024)c.enqueue(b.subarray(1024*1024));c.close();}})};
+  },
+ };
+ const ngs=async(name,args)=>{
+  if(name==='ngs_file_sync_begin')return receipt(scope);
+  if(name==='ngs_file_sync_finish')return {ok:true,written:2};
+  assert.equal(args.syncId,id);
+  const key=args.path.split('/').at(-1);
+  if(name==='ngs_file_sync_file_reset'){
+   assert.deepEqual(Object.keys(args).sort(),['path','syncId']);
+   reset.push(key);
+   if(key==='no-reset')throw Error('NGS_FILE_SYNC_BUSY');
+   return {ok:true};
+  }
+  assert.equal(name,'ngs_file_sync_file_chunk');
+  offsets.push([key,started.get(key),args.offset]);
+  if(args.offset>0&&key!=='unrelated'&&(key!=='recover'||started.get(key)===1))
+   throw Error('SPACE_MACHINE_OPERATION_UNAVAILABLE');
+  const end=args.offset+Buffer.from(args.dataBase64,'base64').byteLength;
+  return {nextOffset:end===args.size?null:end};
+ };
+ const result=await pushSpaceProjectFiles({scope,pds,ngs,onFileError:(_scope,r,e,n)=>failed.push([r.path,e.message,n])});
+ assert.deepEqual(result,{ok:true,written:2,failed:2});
+ assert.deepEqual([...started],[['recover',2],['defer',2],['no-reset',1],['unrelated',1]]);
+ assert.deepEqual(reset,['recover','defer','defer','no-reset']);
+ assert.deepEqual(offsets.filter(([key])=>key==='recover'),[['recover',1,0],['recover',1,1024*1024],['recover',2,0],['recover',2,1024*1024]]);
+ assert.deepEqual(failed,[['files/defer','SPACE_MACHINE_OPERATION_UNAVAILABLE',2],['files/no-reset','SPACE_MACHINE_OPERATION_UNAVAILABLE',1]]);
+ assert.deepEqual(offsets.at(-1),['unrelated',1,0]);
 });

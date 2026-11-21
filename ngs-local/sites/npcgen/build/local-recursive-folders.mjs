@@ -5,7 +5,7 @@ import {closeSync,constants,createReadStream,fstatSync,lstatSync,mkdirSync,mkdte
 import {dirname,join} from 'node:path';
 import {validateProjectFolderFile} from './local-project-folders.mjs';
 
-const maxFile=64*1024*1024,maxEntries=32768;
+const maxFile=Number.MAX_SAFE_INTEGER,maxEntries=32768;
 const sha=/^[a-f0-9]{64}$/;
 const invalid=()=>Error('FOLDER_SYNC_UNAVAILABLE');
 const stale=()=>Error('FOLDER_SYNC_COMPARE_REQUIRED');

@@ -8,7 +8,7 @@ import {DEFAULT_PROJECT_FOLDER_MCP_URL,loopbackJsonMCP} from './folder-mcp-loopb
 import {validFolderPath} from './local-recursive-folders.mjs';
 import {createSpaceMachineMcp,spaceMachineConfiguration,fileTools} from './space-machine-mcp.mjs';
 
-const maxFile=64*1024*1024,maxChunk=1024*1024,maxEntries=32768;
+const maxChunk=1024*1024,maxEntries=32768;
 const hash=/^[a-f0-9]{64}$/;
 const id=/^ngs\.sync\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const project=/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -39,7 +39,7 @@ function changes(value,scope,previous){
   folders.add(group.folder);
   for(const row of group.files){
    if(!exact(row,'path,sha256,size')||!pathWithin(scope,row.path)||!digestOk(row.sha256)||
-    !Number.isSafeInteger(row.size)||row.size<0||row.size>maxFile||found.has(row.path)||
+    !Number.isSafeInteger(row.size)||row.size<0||found.has(row.path)||
     (row.path.includes('/')?row.path.split('/')[0]:'')!==group.folder||
     previous.get(row.path)===row.sha256||files.length>=maxEntries)throw invalid();
    found.add(row.path);files.push(row);
@@ -54,7 +54,37 @@ function changes(value,scope,previous){
  return {files,deleted};
 }
 
-export async function pushProjectFiles({scope,pds,ngs}){
+async function pushFile({pds,ngs,scope,syncId,row}){
+ const reader=pds.file(scope,row.path,row.sha256,row.size).body.getReader();
+ const hash=createHash('sha256');let offset=0;
+ const send=async bytes=>{
+  const reply=await ngs('ngs_file_sync_file_chunk',{syncId,...row,offset,dataBase64:Buffer.from(bytes).toString('base64')});
+  offset+=bytes.byteLength;
+  if(!exact(reply,'nextOffset')||reply.nextOffset!==(offset===row.size?null:offset))throw invalid();
+ };
+ try{
+  for(;;){
+   const {done,value}=await reader.read();
+   if(done)break;
+   if(!(value instanceof Uint8Array)||!value.byteLength||value.byteLength>maxChunk||value.byteLength>row.size-offset)throw invalid();
+   hash.update(value);
+   // The receiver independently verifies the same whole-file hash before publication.
+   if(offset+value.byteLength===row.size&&hash.copy().digest('hex')!==row.sha256)throw invalid();
+   await send(value);
+  }
+  if(offset!==row.size||hash.digest('hex')!==row.sha256)throw invalid();
+  if(row.size===0)await send(new Uint8Array());
+ }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+}
+
+async function resetSpaceFile(ngs,syncId,path){
+ try{
+  const v=await ngs('ngs_file_sync_file_reset',{syncId,path});
+  return exact(v,'ok')&&v.ok===true;
+ }catch{return false;}
+}
+
+async function pushDestination({scope,pds,ngs,signal,space,onFileError=()=>{}}){
  if(typeof scope!=='string'||!project.test(scope))throw invalid();
  let syncId;
  try{
@@ -62,27 +92,26 @@ export async function pushProjectFiles({scope,pds,ngs}){
   if(id.test(start?.syncId??''))syncId=start.syncId;
   const previous=inventory(start,scope);
   const {files,deleted}=changes(await pds.compare(scope,start.files,{includeDeleted:true}),scope,previous);
+  let failed=0;
   for(const row of files){
-   const reader=pds.file(scope,row.path,row.sha256,row.size).body.getReader();
-   const hash=createHash('sha256');let offset=0;
-   const send=async bytes=>{
-    const reply=await ngs('ngs_file_sync_file_chunk',{syncId,...row,offset,dataBase64:Buffer.from(bytes).toString('base64')});
-    offset+=bytes.byteLength;
-    if(!exact(reply,'nextOffset')||reply.nextOffset!==(offset===row.size?null:offset))throw invalid();
-   };
-   try{
-    for(;;){
-     const {done,value}=await reader.read();
-     if(done)break;
-     if(!(value instanceof Uint8Array)||!value.byteLength||value.byteLength>maxChunk||offset+value.byteLength>row.size)throw invalid();
-     hash.update(value);
-     // The receiver independently verifies the same whole-file hash before publication.
-     if(offset+value.byteLength===row.size&&hash.copy().digest('hex')!==row.sha256)throw invalid();
-     await send(value);
+   if(signal?.aborted)throw signal.reason;
+   try{await pushFile({pds,ngs,scope,syncId,row});}
+   catch(first){
+    if(!space||signal?.aborted)throw first;
+    let reason=first,attempts=1;
+    if(await resetSpaceFile(ngs,syncId,row.path)){
+     if(signal?.aborted)throw signal.reason;
+     attempts++;
+     try{await pushFile({pds,ngs,scope,syncId,row});continue;}
+     catch(second){
+      if(signal?.aborted)throw second;
+      reason=second;
+      await resetSpaceFile(ngs,syncId,row.path);
+     }
     }
-    if(offset!==row.size||hash.digest('hex')!==row.sha256)throw invalid();
-    if(row.size===0)await send(new Uint8Array());
-   }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+    failed++;
+    onFileError(scope,row,reason,attempts);
+   }
   }
   if(deleted.length){
    // Canonical source may have restored a file while changed files were being sent.
@@ -97,12 +126,15 @@ export async function pushProjectFiles({scope,pds,ngs}){
   const result=await ngs('ngs_file_sync_finish',{syncId});
   if(!exact(result,'ok,written')||result.ok!==true||!Number.isSafeInteger(result.written)||result.written<0||result.written>files.length)
    throw invalid();
-  return result;
+  return space?{...result,failed}:result;
  }catch(error){
   if(syncId)try{await ngs('ngs_file_sync_abort',{syncId});}catch{}
   throw error;
  }
 }
+
+export const pushProjectFiles=options=>pushDestination({...options,space:false});
+export const pushSpaceProjectFiles=options=>pushDestination({...options,space:true});
 
 // One canonical compare slot is shared by the two destinations. Only compare is queued:
 // a slow/disconnected destination must not hold the PDS slot during its uploads.
@@ -132,7 +164,7 @@ function senderPds(pdsUrl,signal){
 /** Repeat, using discovery only within the configured canonical project allowlist. */
 export async function watchPdsMcpFileSync({
  projects,pdsUrl=DEFAULT_PROJECT_FOLDER_MCP_URL,ngsUrl,
- now=()=>performance.now(),sleep=pause,signal,onResult=()=>{},onError=()=>{},
+ now=()=>performance.now(),sleep=pause,signal,onResult=()=>{},onError=()=>{},onFileError,push=pushProjectFiles,
  pds=senderPds(pdsUrl,signal),
  ngs=loopbackJsonMCP(ngsUrl,{clientName:'pds-ngs-file-sender',signal}),
 }={}){
@@ -155,7 +187,7 @@ export async function watchPdsMcpFileSync({
    for(const scope of projects){
     if(signal?.aborted)return;
     if(!discovered.has(scope))continue;
-    try{onResult(scope,await pushProjectFiles({scope,pds,ngs}));}
+    try{onResult(scope,await push({scope,pds,ngs,signal,onFileError}));}
     catch(error){if(!signal?.aborted)onError(scope,error);}
    }
   }catch(error){if(!signal?.aborted)onError(null,error);}
@@ -169,13 +201,17 @@ export function createSpaceFileSyncDestination(options){
   return call(name,args,settings);
  };
 }
+function publicError(error){
+ return /^[A-Z][A-Z0-9_]{1,80}$/.test(error?.message??'')?error.message:'PDS_NGS_FILE_SYNC_UNAVAILABLE';
+}
 function reportFileLoop(destination){
+ const hosted=destination==='space'?{destination}:{};
  return {
-  onResult:(scope,{written})=>console.log(JSON.stringify({event:'pds_ngs_file_sync_complete',...(destination==='space'?{destination}:{}),scope,written})),
-  onError:(scope,error)=>console.error(JSON.stringify({
-   event:'pds_ngs_file_sync_failed',...(destination==='space'?{destination}:{}),scope,
-   error:/^[A-Z][A-Z0-9_]{1,80}$/.test(error?.message??'')?error.message:'PDS_NGS_FILE_SYNC_UNAVAILABLE',
-  })),
+  onResult:(scope,{written,failed=0})=>console.log(JSON.stringify({event:failed?'pds_ngs_file_sync_partial':'pds_ngs_file_sync_complete',
+   ...hosted,scope,written,...(failed?{failed}:{})})),
+  onError:(scope,error)=>console.error(JSON.stringify({event:'pds_ngs_file_sync_failed',...hosted,scope,error:publicError(error)})),
+  onFileError:(scope,row,error,attempts)=>console.error(JSON.stringify({event:'pds_ngs_file_item_failed',...hosted,scope,
+   fileKey:createHash('sha256').update(row.path).digest('hex'),attempts,error:publicError(error)})),
  };
 }
 
@@ -190,7 +226,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.env.NGS_SPACE_FILE_SYNC_ENABLED==='1'){
   try{
    const ngs=createSpaceFileSyncDestination({...spaceMachineConfiguration(),signal});
-   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,
+   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,push:pushSpaceProjectFiles,
     ...reportFileLoop('space')}).catch(()=>reportFileLoop('space').onError(null));
   }catch{reportFileLoop('space').onError(null,Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED'));}
  }
