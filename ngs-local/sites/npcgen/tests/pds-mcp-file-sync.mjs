@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {test} from 'node:test';
 import {createFolderMcpClient} from '../build/folder-mcp-client.mjs';
-import {pushProjectFiles,pushSpaceProjectFiles,pushObjectProjectFiles,sharePdsChunkSlots,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
+import {fileSyncDestinationOptions,pushProjectFiles,pushSpaceProjectFiles,pushObjectProjectFiles,sharePdsChunkSlots,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
 
 const id='ngs.sync.6f56d34f-62ca-42a7-a173-14700d922865';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -349,4 +349,20 @@ test('lost or malformed batch ACK reconciles exact same-pass writes; unresolved 
   ]);
   assert.equal(comparisons,resolved?2:1);
  }
+});
+
+test('strict per-destination settings select the measured shape without coupling Local and Space',()=>{
+ const env={
+  NGS_LOCAL_FILE_SYNC_BATCH_ENABLED:'1',NGS_LOCAL_FILE_SYNC_BATCH_FILES:'32',
+  NGS_LOCAL_FILE_SYNC_BATCH_RAW_BYTES:'1048576',NGS_LOCAL_FILE_SYNC_LANES:'4',
+  NGS_SPACE_FILE_SYNC_BATCH_ENABLED:'1',NGS_SPACE_FILE_SYNC_LANES:'2',
+ };
+ assert.deepEqual(fileSyncDestinationOptions(env,'local'),{concurrency:4,batchSmallFiles:true,batchFileLimit:32,batchByteLimit:1048576});
+ assert.deepEqual(fileSyncDestinationOptions(env,'space'),{concurrency:2,batchSmallFiles:true,batchFileLimit:32,batchByteLimit:1048576});
+ assert.deepEqual(fileSyncDestinationOptions({},'space'),{concurrency:1,batchSmallFiles:false,batchFileLimit:32,batchByteLimit:1048576});
+ env.NGS_SPACE_FILE_SYNC_BATCH_FILES='33';
+ assert.equal(fileSyncDestinationOptions(env,'local').batchFileLimit,32);
+ assert.throws(()=>fileSyncDestinationOptions(env,'space'),/PDS_NGS_FILE_SYNC_INVALID/);
+ assert.throws(()=>fileSyncDestinationOptions({...env,NGS_LOCAL_FILE_SYNC_LANES:'4.0'},'local'),/PDS_NGS_FILE_SYNC_INVALID/);
+ assert.throws(()=>fileSyncDestinationOptions({...env,NGS_LOCAL_FILE_SYNC_BATCH_RAW_BYTES:'2097153'},'local'),/PDS_NGS_FILE_SYNC_INVALID/);
 });

@@ -365,29 +365,46 @@ function reportFileLoop(destination){
  };
 }
 
+// Each destination may turn on batching and lanes independently. The default
+// batch shape is the exact measured 32-file / 1 MiB raw shape; legacy remains
+// serial, and configuring a disabled Space destination cannot affect Local.
+export function fileSyncDestinationOptions(env,destination){
+ const prefix=destination==='local'?'NGS_LOCAL_FILE_SYNC_':destination==='space'?'NGS_SPACE_FILE_SYNC_':null;
+ if(!prefix)throw invalid();
+ const bounded=(value,fallback,max)=>{
+  if(value===undefined)return fallback;
+  if(typeof value!=='string'||!/^[1-9][0-9]{0,7}$/.test(value)||Number(value)>max)throw invalid();
+  return Number(value);
+ };
+ return {
+  concurrency:bounded(env[prefix+'LANES']??env.NGS_FILE_SYNC_OBJECT_LANES,1,maxObjectLanes),
+  batchSmallFiles:env[prefix+'BATCH_ENABLED']==='1',
+  batchFileLimit:bounded(env[prefix+'BATCH_FILES'],32,maxBatchFiles),
+  batchByteLimit:bounded(env[prefix+'BATCH_RAW_BYTES'],maxChunk,maxBatchBytes),
+ };
+}
+
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==3||process.argv[2]!=='--watch')throw Error('Usage: pds-mcp-file-sync.mjs --watch');
  const {PDS_MCP_URL,NGS_FILE_SYNC_MCP_URL,NGS_FILE_SYNC_PROJECTS}=process.env;
  const controller=new AbortController(),health=startOpsHealthReport({serverName:'pds-mcp'});
  const signal=controller.signal;
- const lanes=Number(process.env.NGS_FILE_SYNC_OBJECT_LANES??'1');
- if(!Number.isInteger(lanes)||lanes<1||lanes>maxObjectLanes)throw invalid();
- const pushObject=(options,batch)=>pushObjectProjectFiles({...options,concurrency:lanes,batchSmallFiles:batch});
- const localBatch=process.env.NGS_LOCAL_FILE_SYNC_BATCH_ENABLED==='1';
- const spaceBatch=process.env.NGS_SPACE_FILE_SYNC_BATCH_ENABLED==='1';
  const localObject=process.env.NGS_LOCAL_FILE_SYNC_OBJECT_MODE==='1';
+ const localOptions=localObject?fileSyncDestinationOptions(process.env,'local'):null;
+ const forDestination=limits=>options=>pushObjectProjectFiles({...options,...limits});
  const pds=sharePdsCompareSlot(senderPds(PDS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,signal));
  for(const action of ['SIGTERM','SIGINT'])process.once(action,()=>controller.abort());
  let space;
  if(process.env.NGS_SPACE_FILE_SYNC_ENABLED==='1'){
   try{
+   const limits=fileSyncDestinationOptions(process.env,'space');
    const ngs=createSpaceFileSyncDestination({...spaceMachineConfiguration(),signal});
-   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,push:options=>pushObject(options,spaceBatch),
+   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,push:forDestination(limits),
     ...reportFileLoop('space')}).catch(()=>reportFileLoop('space').onError(null));
   }catch{reportFileLoop('space').onError(null,Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED'));}
  }
  try{
   await watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
-   pds,signal,push:localObject?options=>pushObject(options,localBatch):pushProjectFiles,...reportFileLoop('local')});
+   pds,signal,push:localOptions?forDestination(localOptions):pushProjectFiles,...reportFileLoop('local')});
  }finally{controller.abort();await space;health.stop();}
 }
