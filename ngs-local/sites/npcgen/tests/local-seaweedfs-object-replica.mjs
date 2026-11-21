@@ -10,6 +10,7 @@ import {createLocalProjectPageServer} from '../build/local-project-page-server.m
 import {createLocalRequestQueueMcp} from '../build/local-request-queue-mcp.mjs';
 import {openLocalRequestQueue} from '../build/local-request-queue.mjs';
 import {loopbackJsonMCP} from '../build/folder-mcp-loopback.mjs';
+import {createLoopbackFileUpload} from '../build/file-sync-raw-client.mjs';
 import {pushSpaceProjectFiles} from '../build/pds-mcp-file-sync.mjs';
 
 const configPath=process.env.NGS_ISOLATED_SEAWEED_TEST_CONFIG;
@@ -39,7 +40,7 @@ test('actual Mac MCP writer and read-only browser share dedicated SQLite + loopb
  assert.deepEqual(await receiver.replica.list(),[],'fixture bucket must be empty');
  mcp=createLocalRequestQueueMcp(queue,{fileSync:receiver.replica,fileSyncToolDefinitions:receiver.fileSyncToolDefinitions});
  const address=await listen(mcp);
- const ngs=loopbackJsonMCP(address+'/mcp'),scope='binari',npc='npc.synthetic';
+ const ngs=loopbackJsonMCP(address+'/mcp'),upload=createLoopbackFileUpload(address+'/mcp'),scope='binari',npc='npc.synthetic';
  const files=new Map([
   ['project.json',data({name:'S3 fixture'})],
   ['icon.png',Buffer.from([137,80,78,71,13,10,26,10,1])],
@@ -48,7 +49,7 @@ test('actual Mac MCP writer and read-only browser share dedicated SQLite + loopb
   ['npcs/metadata.json',data({characterOrder:[npc]})],
   ['npcs/'+npc+'/metadata.json',data({id:npc,name:'Synthetic',kind:'npc'})],
   ['motion-presets/presets/walk.json',data({presetId:'walk',label:'Walk'})],
-  ['other/large.bin',Buffer.alloc(6*1024*1024+7,87)],
+  ['other/large.bin',Buffer.alloc(65*1024*1024+7,87)],
  ]);
  const parents=new Map();
  for(const [path,bytes] of files){
@@ -66,7 +67,7 @@ test('actual Mac MCP writer and read-only browser share dedicated SQLite + loopb
    }})};
   },
  };
- assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs}),{ok:true,written:files.size,failed:0});
+ assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs,upload}),{ok:true,written:files.size,failed:0});
  assert.deepEqual(await ngs('ngs_request_queue_list',{}),{requests:[]});
  reader=await openLocalObjectReplicaFromEnv(env);
  const large=await reader.replica.get('other/large.bin',{range:{offset:5*1024*1024,length:10}});

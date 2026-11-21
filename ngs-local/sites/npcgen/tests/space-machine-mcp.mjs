@@ -4,10 +4,9 @@ import {createHash,randomUUID} from 'node:crypto';
 import {mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync,readFileSync,readdirSync,chmodSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {createSpaceMachineMcp,spaceMachineConfiguration,SPACE_SITE_MCP_URL,SPACE_MACHINE_CREDENTIALS_ENV} from '../build/space-machine-mcp.mjs';
+import {createSpaceMachineMcp,createSpaceFileSyncUpload,spaceMachineConfiguration,SPACE_SITE_MCP_URL,SPACE_MACHINE_CREDENTIALS_ENV} from '../build/space-machine-mcp.mjs';
 import {createSpaceRSQueueConsumer,createRSQueueConsumer} from '../build/rs-mcp.mjs';
-import {createSpaceFileSyncDestination,pushProjectFiles,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
-import {createLocalFileSyncReceiver} from '../build/local-replica-file-receiver.mjs';
+import {createSpaceFileSyncDestination} from '../build/pds-mcp-file-sync.mjs';
 import {createFolderMcpClient} from '../build/folder-mcp-client.mjs';
 
 const key='0123456789abcdef'.repeat(4),platform='fixture-platform-token.'+'p'.repeat(32);
@@ -105,36 +104,34 @@ test('ambiguous source/provenance does not acknowledge Space queue',async()=>{
  }
 });
 
-test('machine wire preserves file cycles, digest and reconfirmed tombstone against disposable replica receiver',async()=>{
- const dir=mkdtempSync(join(realpathSync(tmpdir()),'ngs-machine-push-')),root=join(dir,'replica'),scope='binari';
- mkdirSync(join(root,scope,'audio'),{recursive:true,mode:0o700});
- const stale='audio/obsolete.wav',target='audio/approved.wav',old=Buffer.from('retained'),content=Buffer.alloc(1024*1024+17,17);
- writeFileSync(join(root,scope,stale),old,{mode:0o600});
- const receiver=createLocalFileSyncReceiver({root,projects:[scope]});
- const seen=[];
- try{
-  const ngs=createSpaceFileSyncDestination({token:key,platformToken:platform,send:hosted(async(name,args)=>{
-   seen.push(name);return receiver.call(name,args);
-  })});
-  let compare=0;
-  const pds=createFolderMcpClient({call:async(name,args)=>{
-   if(name==='npc_folders_compare'){
-    assert.equal(args.scope,scope);assert.equal(args.includeDeleted,true);
-    compare++;
-    return {scope,groups:compare===1?[{folder:'audio',files:[{path:target,sha256:sha(content),size:content.length}]}]:[],
-     deleted:[{path:stale,sha256:sha(old)}]};
-   }
-   assert.equal(name,'npc_folder_file_chunk');
-   assert.equal(args.path,target);assert.equal(args.sha256,sha(content));
-   const b=content.subarray(args.offset,args.offset+1024*1024);
-   return {...args,size:content.length,base64:b.toString('base64'),nextOffset:args.offset+b.length===content.length?null:args.offset+b.length};
-  }});
-  assert.deepEqual(await pushProjectFiles({scope,pds,ngs}),{ok:true,written:1});
-  assert.deepEqual(seen,['ngs_file_sync_begin','ngs_file_sync_file_chunk','ngs_file_sync_file_chunk','ngs_file_sync_remove','ngs_file_sync_finish']);
-  assert.equal(compare,2);assert.deepEqual(readFileSync(join(root,scope,target)),content);
-  const [removed]=readdirSync(join(root,'.deleted-sync'));
-  assert.deepEqual(readFileSync(join(root,'.deleted-sync',removed,'content')),old);
- }finally{receiver.close();rmSync(dir,{recursive:true,force:true});}
+test('whole hosted binary upload binds both existing scoped credentials, no chunk fallback',async()=>{
+ const bytes=Buffer.from('fixture'),path='audio/테스트.wav',syncId='ngs.sync.6f56d34f-62ca-42a7-a173-14700d922865';
+ const calls=[];
+ const upload=createSpaceFileSyncUpload({token:key,platformToken:platform,send:async(url,init)=>{
+  assert.equal(url,new URL('/api/ngs-file-sync-file',SPACE_SITE_MCP_URL).href);
+  assert.equal(init.headers['X-NGS-Machine-Token'],key);
+  assert.equal(init.headers['OAI-Sites-Authorization'],'Bearer '+platform);
+  assert.equal(init.headers['X-NGS-Sync-Id'],syncId);
+  assert.equal(init.headers['X-NGS-File-Path'],Buffer.from(path).toString('base64url'));
+  assert.equal(init.headers['X-NGS-File-Sha256'],sha(bytes));
+  assert.equal(init.headers['Content-Length'],String(bytes.length));
+  assert.equal(init.headers['Content-Type'],'application/octet-stream');
+  assert.equal(init.headers.Origin,undefined);
+  assert.equal(init.redirect,'error');
+  assert.deepEqual(Buffer.from(await new Response(init.body).arrayBuffer()),bytes);
+  calls.push(init.method);
+  return Response.json({ok:true});
+ }});
+ const meta={syncId,path,sha256:sha(bytes),size:bytes.length};
+ assert.deepEqual(await upload(meta,()=>new Response(bytes).body),{ok:true});
+ assert.deepEqual(calls,['POST']);
+ const mcp=createSpaceMachineMcp({token:key,platformToken:platform,send(){assert.fail('raw file must not use RPC');}});
+ await assert.rejects(mcp('ngs_file_sync_file_chunk',{}),/NGS_SPACE_MACHINE_MCP_DENIED/);
+ for(const [status,error,definite] of [[409,'NGS_FILE_SYNC_CONTENT_MISMATCH',true],[503,'NGS_FILE_SYNC_CONTENT_MISMATCH',false],[409,'PRIVATE_DETAIL',false]]){
+  const rejected=createSpaceFileSyncUpload({token:key,platformToken:platform,send:async()=>Response.json({error},{status})});
+  await assert.rejects(rejected(meta,()=>new Response(bytes).body),e=>definite?e.definite===true&&e.message===error:
+   e.definite===undefined&&e.message==='NGS_SPACE_FILE_UPLOAD_UNAVAILABLE');
+ }
 });
 
 test('paired exact Site browser queue + machine transport + genuine official Space RS over loopback', {
@@ -198,16 +195,15 @@ test('genuine PDS MCP → pinned machine HTTP envelope → actual hosted D1/R2 r
  skip:!process.env.NGS_SPACE_QUEUE_OVERLAY||!process.env.NGS_SPACE_FILE_OVERLAY||
   !process.env.NGS_SPACE_TEST_PACKAGE_JSON||!process.env.NGS_EXISTING_PDS_SOURCE,
 },async t=>{
- const {copyFileSync,symlinkSync}=await import('node:fs');
  const {createRequire}=await import('node:module');
  const {spawn}=await import('node:child_process');
  const {once}=await import('node:events');
  const {createInterface}=await import('node:readline');
- const {pathToFileURL,fileURLToPath}=await import('node:url');
+ const {fileURLToPath}=await import('node:url');
  const {loopbackFolderMCP}=await import('../build/folder-mcp-loopback.mjs');
  const root=mkdtempSync(join(realpathSync(tmpdir()),'ngs-space-real-file-')),canonical=join(root,'canonical-files');
  const scope='binari',target='assets/result.bin',physical=join(canonical,scope,target);
- const original=Buffer.alloc(1024*1024+13,37);
+ const original=Buffer.alloc(Math.round(19.2*1024*1024),37);
  mkdirSync(join(canonical,scope,'assets'),{recursive:true,mode:0o700});
  writeFileSync(join(canonical,scope,'project.json'),'{"name":"fixture"}',{mode:0o600});
  writeFileSync(physical,original,{mode:0o600});
@@ -227,27 +223,23 @@ with ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
  const lines=createInterface({input:child.stdout}),[port]=await Promise.race([once(lines,'line'),done.then(()=>{throw Error('PDS fixture exited');})]);
  lines.close();
  const pds=createFolderMcpClient({call:loopbackFolderMCP('http://127.0.0.1:'+port+'/mcp')});
- const queueOverlay=process.env.NGS_SPACE_QUEUE_OVERLAY,fileOverlay=process.env.NGS_SPACE_FILE_OVERLAY;
- mkdirSync(join(root,'build'),{mode:0o700});
- for(const f of ['space-machine-routes.mjs','space-request-queue.mjs'])copyFileSync(join(queueOverlay,'build',f),join(root,'build',f));
- symlinkSync(fileURLToPath(new URL('../../../',import.meta.url)),join(root,'ngs-local'),'dir');
- const {machineResponse}=await import(pathToFileURL(join(root,'build','space-machine-routes.mjs')).href);
- const source=readFileSync(join(fileOverlay,'build','space-file-replica.mjs'),'utf8');
- const core=readFileSync(new URL('../build/object-replica.mjs',import.meta.url),'utf8');
- const {objectReplicaSyncTools:spaceFileSyncTools}=await import('../build/object-replica.mjs');
+ const fileOverlay=process.env.NGS_SPACE_FILE_OVERLAY;
+ const mod=(path,url)=>({type:'ESModule',path,contents:readFileSync(url,'utf8')});
  const {pushSpaceProjectFiles}=await import('../build/pds-mcp-file-sync.mjs');
  const {Miniflare}=createRequire(process.env.NGS_SPACE_TEST_PACKAGE_JSON)('miniflare');
  mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
   modules:[{type:'ESModule',path:'test.mjs',contents:`
-   import {createSpaceFileReplica} from './build/space-file-replica.mjs';
+   import {createSpaceFileReplica,spaceFileSyncTools} from './build/space-file-replica.mjs';
+   import {machineResponse} from './build/space-machine-routes.mjs';
    export default {async fetch(req,env){
     const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
-    const {name,args}=await req.json();
-    try{return Response.json(await replica.call(name,args));}
-    catch(error){return Response.json({code:error.message},{status:error.status??500});}
+    return await machineResponse(req,{db:env.DB,secret:${JSON.stringify(key)},fileReplica:replica,fileTools:spaceFileSyncTools})
+     ?? new Response(null,{status:404});
    }};
-  `},{type:'ESModule',path:'build/space-file-replica.mjs',contents:source},
-     {type:'ESModule',path:'ngs-local/sites/npcgen/build/object-replica.mjs',contents:core}]});
+  `},
+   ...['space-file-replica','space-machine-routes','space-request-queue'].map(name=>mod('build/'+name+'.mjs',join(fileOverlay,'build',name+'.mjs'))),
+   ...['object-replica','replica-whole-file-wire'].map(name=>mod('ngs-local/sites/npcgen/build/'+name+'.mjs',new URL('../build/'+name+'.mjs',import.meta.url))),
+  ]});
  const db=await mini.getD1Database('DB'),bucket=await mini.getR2Bucket('BUCKET');
  const stages=[
   join(fileOverlay,'drizzle','0014_space_file_replica_versions.sql'),
@@ -255,22 +247,24 @@ with ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
  ];
  for(const stage of stages)for(const sql of readFileSync(stage,'utf8').split('--> statement-breakpoint'))if(sql.trim())await db.prepare(sql).run();
  await bucket.put('legacy/untouched','older untouched bytes');
- const fileReplica={async call(name,args){
-  const r=await mini.dispatchFetch('http://fixture.invalid',{method:'POST',body:JSON.stringify({name,args})});
-  const value=await r.json();
-  if(!r.ok)throw Object.assign(Error(value.code),{status:r.status});
-  return value;
- }};
- const ngs=createSpaceFileSyncDestination({token:key,platformToken:platform,send:(url,req)=>machineResponse(new Request(url,req),
-  {secret:key,fileReplica,fileTools:spaceFileSyncTools})});
- assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs}),{ok:true,written:2,failed:0});
+ const wires=[];
+ const send=(url,req)=>{
+  if(new URL(url).pathname==='/api/ngs-file-sync-file')wires.push(Number(req.headers['Content-Length']));
+  return mini.dispatchFetch(url,req);
+ };
+ const ngs=createSpaceFileSyncDestination({token:key,platformToken:platform,send});
+ const upload=createSpaceFileSyncUpload({token:key,platformToken:platform,send});
+ assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs,upload}),{ok:true,written:2,failed:0});
+ assert.equal(wires.length,2);
+ assert.ok(wires.includes(original.length));
  const currentVersion=()=>db.prepare('SELECT object_key FROM ngs_replica_version_v2 WHERE path=? ORDER BY version DESC LIMIT 1').bind(target).first();
  const published=(await currentVersion()).object_key,current=await bucket.get(published);
  assert.deepEqual(Buffer.from(await current.arrayBuffer()),original);
- assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs}),{ok:true,written:0,failed:0});
+ assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs,upload}),{ok:true,written:0,failed:0});
  rmSync(physical); // Only the disposable fixture defines this authoritative removal.
- assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs}),{ok:true,written:0,failed:0});
+ assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs,upload}),{ok:true,written:0,failed:0});
  assert.equal((await currentVersion()).object_key,null);
+ assert.equal(wires.length,2,'no file bodies used for rebroadcast or tombstone');
  const previous=await bucket.get(published);
  assert.deepEqual(Buffer.from(await previous.arrayBuffer()),original);
  assert.equal(await (await bucket.get('legacy/untouched')).text(),'older untouched bytes');
