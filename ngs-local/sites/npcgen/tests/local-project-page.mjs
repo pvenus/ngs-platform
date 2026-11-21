@@ -19,8 +19,10 @@ function fakeHost(origin){
  });
 }
 test('browser auth and exact read-only catalog contract do not depend on legacy PDS configuration',async t=>{
- const root=mkdtempSync(join(realpathSync(tmpdir()),'ngs-project-page-'));
- t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const parent=mkdtempSync(join(realpathSync(tmpdir()),'ngs-project-page-'));
+ const root=join(parent,'projects');
+ mkdirSync(root,{mode:0o700});
+ t.after(()=>rmSync(parent,{recursive:true,force:true}));
  assert.equal(configuration({}).port,5274);
  assert.throws(()=>configuration({NGS_PROJECT_LISTEN_PORT:'0'}),/LOCAL_PROJECT_PORT_INVALID/);
  const origin=await listen(t,createLocalProjectPageServer({root,mcpUrl:'https://invalid.example/mcp',fileSyncMode:'pull'}));
