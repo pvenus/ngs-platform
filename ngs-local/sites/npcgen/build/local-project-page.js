@@ -78,7 +78,7 @@ function render(){
    node.link.removeAttribute('href');
    node.link.setAttribute('aria-disabled','true');
   }else{
-   node.link.setAttribute('href',navigation({projectId:project.projectId}));
+   node.link.setAttribute('href',navigation({projectId:project.projectId,...(project.spaceReplica?{catalogArea:'audio'}:{})}));
    node.link.removeAttribute('aria-disabled');
   }
   node.link.setAttribute('aria-label',project.name+' 프로젝트 열기');
@@ -100,8 +100,8 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const spaceSession=session=>session?.state==='authenticated'&&session.backend==='space'&&
  (exact(session,'backend,readOnly,state')&&session.readOnly===true||
-  exact(session,'backend,contextId,csrfToken,queueEnabled,readOnly,state')&&session.queueEnabled===true&&
-  typeof session.readOnly==='boolean'&&/^space\.[a-f0-9]{64}$/.test(session.contextId)&&/^[a-f0-9]{64}$/.test(session.csrfToken));
+  exact(session,'backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state')&&session.queueEnabled===true&&
+  typeof session.readOnly==='boolean'&&typeof session.requestWritable==='boolean'&&/^space\.[a-f0-9]{64}$/.test(session.contextId)&&/^[a-f0-9]{64}$/.test(session.csrfToken));
 const spaceReadOnly=session=>spaceSession(session)&&session.readOnly;
 function waitForSpaceCatalog(signal){
  return new Promise((resolve,reject)=>{
@@ -159,12 +159,15 @@ async function load(){
   if(spaceSession(session)){
    if(session.queueEnabled===true)enableQueue(signal);
    cards.clear();render();
-   const rows=await readSpaceCatalog(signal,text=>{if(!signal.aborted)status.textContent=text;});
+   const replica=!session.readOnly;
+   const rows=replica?(await sameOrigin('/api/project-folders')).projects:
+    await readSpaceCatalog(signal,text=>{if(!signal.aborted)status.textContent=text;});
    if(signal.aborted)return;
-   for(const row of rows)cards.set(row.projectId,row);
+   if(!Array.isArray(rows))throw Error('SPACE_CATALOG_UNAVAILABLE');
+   for(const row of rows)cards.set(row.projectId,replica?{...row,spaceReplica:true}:row);
    render();
-   status.textContent=rows.length?'':'원본에서 확인된 프로젝트가 없습니다.';
-   return; // Hosted read-through never invokes local compare/apply/discovery.
+   status.textContent=rows.length?'':replica?'Space에서 프로젝트 파일을 기다리는 중입니다.':'원본에서 확인된 프로젝트가 없습니다.';
+   return; // No hosted comparison or file transport from the browser.
   }
   if(session.state==='authenticated')enableQueue(signal);
   const post=(path,body)=>sameOrigin('/api/project-folders/'+path,{method:'POST',headers:{
@@ -323,8 +326,8 @@ async function loadWorkspace(search){
  document.querySelector('#workspace-title').textContent=projectId;
  document.querySelector('#workspace-icon').textContent=projectId.slice(0,2);
  document.querySelector('#area-title').textContent=label;
- nav.replaceChildren(...areas.map(([id,name,active])=>{
-  const available=supported(id,active);
+ const renderNav=filter=>nav.replaceChildren(...areas.map(([id,name,active])=>{
+  const available=supported(id,active)&&filter(id);
   const link=nodeOf(available?'a':'span',available?'':'unavailable-area');
   if(available){link.href=navigation({projectId,catalogArea:id});if(id===tab)link.setAttribute('aria-current','page');}
   else link.setAttribute('aria-disabled','true');
@@ -332,6 +335,7 @@ async function loadWorkspace(search){
   if(!available)link.append(nodeOf('small','','미연결'));
   return link;
  }));
+ renderNav(()=>true);
  items.replaceChildren();
  detail.replaceChildren();
  status.className='meta';status.textContent='';
@@ -467,11 +471,45 @@ async function loadWorkspace(search){
  try{
   note('항목을 읽고 있습니다.');
   const session=await request('/__npcgen_session');
-  if(spaceReadOnly(session)){
+  if(spaceSession(session)){
    if(session.queueEnabled===true)enableQueue(signal);
-   note('Space에서는 현재 프로젝트 목록만 연결되어 있습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.');
-   const home=nodeOf('a','','프로젝트 목록으로 돌아가기');home.href='/';
-   detail.replaceChildren(nodeOf('h3','',label),home);
+   if(spaceReadOnly(session)||tab!=='audio'||projectId!=='binari'){
+    if(!spaceReadOnly(session))renderNav(id=>id==='audio');
+    note(spaceReadOnly(session)?'Space에서는 현재 프로젝트 목록만 연결되어 있습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.':
+     '이 메뉴는 아직 Space에 연결되지 않았습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.');
+    const home=nodeOf('a','','프로젝트 목록으로 돌아가기');home.href='/';
+    detail.replaceChildren(nodeOf('h3','',label),home);
+    return;
+   }
+   renderNav(id=>id==='audio');
+   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
+   const jsonPost=body=>({method:'POST',headers:{
+    'Content-Type':'application/json','X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId,
+   },body:JSON.stringify(body)});
+   const submit=async command=>{
+    const response=await submitQueuedRequest(command,{jsonPost,signal});
+    if(response.status===202&&isQueuedRequest(response,await response.clone().json().catch(()=>null)))void queueRefresh();
+    return response;
+   };
+   const library=mountAudioWorkspace({items,detail,signal,...(session.requestWritable?{submit,
+    loadConcepts:async()=>(await request('/api/space/audio-concepts')).concepts}:{})});
+   const viewOptions=session.requestWritable?{submitDelete:submit}:undefined;
+   showAudioResults(library,null,signal,viewOptions);
+   let busy=false;
+   async function readReplica(){
+    if(busy||signal.aborted)return;
+    busy=true;
+    try{
+     const data=await request('/api/audio-workspace?projectId=binari');
+     if(!signal.aborted){showAudioResults(library,data.results,signal,viewOptions);note('');}
+    }catch{note('Space에서 게시된 BGM 목록을 읽지 못했습니다.',true);}
+    finally{busy=false;}
+   }
+   await readReplica();
+   if(!signal.aborted){
+    const timer=setInterval(readReplica,60_000);
+    signal.addEventListener('abort',()=>clearInterval(timer),{once:true});
+   }
    return;
   }
   // This is a local metadata read, not a project-root comparison.

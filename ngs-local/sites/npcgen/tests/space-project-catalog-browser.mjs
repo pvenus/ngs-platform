@@ -25,6 +25,7 @@ function browser(handler,search=''){
  const calls=[];
  const context={document:{querySelector:node,documentElement:{dataset:{audioWorkspace:'enabled'}},createElement:()=>dom(),
   createElementNS:()=>dom()},location:{search},window:{addEventListener(){}},Intl,URLSearchParams,AbortController,AbortSignal,
+  mountAudioWorkspace:()=>dom(),showAudioResults:()=>{},setInterval:()=>42,clearInterval(){},
   setTimeout:(fn,ms)=>setTimeout(fn,ms===2000?ms:0),clearTimeout,fetch:async(url,opts)=>{
    calls.push([url,opts.method??'GET',opts.body,opts.headers]);
    return handler(url,opts,calls.length,node);
@@ -94,4 +95,27 @@ test('authenticated local queue displays pending rows on demand, then removes ac
  assert.match(panel.querySelector('p').textContent,/대기 중인 요청이 없습니다/);
  assert.deepEqual(panel.querySelector('ul').children,[]);
  panel.open=false;panel.fire('toggle');
+});
+
+const readyReplica={state:'authenticated',backend:'space',readOnly:false,queueEnabled:true,requestWritable:false,
+ contextId:'space.'+'a'.repeat(64),csrfToken:'b'.repeat(64)};
+test('Space replica reads its own project and BGM lists without legacy compare or apply',async()=>{
+ const app=browser(url=>{
+  if(url==='/__npcgen_session')return Response.json(readyReplica);
+  if(url==='/api/project-folders')return Response.json({projects:[project]});
+  if(url==='/api/audio-workspace?projectId=binari')return Response.json({results:[]});
+  throw Error('unexpected '+url);
+ });
+ await app.context.load();
+ assert.deepEqual(app.calls.map(([url,method])=>[url,method]),[
+  ['/__npcgen_session','GET'],['/api/project-folders','GET'],
+ ]);
+ assert.equal(app.node('#projects').children[0].children[0].attrs.href,'/?projectId=binari&catalogArea=audio');
+ await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=audio'));
+ assert.deepEqual(app.calls.slice(2).map(([url,method])=>[url,method]),[
+  ['/__npcgen_session','GET'],['/api/project-folders','GET'],['/api/audio-workspace?projectId=binari','GET'],
+ ]);
+ assert.equal(app.node('#workspace-status').textContent,'');
+ await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=npcs'));
+ assert.match(app.node('#workspace-status').textContent,/아직 Space에 연결되지 않았습니다/);
 });
