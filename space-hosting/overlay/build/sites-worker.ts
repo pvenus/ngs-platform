@@ -3,8 +3,10 @@ import { sharedNgsResponse } from "./shared-ngs-assets";
 import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catalog.mjs";
 import { appProject, siteAppMaster } from "../lib/app-master";
 import { masterPrincipal } from "../lib/master-concept-transport";
+import { spaceReplicaView } from "./space-replica-view.mjs";
+import { PromptService } from "../lib/prompt-service";
 import { createSpaceFileReplica, spaceFileSyncTools } from "./space-file-replica.mjs";
-import { browserQueueResponse, machineResponse } from "./space-machine-routes.mjs";
+import { browserQueueResponse, machineResponse, machineTokenConfigured } from "./space-machine-routes.mjs";
 import { rejectCleanSpaceRequest } from "./clean-space-guard.mjs";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
@@ -19,13 +21,25 @@ export default {
       return grant.project_id === "binari" && grant.revoked === 0;
     };
     const fileReplica = db && env.BUCKET ? createSpaceFileReplica({db,bucket:env.BUCKET}) : undefined;
+    const replicaReads = env.NPCGEN_SPACE_REPLICA_READ_ENABLED === "1" && !!fileReplica && machineTokenConfigured(secret);
     const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools});
     if (machine) return machine;
-    const browserQueue = await browserQueueResponse(request,{db,secret,authorize,authorizeWrite:async user=>{
+    const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,authorizeWrite:async user=>{
       try { const grant=await masterPrincipal(user); return grant.role==="owner" && grant.projectId==="binari"; }
       catch { return false; }
     }});
     if (browserQueue) return browserQueue;
+    if (replicaReads) {
+      const view = await spaceReplicaView(request,fileReplica,{authorize:async (user,projectId)=>{
+        if (projectId !== "binari" || !await authorize(user)) return false;
+        if (new URL(request.url).pathname === "/api/space/audio-concepts") {
+          try { await new PromptService(db!,user.userId,undefined,siteAppMaster(user)).resourcePolicy("binari","concept"); }
+          catch { return false; }
+        }
+        return true;
+      }});
+      if (view) return view;
+    }
     const shared = sharedNgsResponse(request, {catalogRelay:true});
     if (shared) return shared;
     const catalog = await projectCatalogResponse(request, db, {authorize});

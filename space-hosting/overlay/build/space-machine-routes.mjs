@@ -1,5 +1,6 @@
 /** Explicit Site routes for one project. Native visitors and Mac relay have separate identities. */
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
+export const machineTokenConfigured=validMachineToken;
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
 const maxRpc=4*Math.ceil(1024*1024/3)+32*1024,small=32*1024;
 const privateHeaders={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin'};
