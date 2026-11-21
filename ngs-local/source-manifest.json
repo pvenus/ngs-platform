@@ -55,6 +55,7 @@
     "sites/npcgen/tests/local-request-queue-e2e.mjs": "f8adda52b785fe6b2f30f57f24ed179d6b173f6817b650ef5a498cd84de8d7ac",
     "sites/npcgen/tests/local-request-queue.mjs": "c9d83f228f468d5576ce0c28a0315cfb3cb07e95db28b7f63f7a8972de1f7795",
     "sites/npcgen/tests/local-request-submission.mjs": "f0bc4908c7b5177299dcd744644c694ed08076da5e833f532cffc2d66c8f6555",
+    "sites/npcgen/tests/local-seaweedfs-object-replica.mjs": "fb314a062a2f15ef5eb4e3d1a979b224dcb5f9f34cb8a6c9db137a49ab8db679",
     "sites/npcgen/tests/pds-mcp-file-sync.mjs": "8da77351fd9f57e4f2d9537a1f589c1390e5a2aaac5cbeb4fc3f13b319b1f408",
     "sites/npcgen/tests/pds-ngs-push-e2e.mjs": "50a5cfc2a7b06b550279d428d9d1a59bd31ef3b131b6c1b0447968450f4a7434",
     "sites/npcgen/tests/replica-sqlite.mjs": "e8e6b91d2b0b7d6c66628228b86105bcbe300f17b27b5916f3deebaef400ddf4",
