@@ -5,6 +5,9 @@
   "engines": {
     "node": ">=24"
   },
+  "optionalDependencies": {
+    "@aws-sdk/client-s3": "3.1173.0"
+  },
   "scripts": {
     "start": "node sites/npcgen/build/local-project-page-server.mjs",
     "test": "node --test sites/npcgen/tests/*.mjs"
