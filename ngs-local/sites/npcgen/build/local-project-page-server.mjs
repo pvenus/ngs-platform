@@ -1,4 +1,4 @@
-/** Project-only local launcher. No Vite, operational runtime, SQLite, or worker service. */
+/** NGS browser app: serve the local replica and enqueue validated requests. */
 import {readFileSync,lstatSync,mkdirSync,realpathSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {homedir} from 'node:os';
@@ -8,18 +8,15 @@ import {projectPermission} from './auth-core.mjs';
 import {assertLoopbackRequest,createLoopbackAuth} from './loopback-auth.mjs';
 import {createLocalProjectFolders,validProjectId} from './local-project-folders.mjs';
 import {localProjectFolderRoute,projectFolderRoutes} from './local-project-folder-route.mjs';
-import {createRecursiveFolderSync,validFolderPath} from './local-recursive-folders.mjs';
-import {createFolderMcpClient} from './folder-mcp-client.mjs';
-import {DEFAULT_PROJECT_FOLDER_MCP_URL,loopbackFolderMCP} from './folder-mcp-loopback.mjs';
+import {validFolderPath} from './local-recursive-folders.mjs';
 import {localProjectWorkspace} from './local-project-workspace.mjs';
-import {isOptionalNpcMediaScope,localNpcWorkspace} from './local-npc-workspace.mjs';
+import {localNpcWorkspace} from './local-npc-workspace.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
 import {openLocalRequestQueue} from './local-request-queue.mjs';
 import {conceptCategoryRequestType,validConceptCategoryRequest} from './local-concept-category-contract.mjs';
 import {npcPlanningAddType,npcPlanningRequestType,validNpcPlanningAdd,validNpcPlanningUpdate} from './local-npc-planning-ui.mjs';
 import {audioResponseRange,localAudioResults} from './local-audio-results.mjs';
 import {validLocalAudioPayload} from './local-audio-workspace.mjs';
-import {startOpsHealthReport} from './local-ops-health-report.mjs';
 
 const canonicalPolicy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const assets=new Map([
@@ -82,31 +79,21 @@ export function configuration(env=process.env){
  if(!Number.isInteger(port)||port<1||port>65535)throw failure('LOCAL_PROJECT_PORT_INVALID',503);
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
- const fileSyncMode=env.NGS_FILE_SYNC_MODE??'pull';
- if(!['pull','push'].includes(fileSyncMode))throw failure('NGS_FILE_SYNC_MODE_INVALID',503);
- return {port,root,fileSyncMode,mcpUrl:env.NGS_PROJECT_OPS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,
-  requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
+ return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
 }
 
-export function createLocalProjectPageServer({root,mcpUrl,requestQueueDb,requestQueue,audioWorkspaceEnabled=false,brandMarkPath,fileSyncMode='pull'}){
- const pushReplica=fileSyncMode==='push';
- if(!pushReplica&&fileSyncMode!=='pull')throw failure('NGS_FILE_SYNC_MODE_INVALID',503);
- const pds=pushReplica?null:createFolderMcpClient({call:loopbackFolderMCP(mcpUrl)});
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,audioWorkspaceEnabled=false,brandMarkPath}){
  const projects=approvedProjectReads();
  prepareFreshParent(root);
- const projectCatalog=createLocalProjectFolders({root,pds,diskFreshness:false});
- const recursive=pushReplica?{
-  // Keep existing browser contracts without letting the UI initiate a second writer.
-  compareInner:async scope=>({scope,groups:[],unavailable:[]}),
-  applyInner:async()=>{throw failure('NGS_FILE_SYNC_PUSH_OWNED',409);},
- }:createRecursiveFolderSync({root,pds,projectCatalog,readableProjects:projects.map(project=>project.id)});
- const listLocal=allowed=>projectCatalog.list(allowed).map(project=>({...project,needsRefresh:false}));
- const catalog=pushReplica?{...projectCatalog,list:listLocal,
-  discover:async()=>listLocal(()=>true).map(project=>project.projectId),
+ const projectCatalog=createLocalProjectFolders({root});
+ // Preserve the established browser paths, but only the separate receiver
+ // may mutate content. Discovery, list, icon and workspace use local files.
+ const catalog={...projectCatalog,
+  discover:async()=>projectCatalog.list(()=>true).map(project=>project.projectId),
   compare:async()=>({groups:[],unavailable:[]}),
   refresh:async()=>{throw failure('NGS_FILE_SYNC_PUSH_OWNED',409);},
- }:{...projectCatalog,compare:recursive.compareTop,refresh:recursive.applyTop,list:recursive.list,refreshes:recursive.refreshes};
+ };
  const auth=createLoopbackAuth({loadReadProjects:()=>projects});
  const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
  const queue=requestQueue??ownedQueue;
@@ -271,13 +258,8 @@ export function createLocalProjectPageServer({root,mcpUrl,requestQueueDb,request
      }
      const projectId=input.scope.split('/')[0];
      projectPermission(session.principal,projectId,undefined,false);
-     let result;
-     try{
-      result=compare?await recursive.compareInner(input.scope):await recursive.applyInner(input.scope,input.folder);
-     }catch(error){
-      if(!compare||error.status!==404||error.message!=='FOLDER_SCOPE_NOT_FOUND'||!isOptionalNpcMediaScope(input.scope))throw error;
-      result={scope:input.scope,groups:[],unavailable:[]};
-     }
+     if(!compare)throw failure('NGS_FILE_SYNC_PUSH_OWNED',409);
+     const result={scope:input.scope,groups:[],unavailable:[]};
      const latest=auth.read(req);
      if(latest?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
      projectPermission(latest.principal,projectId,undefined,false);
@@ -301,8 +283,6 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   server.on('error',()=>{console.error('LOCAL_PROJECT_PAGE_LISTEN_FAILED');process.exitCode=1;});
   server.listen(config.port,'127.0.0.1',()=>{
    console.log('LOCAL_PROJECT_PAGE_READY http://127.0.0.1:'+config.port);
-   const reporter=startOpsHealthReport();
-   server.once('close',reporter.stop);
   });
   for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>server.close());
  }catch{

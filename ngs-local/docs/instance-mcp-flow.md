@@ -3,7 +3,8 @@
 The original Request Service and Project Data Service are unchanged. The NGS
 browser uses its own NGS instance and does not connect to either one directly.
 The independent rs-mcp and pds-mcp watch processes send their own heartbeat
-to OPS every 60 seconds. On the Mac, 5274 is the NGS browser service, 5275 is the NGS local queue MCP,
+to OPS every 60 seconds. The NGS browser does not send a separate heartbeat.
+On the Mac, 5274 is the NGS browser service, 5275 is the NGS local queue MCP,
 and 8770 remains the existing RS MCP. These are loopback-only endpoints.
 
 ## Request handoff (implemented and verified on isolated local fixtures)
@@ -24,7 +25,7 @@ and 8770 remains the existing RS MCP. These are loopback-only endpoints.
 The first handoff receipt means RS persisted the request, not that content
 generation is complete. Space is intentionally not part of the first rollout.
 
-## File synchronization (local development; not enabled in production)
+## File synchronization (local NGS push)
 
 - pds-mcp is the sender. It walks the PDS canonical folders project by project
   and sends only changed files to the destination's NGS MCP. Both NGS instances
@@ -53,13 +54,13 @@ NGS_FILE_SYNC_PROJECTS=binari \
 node ngs-local/sites/npcgen/build/pds-mcp-file-sync.mjs --watch
 ```
 
-Set `NGS_FILE_SYNC_MODE=push` for the browser and receiver, set
-`NGS_FILE_SYNC_PROJECTS=binari` for the receiver, and give them the same
+Set `NGS_FILE_SYNC_MODE=push` and `NGS_FILE_SYNC_PROJECTS=binari` for the
+receiver, and give the browser and receiver the same
 `NGS_PROJECT_CATALOG_ROOT` (an existing private replica). Use a separate
-fixture queue DB and `NGS_REQUEST_QUEUE_MCP_PORT=15275` for the receiver.
-In push mode the browser reads only that replica. Legacy compare routes return
-no work and refresh/write routes reject. Do not point the receiver at a replica still written by the
-legacy browser pull mode. Publishing is atomic per file, not per project.
+fixture queue DB and `NGS_REQUEST_QUEUE_MCP_PORT=15275` when testing the receiver.
+The browser reads only that replica and has no PDS pull mode or official RS
+client. Legacy browser compare routes return no work and refresh/write routes
+reject. Publishing is atomic per file, not per project.
 For an active project, remove a stale replica file only when PDS explicitly
 reports it absent and reconfirms the exact path and prior replica hash. NGS
 then checks that its current file still has that hash and moves it out of the

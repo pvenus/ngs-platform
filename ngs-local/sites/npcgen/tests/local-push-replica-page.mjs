@@ -6,14 +6,14 @@ import {join} from 'node:path';
 import {configuration,createLocalProjectPageServer} from '../build/local-project-page-server.mjs';
 
 test('push-owned browser replica reads local files and cannot start legacy PDS compare or write',async()=>{
- assert.equal(configuration({}).fileSyncMode,'pull');
- assert.throws(()=>configuration({NGS_FILE_SYNC_MODE:'bad'}),/NGS_FILE_SYNC_MODE_INVALID/);
+ assert.deepEqual(configuration({NGS_FILE_SYNC_MODE:'pull',NGS_PROJECT_OPS_MCP_URL:'not-a-pds-url'}),
+  configuration({}));
  const temp=mkdtempSync(join(realpathSync(tmpdir()),'ngs-push-page-')),root=join(temp,'replica');
  mkdirSync(root,{mode:0o700});
  mkdirSync(join(root,'binari'),{mode:0o700});
  writeFileSync(join(root,'binari','project.json'),JSON.stringify({projectId:'binari',name:'로컬 비나리'}),{mode:0o600});
  // An invalid PDS URL makes the fixture fail immediately if the browser creates a legacy adapter.
- const server=createLocalProjectPageServer({root,mcpUrl:'not-a-pds-url',fileSyncMode:'push'});
+ const server=createLocalProjectPageServer({root,mcpUrl:'not-a-pds-url',fileSyncMode:'pull'});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  try{
   const base='http://127.0.0.1:'+server.address().port,session=await fetch(base+'/__npcgen_session');
