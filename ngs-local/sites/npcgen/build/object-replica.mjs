@@ -58,7 +58,8 @@ function headerCheck(path,first){
  * for native multipart, never a whole-file buffering step.
  */
 export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.randomUUID(),
- fixedLengthStream=()=>new TransformStream(),namespace=defaultNamespace}={}){
+ fixedLengthStream=()=>new TransformStream(),
+ writePart=(upload,part,body)=>upload.uploadPart(part,body),namespace=defaultNamespace}={}){
  if(typeof namespace!=='string'||!/^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){1,8}$/u.test(namespace))unavailable();
  const legacy=namespace+'files/',stage=namespace+'v2/stage/',versions=namespace+'v2/objects/';
  const pathOK=p=>typeof p==='string'&&p.isWellFormed()&&encoder.encode(legacy+p).length<=1024&&p.split('/').length<=64&&
@@ -201,7 +202,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
    }catch(e){controller.error(e);}
   }});
   const multipart=bucket.resumeMultipartUpload(objectKey(f.attempt),f.upload_id);
-  const [part]=await Promise.all([multipart.uploadPart(partNumber,fixed.readable),source.pipeTo(fixed.writable)]);
+  const [part]=await Promise.all([writePart(multipart,partNumber,fixed.readable,end-start),source.pipeTo(fixed.writable)]);
   return part;
  }
  async function stageCleanup(f){
