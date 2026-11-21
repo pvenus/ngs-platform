@@ -101,9 +101,11 @@ export class SpaceRequestQueue{
   need(row&&(!row.expires_ms||row.expires_ms>this.now()),404,'SPACE_QUEUE_NOT_FOUND');
   return row.official_id?{queueId:id,status:'registered',receipt:{officialRequestId:row.official_id,status:'registered'}}:queued(id);
  }
- decode(row){
+ async decode(row){
   const result={queueId:row.queue_id,idempotencyKey:row.queue_id,requestType:row.request_type,payload:JSON.parse(row.payload)};
   need(validQueueId(row.queue_id)&&commandOK({idempotencyKey:result.idempotencyKey,requestType:result.requestType,payload:result.payload}),
+   503,'SPACE_QUEUE_UNAVAILABLE');
+  need(canonical(result.payload)===row.payload&&await hash(canonical([result.requestType,result.payload]))===row.digest,
    503,'SPACE_QUEUE_UNAVAILABLE');
   return result;
  }
@@ -113,13 +115,13 @@ export class SpaceRequestQueue{
   need(Number.isInteger(limit)&&limit>=1&&limit<=maxList&&
    (cursor===undefined||typeof cursor==='string'&&cursorPattern.test(cursor)&&Number.isSafeInteger(Number(cursor.slice(3)))));
   await this.ready();
-  const {results}=await this.db.prepare(`SELECT seq,queue_id,request_type,payload FROM ${table} WHERE official_id IS NULL AND seq>? ORDER BY seq LIMIT ?`)
+  const {results}=await this.db.prepare(`SELECT seq,queue_id,request_type,payload,digest FROM ${table} WHERE official_id IS NULL AND seq>? ORDER BY seq LIMIT ?`)
    .bind(cursor===undefined?0:Number(cursor.slice(3)),limit).all();
-  return {requests:results.map(r=>this.decode(r)),...(results.length===limit?{nextCursor:'q1.'+results.at(-1).seq}:{})};
+  return {requests:await Promise.all(results.map(r=>this.decode(r))),...(results.length===limit?{nextCursor:'q1.'+results.at(-1).seq}:{})};
  }
  async get(args){
   need(exact(args,['queueId'])&&validQueueId(args.queueId));await this.ready();
-  const row=await this.db.prepare(`SELECT queue_id,request_type,payload FROM ${table} WHERE queue_id=? AND official_id IS NULL`).bind(args.queueId).first();
+  const row=await this.db.prepare(`SELECT queue_id,request_type,payload,digest FROM ${table} WHERE queue_id=? AND official_id IS NULL`).bind(args.queueId).first();
   need(row,404,'SPACE_QUEUE_NOT_FOUND');return this.decode(row);
  }
  async ack(args){
