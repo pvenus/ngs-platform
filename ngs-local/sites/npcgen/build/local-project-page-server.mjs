@@ -97,15 +97,13 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
  const auth=createLoopbackAuth({loadReadProjects:()=>projects});
  const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
  const queue=requestQueue??ownedQueue;
- function allowedCombat(preset){
+ async function allowedCombat(preset){
   if(preset==='walk'||preset==='run')return false;
   const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',item:preset});
-  const read=()=>localProjectWorkspace({root,query,authorize:()=>{}}).json;
-  const items=read(),metadata=items?.files?.find(file=>file.kind==='json');
-  if(!metadata||items.files.filter(file=>file.kind==='video').length!==8)return false;
-  query.set('file',metadata.path);
-  const motion=read();
-  return motion?.posePreset==='combat'&&new Set(motion.directions.map(row=>row.direction)).size===8;
+  const {json:items}=await localProjectWorkspace({root,query,authorize:()=>{}});
+  const motion=items?.motionPreset;
+  return motion?.posePreset==='combat'&&motion.directions.filter(row=>row.path).length===8&&
+   new Set(motion.directions.map(row=>row.direction)).size===8;
  }
  const sourceAssets=new Map([...assets].map(([url,[type,path]])=>[url,{type,body:readFileSync(path)}]));
  sourceAssets.set('/assets/vinus-mark.png',{type:'image/png',body:brandMark(brandMarkPath)});
@@ -165,7 +163,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
     if(command.requestType==='npc.workflow'){
      const {character,includeCombat,combatMotionPresets}=command.payload;
      if(includeCombat===true&&(!Array.isArray(combatMotionPresets)||combatMotionPresets.length<1||combatMotionPresets.length>16||
-       !combatMotionPresets.every(preset=>{try{return allowedCombat(preset);}catch{return false;}}))){
+       !((await Promise.all(combatMotionPresets.map(preset=>allowedCombat(preset).catch(()=>false)))).every(Boolean)))){
       throw failure('ONE_STOP_COMBAT_PRESETS_REQUIRED',400);
      }
      const replace=command.payload.schemaVersion==='ngs.npc-one-stop.replace.v1';
