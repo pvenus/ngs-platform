@@ -11,3 +11,10 @@ python3 -B -m unittest discover -s tools/release -p 'test_prepare_ngs_release.py
 npm --prefix ngs-local test
 node --test --test-concurrency=1 \
   space-hosting/overlay/tests/{space-npc-workspace,space-npc-shared-cache,space-npc-media-cache,space-file-replica}.mjs
+
+# Machine queue imports the Local wire contracts from the deployed overlay layout.
+hosted_queue="$(mktemp -d)"
+trap 'rm -rf "$hosted_queue"' EXIT
+cp -R space-hosting/overlay/. "$hosted_queue/"
+ln -s "$PWD/ngs-local" "$hosted_queue/ngs-local"
+node --test "$hosted_queue/tests/space-machine-queue.mjs"
