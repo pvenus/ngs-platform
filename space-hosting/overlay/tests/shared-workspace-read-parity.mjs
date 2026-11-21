@@ -32,21 +32,21 @@ function fixture(t){
   directions:[{direction:'n',assetId:mediaName,sha256:mediaName.slice(0,64)}]});
  add('motion-presets/assets/'+mediaName,Buffer.from('1234ftyp...'));
  add('audio/'+official+'/metadata.json',{private:'not visible from any workspace tab'});
- const metric={list:0,head:0,get:0};
+ const metric={list:0,head:0,get:0},prefixes=[];
  const space={
-  async list(){metric.list++;return [...files].map(([path,x])=>({path,sha256:hash(x)}));},
+  async list(prefix=''){metric.list++;prefixes.push(prefix);return [...files].filter(([p])=>!prefix||p.startsWith(prefix+'/')).map(([path,x])=>({path,sha256:hash(x)}));},
   async head(path){metric.head++;const x=files.get(path);return x?{size:x.length,etag:hash(x),customMetadata:{sha256:hash(x)}}:null;},
   async get(path,{onlyIf}){metric.get++;const x=files.get(path);return x&&onlyIf.etagMatches===hash(x)?{
    size:x.length,etag:hash(x),customMetadata:{sha256:hash(x)},arrayBuffer:async()=>new Uint8Array(x).buffer,
   }:null;},
  };
- return {root,space,metric,asset:'npcs/da/assets/'+name,clip:'motion-presets/assets/'+mediaName};
+ return {root,space,metric,prefixes,asset:'npcs/da/assets/'+name,clip:'motion-presets/assets/'+mediaName};
 }
 const request=(query,auth=true)=>new Request('https://fixture.invalid/api/project-workspace?'+query,{headers:auth?{
  'oai-authenticated-user-id':'fixture','oai-authenticated-user-email':'fixture@example.invalid',
 }:{}});
 test('all project tabs and authorized files use identical DTOs from disk and hosted replica',async t=>{
- const {root,space,asset,clip}=fixture(t);
+ const {root,space,asset,clip,prefixes}=fixture(t);
  for(const query of [
   'tab=concept','tab=concept&item=tone','tab=concept&item=tone&file=concept/sections/tone/content.md','tab=npcs',
   'tab=npcs&item=da','tab=npcs&item=da&file='+asset,'tab=motion-presets','tab=motion-presets&item=walk',
@@ -64,6 +64,8 @@ test('all project tabs and authorized files use identical DTOs from disk and hos
  const local=openLocalWorkspaceProject(root,'binari'),remote=openSpaceWorkspaceProject(space,'binari');
  const a=(await local.listFiles('npcs')).map(x=>x.path).sort(),b=(await remote.listFiles('npcs')).map(x=>x.path).sort();
  assert.deepEqual(a,b);
+ assert.ok(prefixes.includes('npcs'));assert.ok(prefixes.includes('motion-presets/presets'));
+ assert.ok(prefixes.every(Boolean),'detail views must not enumerate the whole project');
 });
 test('ungranted visitors cannot run storage reads, and files outside selected assets stay hidden',async t=>{
  const {space,metric}=fixture(t);

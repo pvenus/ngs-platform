@@ -21,7 +21,7 @@ const mini=new Miniflare({
     const item=await replica.get(args.path,args.options);
     return item?new Response(item.body):new Response(null,{status:404});
    }
-   const result=method==='list'?await replica.list():await replica.call(method,args);
+   const result=method==='list'?await replica.list(args?.prefix):await replica.call(method,args);
    return Response.json(result);
   }catch(e){return Response.json({message:e.message},{status:e.status??500});}
  }};
@@ -64,6 +64,10 @@ try{
  assert.deepEqual(await rpc('finish',{syncId:a.syncId}),{ok:true,written:1});
  const b=await rpc('begin',{scope:'binari'});
  assert.deepEqual(b.files,[{path:p,sha256:sha},{path:'assets/unrelated.bin',sha256:digest(unrelated)}]);
+ assert.deepEqual(await (await send('list',{prefix:'missing'})).json(),[]);
+ assert.deepEqual(await (await send('list',{prefix:'assets'})).json(),b.files);
+ assert.equal((await send('list',{prefix:'assets/..'})).status,400);
+
  assert.deepEqual(await rpc('file_chunk',envelope(b,p,data)),{nextOffset:part});
  assert.deepEqual(await rpc('file_chunk',envelope(b,p,data,part)),{nextOffset:null});
  assert.deepEqual(await rpc('finish',{syncId:b.syncId}),{ok:true,written:0});

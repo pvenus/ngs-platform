@@ -1,5 +1,5 @@
 type Storage = {
- list():Promise<{path:string;sha256:string}[]>;
+ list(prefix?:string):Promise<{path:string;sha256:string}[]>;
  head(path:string):Promise<R2Object|null>;
  get(path:string,options?:R2GetOptions):Promise<R2ObjectBody|null>;
 };

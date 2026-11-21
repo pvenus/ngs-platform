@@ -11,16 +11,17 @@ function checkedMeta(object,max=Number.MAX_SAFE_INTEGER){
 export function openSpaceWorkspaceProject(replica,id){
  if(id!=='binari')return null;
  if(!replica)throw replicaUnavailable();
- let inventory;
- function listFiles(prefix){
+ const inventories=new Map();
+ function listFiles(prefix=''){
   if(prefix&&!validWorkspacePath(prefix))throw replicaUnavailable();
-  inventory??=Promise.resolve().then(()=>replica.list()).then(rows=>{
+  if(!inventories.has(prefix))inventories.set(prefix,Promise.resolve().then(()=>replica.list(prefix)).then(rows=>{
    if(!Array.isArray(rows)||rows.length>32768||rows.some(row=>!validWorkspacePath(row?.path)||!digest(row?.sha256)))
     throw replicaUnavailable();
-   if(new Set(rows.map(row=>row.path)).size!==rows.length)throw replicaUnavailable();
+   if(new Set(rows.map(row=>row.path)).size!==rows.length||prefix&&rows.some(row=>!row.path.startsWith(prefix+'/')))
+    throw replicaUnavailable();
    return rows;
-  });
-  return inventory.then(rows=>prefix?rows.filter(row=>row.path.startsWith(prefix+'/')):rows);
+  }));
+  return inventories.get(prefix);
  }
  async function head(path){
   if(!validWorkspacePath(path))throw replicaUnavailable();

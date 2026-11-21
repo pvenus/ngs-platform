@@ -95,14 +95,19 @@ export function createSpaceFileReplica({db,bucket,now=Date.now,uuid=()=>crypto.r
   if(item&&!item.body)stale();
   return item;
  }
- async function list(){
-  ready();let cursor;
+ async function list(scope=''){
+  ready();
+  if(scope!==''&&!pathOK(scope))need(false);
+  // Browser adapters may request one folder prefix. The machine begin
+  // contract still calls list() with no filter and sees the full inventory.
+  const subtree=scope?scope+'/':'',high=scope?scope+'0':'';
+  let cursor;
   const files=new Map();
   do{
-   const page=await bucket.list({prefix:legacy,limit:1000,include:['customMetadata'],cursor});
+   const page=await bucket.list({prefix:legacy+subtree,limit:1000,include:['customMetadata'],cursor});
    for(const item of page.objects){
     const path=item.key.slice(legacy.length);
-    if(!item.key.startsWith(legacy)||!pathOK(path))unavailable();
+    if(!item.key.startsWith(legacy+subtree)||!pathOK(path))unavailable();
     verifiedMeta(item);
     if(item.customMetadata.removed!=='1')files.set(path,item.customMetadata.sha256);
    }
@@ -110,11 +115,12 @@ export function createSpaceFileReplica({db,bucket,now=Date.now,uuid=()=>crypto.r
    if(!page.cursor||cursor===page.cursor)unavailable();cursor=page.cursor;
   }while(true);
   const published=await all(`SELECT v.path,v.sha256,v.object_key FROM ${entries} v
-   JOIN (SELECT path,MAX(version) AS newest FROM ${entries} GROUP BY path) x ON v.version=x.newest
-   LIMIT ${maxPaths+1}`);
+   JOIN (SELECT path,MAX(version) AS newest FROM ${entries} ${scope?'WHERE path>=? AND path<?':''} GROUP BY path) x
+    ON v.path=x.path AND v.version=x.newest
+   LIMIT ${maxPaths+1}`,...(scope?[subtree,high]:[]));
   if(published.length>maxPaths)unavailable();
   for(const row of published){
-   if(!pathOK(row.path)||!hash(row.sha256))unavailable();
+   if(!pathOK(row.path)||!row.path.startsWith(subtree)||!hash(row.sha256))unavailable();
    if(row.object_key)files.set(row.path,row.sha256);else files.delete(row.path);
   }
   let bytes=2;
