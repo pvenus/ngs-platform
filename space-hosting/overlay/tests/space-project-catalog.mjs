@@ -83,3 +83,29 @@ test('at most 16 unexpired requests are relayed and old metadata cannot be retur
  await assert.rejects(relay.get('first',requestId),/EXPIRED/);
  await assert.rejects(relay.settle(requestId,listing),/EXPIRED/);
 });
+
+test('actual broker protocol discovery reaches exact catalog tools, but negotiation never invokes owner or DB',async t=>{
+ const protocol='2026-07-28';
+ const sends=(method,params,extra={})=>new Request(origin+'/mcp',{method:'POST',headers:{...auth,
+  'Content-Type':'application/json','Accept':'application/json, text/event-stream','mcp-method':method,
+  'mcp-protocol-version':protocol,...extra},body:JSON.stringify({jsonrpc:'2.0',id:11,method,params})});
+ let owners=0;
+ const {db,sql,migrate}=dbFixture(t);
+ const opt={catalogCall:(req,m)=>projectCatalogMcp(req,m,db,{authorizeOwner:async()=>{owners++;return true;}})};
+ const discovery={clientInfo:{name:'fixture broker',version:'1'},supportedVersions:[protocol],_meta:{fixture:true}};
+ let r=await rejectCleanSpaceRequest(sends('server/discover',discovery),opt);
+ assert.equal(r.status,200);assert.deepEqual(await r.json(),{jsonrpc:'2.0',id:11,result:{supportedVersions:[protocol],capabilities:{tools:{}}}});
+ r=await rejectCleanSpaceRequest(sends('server/discover',[]),opt);assert.equal(r.status,400);
+ r=await rejectCleanSpaceRequest(sends('server/discover',discovery,{Origin:'https://other.example'}),opt);assert.equal(r.status,403);
+ r=await rejectCleanSpaceRequest(sends('server/discover',discovery,{'oai-authenticated-user-id':''}),opt);assert.equal(r.status,401);
+ r=await rejectCleanSpaceRequest(sends('initialize',{protocolVersion:'2024-11-05',clientInfo:{name:'legacy',version:'1'},capabilities:{}}),opt);
+ assert.equal((await r.json()).result.protocolVersion,'2024-11-05');
+ r=await rejectCleanSpaceRequest(sends('tools/list',{_meta:{fixture:true}}),opt);
+ assert.deepEqual((await r.json()).result.tools.map(x=>x.name),['npc_mirror_dispatch']);
+ assert.equal(owners,0);assert.equal(sql.prepare('SELECT count(*) AS n FROM sqlite_schema').get().n,0);
+ migrate();
+ const call={name:'npc_mirror_dispatch',arguments:{command:{action:'project-catalog-read-pending'}},_meta:{fixture:true}};
+ r=await rejectCleanSpaceRequest(sends('tools/call',call,{Origin:origin}),opt);assert.equal(r.status,403);
+ r=await rejectCleanSpaceRequest(sends('tools/call',call),opt);assert.equal(r.status,200);
+ assert.deepEqual((await r.json()).result.structuredContent,{requests:[]});assert.equal(owners,1);
+});

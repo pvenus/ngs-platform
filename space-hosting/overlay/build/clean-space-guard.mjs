@@ -55,6 +55,12 @@ async function mcp(request,url,{handoffEnabled,catalogCall}){
   return message.method==='notifications/initialized'&&(!message.params||only(message.params,[]))?
    new Response(null,{status:202,headers}):deny(403,'CLEAN_SITE_MCP_DENIED');
  }
+ // Current Sites broker negotiates MCP 2026-07-28 before any tool call.
+ // Discovery is stateless and must not invoke the catalog or D1.
+ if(message.method==='server/discover'){
+  if(Object.hasOwn(message,'params')&&!record(message.params))return deny(400,'CLEAN_SITE_MCP_INVALID');
+  return rpc(message.id,{supportedVersions:['2026-07-28'],capabilities:{tools:{}}});
+ }
  if(message.method==='initialize'){
   const v=message.params;
   if(!only(v,['protocolVersion','capabilities','clientInfo','_meta'])||typeof v.protocolVersion!=='string'||
