@@ -78,7 +78,7 @@ function render(){
    node.link.removeAttribute('href');
    node.link.setAttribute('aria-disabled','true');
   }else{
-   node.link.setAttribute('href',navigation({projectId:project.projectId,...(project.spaceReplica?{catalogArea:'audio'}:{})}));
+   node.link.setAttribute('href',navigation({projectId:project.projectId,...(project.legacySpaceReplica?{catalogArea:'audio'}:{})}));
    node.link.removeAttribute('aria-disabled');
   }
   node.link.setAttribute('aria-label',project.name+' 프로젝트 열기');
@@ -98,11 +98,30 @@ function render(){
 const spaceCatalogPath='/api/space/project-catalog';
 const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
+const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=session=>session?.state==='authenticated'&&session.backend==='space'&&
  (exact(session,'backend,readOnly,state')&&session.readOnly===true||
-  exact(session,'backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state')&&session.queueEnabled===true&&
-  typeof session.readOnly==='boolean'&&typeof session.requestWritable==='boolean'&&/^space\.[a-f0-9]{64}$/.test(session.contextId)&&/^[a-f0-9]{64}$/.test(session.csrfToken));
-const spaceReadOnly=session=>spaceSession(session)&&session.readOnly;
+  (exact(session,queueSpaceSession)||exact(session,queueSpaceSession+',workspaceReady')&&session.workspaceReady===true&&session.readOnly===false)&&
+  session.queueEnabled===true&&typeof session.readOnly==='boolean'&&typeof session.requestWritable==='boolean'&&
+  /^space\.[a-f0-9]{64}$/.test(session.contextId)&&/^[a-f0-9]{64}$/.test(session.csrfToken));
+const spaceWorkspaceReady=session=>spaceSession(session)&&session.workspaceReady===true;
+
+function workspaceTransport(session,request,signal){
+ if(session.state!=='authenticated'||session.backend==='space'&&!spaceSession(session))throw Error('PROJECT_WORKSPACE_UNAVAILABLE');
+ const hosted=spaceSession(session);
+ const jsonPost=body=>({method:'POST',headers:{
+  'Content-Type':'application/json','X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId,
+ },body:JSON.stringify(body)});
+ const post=hosted
+  ?async name=>{if(name!=='compare')throw Error('SPACE_BROWSER_DOWNLOAD_FORBIDDEN');return {groups:[],unavailable:[]};}
+  :(name,body)=>request('/api/folders/'+name,jsonPost(body));
+ const submit=hosted&&!session.requestWritable?undefined:async command=>{
+  const response=await submitQueuedRequest(command,{jsonPost,signal});
+  if(response.status===202&&isQueuedRequest(response,await response.clone().json().catch(()=>null)))void queueRefresh();
+  return response;
+ };
+ return {hosted,post,submit};
+}
 function waitForSpaceCatalog(signal,delay=1250){
  return new Promise((resolve,reject)=>{
   const stop=()=>{clearTimeout(timer);reject(signal.reason);};
@@ -156,6 +175,7 @@ async function load(){
  };
  try{
   const session=await sameOrigin('/__npcgen_session');
+  if(session.backend==='space'&&!spaceSession(session))throw Error('SPACE_CATALOG_UNAVAILABLE');
   if(spaceSession(session)){
    if(session.queueEnabled===true)enableQueue(signal);
    cards.clear();render();
@@ -183,7 +203,7 @@ async function load(){
     }
    }
    if(signal.aborted)return;
-   for(const row of rows)cards.set(row.projectId,replica?{...row,spaceReplica:true}:row);
+   for(const row of rows)cards.set(row.projectId,replica&&!spaceWorkspaceReady(session)?{...row,legacySpaceReplica:true}:row);
    render();
    status.textContent=rows.length?'':replica?'프로젝트 파일이 아직 도착하지 않았습니다. 다시 조회할 수 있어요.':'원본에서 확인된 프로젝트가 없습니다.';
    return; // No hosted comparison or file transport from the browser.
@@ -476,84 +496,58 @@ async function loadWorkspace(search){
    }catch{if(!signal.aborted)view.replaceChildren(nodeOf('p','meta error','파일을 읽지 못했습니다.'));}
   }
  }
- async function displayLocal(data){
+ async function displayWorkspace(data){
   if(signal.aborted)return;
   renderList(data.items);
   if(conceptActions){listToolbar.replaceChildren(conceptActions.trigger('add',{groups:data.groups??[]}));listToolbar.hidden=false;}
   await renderDetail(data);
  }
- async function readLocal(){
+ async function readWorkspace(){
   const data=await request(api(item?{item}:{}));
-  await displayLocal(data);
+  await displayWorkspace(data);
   return data;
  }
  try{
   note('항목을 읽고 있습니다.');
   const session=await request('/__npcgen_session');
-  if(spaceSession(session)){
+  const {hosted,post,submit}=workspaceTransport(session,request,signal);
+  const legacySpace=hosted&&!spaceWorkspaceReady(session);
+  if(hosted){
    if(session.queueEnabled===true)enableQueue(signal);
-   if(spaceReadOnly(session)||tab!=='audio'||projectId!=='binari'){
-    if(!spaceReadOnly(session))renderNav(id=>id==='audio');
-    note(spaceReadOnly(session)?'Space에서는 현재 프로젝트 목록만 연결되어 있습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.':
+   const filter=id=>projectId==='binari'&&!session.readOnly&&(!legacySpace||id==='audio');
+   renderNav(filter);
+   if(!filter(tab)){
+    note(session.readOnly?'Space에서는 현재 프로젝트 목록만 연결되어 있습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.':
      '이 메뉴는 아직 Space에 연결되지 않았습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.');
     const home=nodeOf('a','','프로젝트 목록으로 돌아가기');home.href='/';
     detail.replaceChildren(nodeOf('h3','',label),home);
     return;
    }
-   renderNav(id=>id==='audio');
-   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
-   const jsonPost=body=>({method:'POST',headers:{
-    'Content-Type':'application/json','X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId,
-   },body:JSON.stringify(body)});
-   const submit=async command=>{
-    const response=await submitQueuedRequest(command,{jsonPost,signal});
-    if(response.status===202&&isQueuedRequest(response,await response.clone().json().catch(()=>null)))void queueRefresh();
-    return response;
-   };
-   const library=mountAudioWorkspace({items,detail,signal,...(session.requestWritable?{submit,
-    loadConcepts:async()=>(await request('/api/space/audio-concepts')).concepts}:{})});
-   const viewOptions=session.requestWritable?{submitDelete:submit}:undefined;
-   showAudioResults(library,null,signal,viewOptions);
-   let busy=false;
-   async function readReplica(){
+  }else enableQueue(signal);
+  // Same metadata and workspace routes in both environments; only the replica
+  // transfer differs. Hosted receives already-published versions from Mac.
+  void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
+  if(tab==='audio'){
+   let visible=null,busy=false;
+   const display=rows=>{visible=rows;showAudioResults(library,rows,signal,submit?{
+    submitDelete:submit,onDeleteAccepted:ids=>{void followDeletedAudioResults({ids,post,request,signal,display});}}:undefined);};
+   const library=mountAudioWorkspace({items,detail,signal,...(submit?{submit,
+    loadConcepts:legacySpace?async()=>(await request('/api/space/audio-concepts')).concepts:
+     ()=>readAudioSoundConcepts({post,request,signal}),
+    onAccepted:id=>{void followAcceptedAudioResult({id,post,request,signal,display,visible:()=>visible});}}:{})});
+   display(null);
+   async function readAudio(){
     if(busy||signal.aborted)return;
     busy=true;
-    try{
-     const data=await request('/api/audio-workspace?projectId=binari');
-     if(!signal.aborted){showAudioResults(library,data.results,signal,viewOptions);note('');}
-    }catch{note('Space에서 게시된 BGM 목록을 읽지 못했습니다.',true);}
+    try{await refreshAudioResults({post,request,signal,display});note('');}
+    catch{note('게시된 BGM을 갱신하지 못했습니다.',true);}
     finally{busy=false;}
    }
-   await readReplica();
-   if(!signal.aborted){
-    const timer=setInterval(readReplica,60_000);
+   await readAudio();
+   if(hosted&&!signal.aborted){
+    const timer=setInterval(readAudio,60_000);
     signal.addEventListener('abort',()=>clearInterval(timer),{once:true});
    }
-   return;
-  }
-  // This is a local metadata read, not a project-root comparison.
-  void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
-  const jsonPost=body=>({method:'POST',headers:{
-   'Content-Type':'application/json','X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId,
-  },body:JSON.stringify(body)});
-  const post=(name,body)=>request('/api/folders/'+name,jsonPost(body));
-  if(session.state==='authenticated')enableQueue(signal);
-  const submit=async command=>{
-   const response=await submitQueuedRequest(command,{jsonPost,signal});
-   if(response.status===202&&isQueuedRequest(response,await response.clone().json().catch(()=>null)))void queueRefresh();
-   return response;
-  };
-  if(tab==='audio'){
-   let visible=null;
-   const display=rows=>{visible=rows;showAudioResults(library,rows,signal,{
-    submitDelete:submit,onDeleteAccepted:ids=>{void followDeletedAudioResults({ids,post,request,signal,display});}});};
-   const library=mountAudioWorkspace({items,detail,loadConcepts:()=>readAudioSoundConcepts({post,request,signal}),signal,submit,
-    onAccepted:id=>{void followAcceptedAudioResult({id,post,request,signal,display,visible:()=>visible});}});
-   display(null);
-   try{
-    await refreshAudioResults({post,request,signal,display});
-    note('');
-   }catch{note('게시된 BGM을 갱신하지 못했습니다.',true);}
    return;
   }
   if(tab==='npcs'){
@@ -561,18 +555,19 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='concept'&&projectId==='binari'){
-   conceptActions=createConceptCategoryActions({modalOwner:workspace,projectId,signal,submit});
-   if(item){
+   if(submit)conceptActions=createConceptCategoryActions({modalOwner:workspace,projectId,signal,submit});
+   if(item&&!hosted){
     note('파일 비교 중');
     const result=await syncConceptDetail({projectId,item,post,readIndex:()=>request(api()),signal});
     if(!result)return;
-    if(result.selected)await readLocal();else await displayLocal(result.index);
+    if(result.selected)await readWorkspace();else await displayWorkspace(result.index);
     note('');
     return;
    }
   }
-  const data=await readLocal();
+  const data=await readWorkspace();
   if(signal.aborted)return;
+  if(hosted){note('');return;}
   // A flat motion preset has no item subtree. Do not refresh all of its sibling presets.
   const scope=item?data.item?.scope:data.scope;
   if(typeof scope!=='string'||!scope){note('');return;}
@@ -583,7 +578,7 @@ async function loadWorkspace(search){
    if(comparison.groups.length)note('동기화 중');
    const results=await Promise.allSettled(comparison.groups.map(group=>post('refresh',{scope,folder:group.folder})));
    if(signal.aborted)return;
-   if(results.some(result=>result.status==='fulfilled'))await readLocal();
+   if(results.some(result=>result.status==='fulfilled'))await readWorkspace();
    if(comparison.unavailable?.length||results.some(result=>result.status==='rejected')){
     note('일부 파일을 갱신하지 못했습니다. 기존 사본을 표시합니다.',true);
    }else note('');

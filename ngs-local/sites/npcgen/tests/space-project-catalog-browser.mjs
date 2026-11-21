@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
+import {refreshAudioResults} from '../build/local-audio-workspace.mjs';
 const source=readFileSync(new URL('../build/local-project-page.js',import.meta.url),'utf8')
  .replace(/^import .*;\n/gm,'').replace(/\nroute\(\);\s*$/,'\n');
 const path='/api/space/project-catalog', requestId='space.catalog.11111111-2222-4333-8444-555555555555';
@@ -11,7 +12,7 @@ const pending=()=>Response.json({requestId,status:'pending'},{status:202});
 const ready=(projects=[project])=>Response.json({requestId,status:'ready',projects});
 function dom(){
  const selectors=new Map(),events=new Map();
- return {children:[],attrs:{},textContent:'',hidden:false,className:'',classList:{remove(){},toggle(){}},
+ return {children:[],attrs:{},dataset:{},textContent:'',hidden:false,className:'',classList:{remove(){},toggle(){}},
   append(...nodes){this.children.push(...nodes);},replaceChildren(...nodes){this.children=nodes;},
   insertBefore(node,existing){const i=this.children.indexOf(node);if(i!==-1)this.children.splice(i,1);
    const at=this.children.indexOf(existing);if(at===-1)this.children.push(node);else this.children.splice(at,0,node);},
@@ -20,16 +21,16 @@ function dom(){
   addEventListener(name,handler){events.set(name,handler);},fire(name){events.get(name)?.();},remove(){},
  };
 }
-function browser(handler,search=''){
+function browser(handler,search='',extra={}){
  const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,dom());return nodes.get(id);};
  const calls=[];
  const context={document:{querySelector:node,documentElement:{dataset:{audioWorkspace:'enabled'}},createElement:()=>dom(),
   createElementNS:()=>dom()},location:{search},window:{addEventListener(){}},Intl,URLSearchParams,AbortController,AbortSignal,
-  mountAudioWorkspace:()=>dom(),showAudioResults:()=>{},setInterval:()=>42,clearInterval(){},
+  mountAudioWorkspace:()=>dom(),showAudioResults:()=>{},refreshAudioResults,setInterval:()=>42,clearInterval(){},
   setTimeout:(fn,ms)=>setTimeout(fn,ms===2000?ms:0),clearTimeout,fetch:async(url,opts)=>{
    calls.push([url,opts.method??'GET',opts.body,opts.headers]);
    return handler(url,opts,calls.length,node);
-  }};
+  },...extra};
  runInNewContext(source,context);
  return {context,calls,node};
 }
@@ -153,4 +154,83 @@ test('Space initial empty refresh is bounded and immediately stops after authori
  await revoked.context.load();
  assert.equal(revoked.calls.length,3);
  assert.deepEqual(revoked.node('#projects').children,[]);
+});
+
+test('ready Space opens the same default project and shared NPC viewer without a browser sync call',async()=>{
+ const calls=[];
+ const scope='binari/npcs',config={...readyReplica,workspaceReady:true};
+ const app=browser((url,opts)=>{
+  assert.equal(opts.method,undefined);
+  if(url==='/__npcgen_session')return Response.json(config);
+  if(url==='/api/project-folders')return Response.json({projects:[project]});
+  if(url==='/api/npc-workspace?projectId=binari')return Response.json({npcs:[{id:'npc.test',scope:scope+'/npc.test'}]});
+  throw Error('unexpected '+url);
+ },'',{loadNpcFolder:async settings=>{
+  calls.push(settings);
+  await settings.request('/api/npc-workspace?projectId=binari');
+  const result=await settings.post('compare',{scope});
+  assert.equal(result.groups.length,0);
+  await assert.rejects(()=>settings.post('refresh',{scope,folder:''}),/SPACE_BROWSER_DOWNLOAD_FORBIDDEN/);
+  settings.note('');
+ }});
+ await app.context.load();
+ assert.equal(app.node('#projects').children[0].children[0].attrs.href,'/?projectId=binari');
+ await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=npcs'));
+ assert.equal(calls.length,1);assert.equal(calls[0].projectId,'binari');
+ assert.equal(calls[0].submitOneStop,undefined);assert.equal(calls[0].submitPlanning,undefined);
+ assert.deepEqual(app.calls.slice(2).map(([url,method])=>[url,method]),[
+  ['/__npcgen_session','GET'],['/api/project-folders','GET'],['/api/npc-workspace?projectId=binari','GET'],
+ ]);
+ assert.equal(app.node('#workspace-status').textContent,'');
+});
+
+test('Space ready concept and 8-direction motion use the same shared project-detail views',async()=>{
+ const reads=[],config={...readyReplica,workspaceReady:true};
+ const clip='motion-presets/idle/assets/n/video.mp4';
+ const app=browser((url,opts)=>{
+  assert.equal(opts.method,undefined);reads.push(url);
+  if(url==='/__npcgen_session')return Response.json(config);
+  if(url==='/api/project-folders')return Response.json({projects:[project]});
+  const q=new URL(url,'http://fixture').searchParams;
+  if(q.get('tab')==='concept'){
+   if(q.get('file'))return Response.json({markdown:'# 세계관'});
+   const item={id:'world',label:'세계관',title:'세계관',scope:'binari/concept/sections/world'};
+   return Response.json({items:[item],item,files:[{path:'concept/sections/world/content.md',kind:'markdown'}]});
+  }
+  if(q.get('tab')==='motion-presets'){
+   const item={id:'idle',label:'아이들',scope:'binari/motion-presets/idle'};
+   return Response.json({items:[item],item,motionPreset:{directions:[{direction:'n',path:clip}]}});
+  }
+  throw Error('unexpected '+url);
+ },'',{conceptMarkdown:body=>({renderedMarkdown:body})});
+ await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=concept&item=world'));
+ assert.equal(app.node('#concept-category-tools').hidden,true);
+ assert.equal(app.node('#workspace-detail').children[2].children[0].renderedMarkdown,'# 세계관');
+ assert.ok(reads.some(url=>url.includes('tab=concept&item=world&file=')));
+ await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=motion-presets&item=idle'));
+ const compass=app.node('#workspace-detail').children[2];
+ assert.equal(compass.children.length,9);
+ assert.equal(compass.children.filter(node=>!!node.dataset.direction).length,8);
+ assert.match(compass.children[1].children[1].children[0].src,/tab=motion-presets&item=idle&file=/);
+ assert.ok(app.calls.every(([_,method])=>method==='GET'));
+});
+
+test('Space workspaceReady is not a write grant, but verified request owner uses common intake',async()=>{
+ for(const requestWritable of [false,true]){
+  const config={...readyReplica,workspaceReady:true,requestWritable};
+  const seen=[];
+  const app=browser((url,opts)=>{
+   assert.equal(opts.method,undefined);
+   if(url==='/__npcgen_session')return Response.json(config);
+   if(url==='/api/project-folders')return Response.json({projects:[project]});
+   throw Error('unexpected '+url);
+  },'',{loadNpcFolder:async settings=>seen.push([settings.submitOneStop,settings.submitPlanning])});
+  await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=npcs'));
+  assert.equal(typeof seen[0][0],requestWritable?'function':'undefined');
+  assert.equal(seen[0][0],seen[0][1]);
+ }
+ const malformed={...readyReplica,workspaceReady:'true'};
+ const refused=browser(()=>Response.json(malformed));
+ await refused.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=npcs'));
+ assert.deepEqual(refused.calls.map(([url])=>url),['/__npcgen_session']);
 });
