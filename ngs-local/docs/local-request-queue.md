@@ -6,9 +6,11 @@ acknowledge only a successful, exact official receipt it obtained from RS,
 never an inferred ID, rejected registration, or transport failure. The queue
 also checks the receipt ID against the pending entry's original RS identity.
 An unconfirmed entry stays pending across service restarts; there is no expiry
-or automatic deletion of pending entries. The browser receipt is a 15-minute
-handoff, not request history. Replaying a client key is deduplicated while
-its queue entry or handoff receipt is still retained.
+or automatic deletion of pending entries. The browser treats HTTP 202 as success and never waits for RS. The “로컬 요청 큐”
+panel reads only pending queue metadata (project, type, enqueue time); it
+refreshes while open, not as part of submitting. A verified acknowledgment
+immediately removes the payload and entry from the pending list. A small
+internal 15-minute dedup marker is not shown as request history.
 
 Run the browser app and this separate service with the same absolute
 `NGS_REQUEST_QUEUE_DB` path, in an existing private runtime directory outside

@@ -1,3 +1,4 @@
+import {isQueuedRequest} from './local-request-queue-browser.mjs';
 /** The roster '+' creates a new NPC; the detail action targets the selected NPC ID. */
 const directions=['n','ne','e','se','s','sw','w','nw'];
 const identifier=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -91,6 +92,7 @@ export function createNpcOneStopIntake(submit,{key=()=>crypto.randomUUID()}={}){
    try{
     const response=await submit(pending);
     const value=await response.json();
+    if(isQueuedRequest(response,value)){pending=null;accepted=true;return value;}
     const id=value?.officialRequestId;
     if((response.status===201||response.status===200)&&value?.status==='registered'&&typeof id==='string'&&id.trim()){
      pending=null;accepted=true;return {officialRequestId:id,status:'registered'};
@@ -258,7 +260,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
      requestBuilt=true;return body;
     });
     if(receipt&&!ended){
-     notice.textContent='요청을 접수했습니다.';
+     notice.textContent=receipt.status==='queued'?'로컬 큐에 저장했습니다.':'요청을 접수했습니다.';
      form.hidden=true;intro.hidden=true;
     }
    }catch(failure){

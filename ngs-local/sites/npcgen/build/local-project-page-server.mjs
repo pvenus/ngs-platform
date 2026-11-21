@@ -35,7 +35,6 @@ const assets=new Map([
  ['/local-request-queue-browser.mjs', ['text/javascript; charset=utf-8', new URL('./local-request-queue-browser.mjs',import.meta.url)]],
 ]);
 const failure=(code,status)=>Object.assign(Error(code),{status});
-const queueId=/^ngs\.local\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 
 // Branding is optional, external to the source tree. Public clones still boot.
 const transparentMark=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=','base64');
@@ -134,12 +133,10 @@ export function createLocalProjectPageServer({root,mcpUrl,requestQueueDb,request
     const session=auth.read(req);
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
     if(req.method==='GET'){
-     const keys=[...url.searchParams.keys()],id=url.searchParams.get('queueId')??'';
-     if(keys.length!==1||keys[0]!=='queueId'||!queueId.test(id))throw failure('NGS_QUEUE_ID_INVALID',400);
+     if(url.search)throw failure('NGS_QUEUE_QUERY_INVALID',400);
      if(!queue)throw failure('NGS_REQUEST_QUEUE_UNAVAILABLE',503);
-     const info=queue.read(id);
-     if(!info)throw failure('NGS_QUEUE_RECEIPT_NOT_FOUND',404);
-     return json(info.status==='registered'?200:202,info);
+     const allowed=new Set(session.principal.projects.map(project=>project.id));
+     return json(200,{requests:queue.pendingSummary().filter(item=>allowed.has(item.projectId))});
     }
     if(req.method!=='POST'||url.search)throw failure('METHOD_NOT_ALLOWED',405);
     auth.csrf(req,session);

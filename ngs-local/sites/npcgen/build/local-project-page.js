@@ -1,7 +1,7 @@
 import {conceptDetailOperations,conceptMarkdown,createConceptCategoryActions,syncConceptDetail} from './local-concept-category-ui.mjs';
 import {followAcceptedAudioResult,followDeletedAudioResults,mountAudioWorkspace,readAudioSoundConcepts,refreshAudioResults,showAudioResults} from './local-audio-workspace.mjs';
 import {loadNpcFolder} from './local-npc-workspace-ui.mjs';
-import {submitQueuedRequest} from './local-request-queue-browser.mjs';
+import {isQueuedRequest,submitQueuedRequest} from './local-request-queue-browser.mjs';
 
 /* Project-list lifecycle only: local cards first, one stale comparison, separate applies. */
 const cards=new Map(),states=new Map(),progress=new Map(),cardNodes=new Map();
@@ -9,6 +9,45 @@ const grid=document.querySelector('#projects'),status=document.querySelector('#s
 const label={refreshing:'파일 비교 중',failed:'갱신하지 못했습니다.'};
 const numbers=new Intl.NumberFormat('ko-KR');
 let run;
+const queuePanel=document.querySelector('#local-request-queue');
+const queueLabel={
+ 'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
+ 'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제',
+};
+const queueTime=new Intl.DateTimeFormat('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+let queueSession,queueRefresh=()=>{};
+function enableQueue(signal){
+ if(queueSession===signal)return;
+ queueSession=signal;
+ const list=queuePanel.querySelector('ul'),state=queuePanel.querySelector('p');
+ let timer,busy=false,again=false;
+ async function refresh(){
+  if(busy){again=true;return;}
+  if(!queuePanel.open||signal.aborted)return;
+  clearTimeout(timer);busy=true;
+  try{
+   const response=await fetch('/api/requests',{cache:'no-store',credentials:'same-origin',redirect:'error',signal});
+   if(!response.ok)throw Error('QUEUE_UNAVAILABLE');
+   const {requests}=await response.json();
+   if(signal.aborted)return;
+   const label=requests.length?'RS 등록 대기 '+requests.length+'건':'대기 중인 요청이 없습니다.';
+   if(state.textContent!==label)state.textContent=label;
+   const rows=requests.map(item=>nodeOf('li','',item.projectId+' · '+(queueLabel[item.requestType]??item.requestType)+' · '+queueTime.format(item.queuedAt)));
+   list.replaceChildren(...rows);
+  }catch{if(!signal.aborted){state.textContent='로컬 큐를 읽지 못했습니다.';list.replaceChildren();}}
+  finally{
+   busy=false;
+   if(queuePanel.open&&!signal.aborted){timer=setTimeout(refresh,again?0:2000);again=false;}
+  }
+ }
+ queuePanel.hidden=false;queueRefresh=refresh;
+ queuePanel.addEventListener('toggle',()=>{if(queuePanel.open)void refresh();else clearTimeout(timer);},{signal});
+ signal.addEventListener('abort',()=>{
+  clearTimeout(timer);queueRefresh=()=>{};queuePanel.hidden=true;queuePanel.open=false;
+  state.textContent='';list.replaceChildren();
+ },{once:true});
+}
+
 
 function render(){
  for(const [id,node] of cardNodes){
@@ -122,6 +161,7 @@ async function load(){
    status.textContent=rows.length?'':'원본에서 확인된 프로젝트가 없습니다.';
    return; // Hosted read-through never invokes local compare/apply/discovery.
   }
+  if(session.state==='authenticated')enableQueue(signal);
   const post=(path,body)=>sameOrigin('/api/project-folders/'+path,{method:'POST',headers:{
    'Content-Type':'application/json','X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId,
   },body:JSON.stringify(body)});
@@ -434,7 +474,12 @@ async function loadWorkspace(search){
    'Content-Type':'application/json','X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId,
   },body:JSON.stringify(body)});
   const post=(name,body)=>request('/api/folders/'+name,jsonPost(body));
-  const submit=command=>submitQueuedRequest(command,{jsonPost,signal});
+  if(session.state==='authenticated')enableQueue(signal);
+  const submit=async command=>{
+   const response=await submitQueuedRequest(command,{jsonPost,signal});
+   if(response.status===202&&isQueuedRequest(response,await response.clone().json().catch(()=>null)))void queueRefresh();
+   return response;
+  };
   if(tab==='audio'){
    let visible=null;
    const display=rows=>{visible=rows;showAudioResults(library,rows,signal,{

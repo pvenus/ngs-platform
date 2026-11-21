@@ -1,3 +1,4 @@
+import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const audioRequestType='audio.generate',schemaVersion='ngs.audio-generate.v1';
 const kinds=[['bgm','BGM'],['effect','효과음'],['tts','TTS']];
 const id=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -49,6 +50,7 @@ export function createAudioIntake(submit,{uuid=()=>crypto.randomUUID(),requestTy
    busy=true;
    try{
     const response=await submit(pending),value=await response.json();
+    if(isQueuedRequest(response,value)){receipt=value;return value;}
     if(response.status===201&&value?.status==='registered'&&typeof value.officialRequestId==='string'&&
        receiptId.test(value.officialRequestId)&&Object.keys(value).sort().join(',')==='officialRequestId,status'){
      receipt=value;return value;
@@ -152,7 +154,7 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
    }
    deleting=false;
    if(signal?.aborted)return;
-   deleteSummary.textContent=['접수 '+stats.registered+'곡',stats.rejected?'접수 실패 '+stats.rejected+'곡':'',
+   deleteSummary.textContent=['삭제 요청 저장 '+stats.registered+'곡',stats.rejected?'접수 실패 '+stats.rejected+'곡':'',
     stats.uncertain?'접수 확인 필요 '+stats.uncertain+'곡':''].filter(Boolean).join(' · ')+
     (stats.registered?' · 파일 동기화 후 목록에서 사라집니다.':'');
    updateSelection();
@@ -182,7 +184,7 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
    button.setAttribute('aria-pressed',String(current));
    const deletion=deletions.get(audioId)?.state;
    if(deleteStatus){
-    deleteStatus.textContent={registered:'삭제 접수됨',rejected:'삭제 접수 실패',uncertain:'접수 확인 필요'}[deletion]??'';
+    deleteStatus.textContent={registered:'삭제 요청 저장됨',rejected:'삭제 접수 실패',uncertain:'접수 확인 필요'}[deletion]??'';
     deleteStatus.hidden=!deleteStatus.textContent;
    }
    check.checked=checked.has(url);
@@ -413,8 +415,8 @@ export function mountAudioWorkspace({items,detail,concepts=[],loadConcepts,signa
     brief:brief.input.value,duration:duration.input.value},concepts));
    if(result&&!signal.aborted){
     intake=createAudioIntake(submit);name.input.value='';concept.input.value='';brief.input.value='';duration.input.value='';
-    dialog.close();notice.textContent='요청을 접수했습니다. 요청 ID: '+result.officialRequestId;
-    onAccepted(result.officialRequestId);
+    dialog.close();notice.textContent=result.status==='queued'?'로컬 큐에 저장했습니다.':'요청을 접수했습니다. 요청 ID: '+result.officialRequestId;
+    if(result.officialRequestId)onAccepted(result.officialRequestId);
    }
   }catch(cause){
    if(!signal.aborted)error.textContent=intake.uncertain?'접수 결과를 확인하지 못했습니다. 같은 요청만 다시 확인할 수 있습니다.':

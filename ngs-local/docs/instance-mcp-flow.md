@@ -8,15 +8,15 @@ and 8770 remains the existing RS MCP. These are loopback-only endpoints.
 ## Request handoff (implemented and verified on isolated local fixtures)
 
 1. NGS validates the existing request shape and enqueues it durably. HTTP 202
-   means waiting for RS, not accepted by RS.
+   means local submission succeeded. The form does not wait for RS.
 2. The independent rs-mcp consumer polls, calls the unchanged RS submit tool
    using a single immutable idempotency key, and sends NGS the exact verified
    official receipt. Other work may proceed when a single request cannot be
    verified.
 3. Only after the receipt matches does NGS clear the request payload and
-   remove it from the pending list. A short-lived receipt is available to
-   the same local UI for delivery and duplicate-click recovery; RS alone
-   retains the official history. An ambiguous result stays queued for
+   remove it from the pending list. The authenticated browser lists pending
+   request types and enqueue times from SQLite; it does not query RS. A short
+   internal dedup marker is not exposed as history. RS keeps official history. An ambiguous result stays queued for
    reconciliation; neither transport loss nor a duplicate conflict is
    evidence that the request was safely persisted.
 

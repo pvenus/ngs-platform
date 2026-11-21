@@ -55,6 +55,7 @@ export function openLocalRequestQueue(dbPath,{now=Date.now}={}){
  const freeNext=db.prepare('DELETE FROM local_request_queue_order_v1 WHERE seq=?');
  const insert=db.prepare('INSERT INTO local_request_queue_v1(queue_id,client_key,digest,project_id,request_type,payload,created_ms,queue_seq) VALUES(?,?,?,?,?,?,?,?)');
  const list=db.prepare('SELECT queue_id,request_type,payload,queue_seq FROM local_request_queue_v1 WHERE official_id IS NULL AND queue_seq>? ORDER BY queue_seq LIMIT ?');
+ const pendingSummary=db.prepare('SELECT project_id,request_type,created_ms FROM local_request_queue_v1 WHERE official_id IS NULL ORDER BY queue_seq');
  const ack=db.prepare('UPDATE local_request_queue_v1 SET official_id=?,receipt_expires_ms=?,payload=NULL WHERE queue_id=? AND official_id IS NULL');
  const transact=fn=>{
   db.exec('BEGIN IMMEDIATE');
@@ -92,6 +93,9 @@ export function openLocalRequestQueue(dbPath,{now=Date.now}={}){
     return {queueId,status:'registered',receipt:{officialRequestId:row.official_id,status:'registered'}};
    }
    return queued(queueId);
+  },
+  pendingSummary(){
+   return pendingSummary.all().map(({project_id,request_type,created_ms})=>({projectId:project_id,requestType:request_type,queuedAt:created_ms}));
   },
   list(limit=MAX_QUEUE_LIST,cursor){
    if(!Number.isInteger(limit)||limit<1||limit>MAX_QUEUE_LIST)throw error('NGS_REQUEST_QUEUE_LIMIT_INVALID',400);

@@ -10,12 +10,14 @@ const session={state:'authenticated',backend:'space',readOnly:true};
 const pending=()=>Response.json({requestId,status:'pending'},{status:202});
 const ready=(projects=[project])=>Response.json({requestId,status:'ready',projects});
 function dom(){
+ const selectors=new Map(),events=new Map();
  return {children:[],attrs:{},textContent:'',hidden:false,className:'',classList:{remove(){},toggle(){}},
   append(...nodes){this.children.push(...nodes);},replaceChildren(...nodes){this.children=nodes;},
   insertBefore(node,existing){const i=this.children.indexOf(node);if(i!==-1)this.children.splice(i,1);
    const at=this.children.indexOf(existing);if(at===-1)this.children.push(node);else this.children.splice(at,0,node);},
   setAttribute(key,value){this.attrs[key]=value;},removeAttribute(key){delete this.attrs[key];},
-  addEventListener(){},remove(){},
+  querySelector(key){if(!selectors.has(key))selectors.set(key,dom());return selectors.get(key);},
+  addEventListener(name,handler){events.set(name,handler);},fire(name){events.get(name)?.();},remove(){},
  };
 }
 function browser(handler,search=''){
@@ -23,7 +25,7 @@ function browser(handler,search=''){
  const calls=[];
  const context={document:{querySelector:node,documentElement:{dataset:{audioWorkspace:'enabled'}},createElement:()=>dom(),
   createElementNS:()=>dom()},location:{search},window:{addEventListener(){}},Intl,URLSearchParams,AbortController,AbortSignal,
-  setTimeout:fn=>setTimeout(fn,0),clearTimeout,fetch:async(url,opts)=>{
+  setTimeout:(fn,ms)=>setTimeout(fn,ms===2000?ms:0),clearTimeout,fetch:async(url,opts)=>{
    calls.push([url,opts.method??'GET',opts.body,opts.headers]);
    return handler(url,opts,calls.length,node);
   }};
@@ -73,4 +75,23 @@ test('local boot remains unchanged and hosted deep links stop before unavailable
  await space.context.loadWorkspace(new URLSearchParams('?projectId=binari'));
  assert.deepEqual(space.calls.map(([url,method])=>[url,method]),[['/__npcgen_session','GET']]);
  assert.match(space.node('#workspace-status').textContent,/프로젝트 목록만 연결/);
+});
+
+test('authenticated local queue displays pending rows on demand, then removes acknowledged rows without navigation',async()=>{
+ let rows=[{projectId:'binari',requestType:'audio.generate',queuedAt:Date.UTC(2026,10,21)}];
+ const app=browser(url=>url==='/__npcgen_session'?Response.json({state:'authenticated',contextId:'local',csrfToken:'owned'}):
+  url==='/api/requests'?Response.json({requests:rows}):Response.json({projects:[]}));
+ await app.context.load();
+ const panel=app.node('#local-request-queue');
+ assert.equal(panel.hidden,false);
+ assert.equal(app.calls.some(([path])=>path==='/api/requests'),false);
+ panel.open=true;panel.fire('toggle');
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(panel.querySelector('p').textContent,/등록 대기 1건/);
+ assert.match(panel.querySelector('ul').children[0].textContent,/binari · BGM 생성/);
+ rows=[];panel.fire('toggle');
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(panel.querySelector('p').textContent,/대기 중인 요청이 없습니다/);
+ assert.deepEqual(panel.querySelector('ul').children,[]);
+ panel.open=false;panel.fire('toggle');
 });

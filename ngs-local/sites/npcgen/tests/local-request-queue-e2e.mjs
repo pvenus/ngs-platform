@@ -10,7 +10,7 @@ import {createLocalProjectPageServer} from '../build/local-project-page-server.m
 import {sameMacRSQueue} from '../build/rs-mcp.mjs';
 import {loopbackJsonMCP} from '../build/folder-mcp-loopback.mjs';
 
-test('fixture HTTP button handoff -> local queue MCP -> real unchanged RS -> receipt and payload removal',
+test('fixture HTTP button handoff -> local queue MCP -> real unchanged RS -> pending list and payload removal',
  {skip:!process.env.NGS_LEGACY_RS_SOURCE},async()=>{
  const {createRequestService}=await import(pathToFileURL(join(process.env.NGS_LEGACY_RS_SOURCE,'request-service.mjs')).href);
  const root=mkdtempSync(join(realpathSync(tmpdir()),'ngs-request-e2e-')),db=join(root,'queue.sqlite');
@@ -31,16 +31,19 @@ test('fixture HTTP button handoff -> local queue MCP -> real unchanged RS -> rec
   const command={requestType:'audio.generate',idempotencyKey:'fixture-e2e-only',payload:{schemaVersion:'ngs.audio-generate.v1',projectId:'binari',kind:'bgm',title:'Fixture only',brief:'No production job',conceptId:'fixture',text:'',durationSeconds:null}};
   const submit=()=>fetch(web+'/api/requests',{method:'POST',headers,body:JSON.stringify(command)});
   const admission=await submit();assert.equal(admission.status,202);
-  const queued=await admission.json(),pendingUrl=web+'/api/requests?queueId='+queued.queueId;
+  const queued=await admission.json(),pendingUrl=web+'/api/requests';
   assert.deepEqual((await official('request_list',{})).requests,[]);
-  assert.equal((await fetch(pendingUrl,{headers:{cookie}})).status,202);
+  assert.equal((await fetch(pendingUrl)).status,401);
+  const pending=await (await fetch(pendingUrl,{headers:{cookie}})).json();
+  assert.deepEqual(pending,{requests:[{projectId:'binari',requestType:'audio.generate',queuedAt:pending.requests[0].queuedAt}]});
+  assert.ok(Number.isSafeInteger(pending.requests[0].queuedAt));
   const consumer=sameMacRSQueue({ngsUrl,rsUrl});
   const run=await consumer.pollOnce();assert.equal(run.acknowledged,1);
   const stored=(await official('request_list',{})).requests;
   assert.equal(stored.length,1);assert.equal(stored[0].status,'registered');
   assert.deepEqual(queue.list().requests,[]);
   const settled=await fetch(pendingUrl,{headers:{cookie}});
-  assert.equal(settled.status,200);assert.equal((await settled.json()).receipt.officialRequestId,stored[0].officialRequestId);
+  assert.equal(settled.status,200);assert.deepEqual(await settled.json(),{requests:[]});
   assert.deepEqual(await (await submit()).json(),queued);
   assert.equal((await consumer.pollOnce()).seen,0);
   assert.equal((await official('request_list',{})).requests.length,1);

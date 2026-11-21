@@ -197,7 +197,7 @@ test('selected deletes confirm the precise count, submit separately, and do not 
  assert.deepEqual(calls.map(x=>x.payload.officialRequestId),['a','b','c'].map(audioId));
  assert.ok(calls.every(x=>x.requestType==='audio.delete'&&x.payload.schemaVersion==='ngs.audio-delete.v1'&&x.payload.projectId==='binari'));
  assert.equal(new Set(calls.map(x=>x.idempotencyKey)).size,3);
- assert.deepEqual(statuses(),['삭제 접수됨','접수 확인 필요','삭제 접수 실패']);
+ assert.deepEqual(statuses(),['삭제 요청 저장됨','접수 확인 필요','삭제 접수 실패']);
  assert.deepEqual(accepted,[[audioId('a')]]);
  assert.equal(root.all('ol')[0].all('li').length,3);
  button('선택 삭제 요청').events.click();await button('삭제 요청').events.click();
@@ -231,7 +231,7 @@ async function listen(t,server){
  return 'http://127.0.0.1:'+server.address().port;
 }
 
-test('audio forms queue behind authenticated BFF; only acknowledged exact receipt counts',async t=>{
+test('audio forms queue behind authenticated BFF; pending list clears only after matching acknowledgment',async t=>{
  const temp=mkdtempSync(join(realpathSync(tmpdir()),'ngs-audio-fixture-')),root=join(temp,'catalog');
  const queue=openLocalRequestQueue(join(temp,'queue.sqlite'));
  t.after(()=>{queue.close();rmSync(temp,{recursive:true,force:true});});
@@ -248,7 +248,7 @@ test('audio forms queue behind authenticated BFF; only acknowledged exact receip
   const headers={cookie,origin,'content-type':'application/json','x-npcgen-csrf':context.csrfToken,'x-npcgen-frontend-context':context.contextId};
   return {origin,headers,post:(payload,auth=headers,requestType='audio.generate')=>fetch(origin+'/api/requests',{method:'POST',headers:auth,
    body:JSON.stringify({requestType,idempotencyKey:'audio-fixture-'+requestType,payload})}),
-   read:(id,auth=headers)=>fetch(origin+'/api/requests?'+new URLSearchParams({queueId:id}),{headers:auth})};
+   read:(auth=headers)=>fetch(origin+'/api/requests',{headers:auth})};
  }
  assert.equal(configuration({}).audioWorkspaceEnabled,false);
  assert.equal(configuration({NGS_AUDIO_WORKSPACE_ENABLED:'1'}).audioWorkspaceEnabled,true);
@@ -269,13 +269,13 @@ test('audio forms queue behind authenticated BFF; only acknowledged exact receip
  const first=await accepted.json(),q=queue.list().requests[0];
  assert.equal(first.status,'queued');
  assert.deepEqual(q,{queueId:first.queueId,requestType:'audio.generate',idempotencyKey:first.queueId,payload});
- assert.equal((await on.read(q.queueId,{...on.headers,cookie:''})).status,401);
- assert.equal((await on.read(q.queueId)).status,202);
+ assert.equal((await on.read({...on.headers,cookie:''})).status,401);
+ assert.equal((await (await on.read()).json()).requests.length,1);
  const finalId='request.official.'+createHash('sha256').update(JSON.stringify(['request.official.v1','local','binari',q.queueId])).digest('hex');
  queue.ack(q.queueId,{officialRequestId:finalId,status:'registered'});
- const confirmed=await on.read(q.queueId);
+ const confirmed=await on.read();
  assert.equal(confirmed.status,200);
- assert.deepEqual(await confirmed.json(),{queueId:q.queueId,status:'registered',receipt:{officialRequestId:finalId,status:'registered'}});
+ assert.deepEqual(await confirmed.json(),{requests:[]});
  assert.equal(queue.list().requests.length,0);
 
  const deletion={schemaVersion:'ngs.audio-delete.v1',projectId:'binari',officialRequestId:'request.official.'+'c'.repeat(64)};
