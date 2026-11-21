@@ -1,8 +1,19 @@
 # Mac NGS executor prototype
 
 This is **not installed or enabled** by source publication. One fixed executable provisioned by an owner runs:
-`$HOME/Workspaces/NGS/runtime/deploy-control/bin/ngs-mac-apply <40 lowercase hex SHA>`.
+`$HOME/Workspaces/OPS/runtime/deploy-control/bin/ngs-mac-apply <40 lowercase hex SHA>`.
 The executable has no shell, network, command/plugin selection, path argument, stage operation, or Space authority. Install from separately reviewed OPS provisioning, not from the candidate being deployed. The only interface to OPS is the one SHA argument and exact success JSON `{"sha":"…","target":"mac","state":"deployed","health":"verified"}`. An exit error must not be treated as deployed. Successful relaunch can only affect `com.vinus.ngs.local-mcp` (combined 5274/5275); it cannot stop PDS, RS, OPS, a relay, or Space.
+
+## Control location
+
+The fixed control root is `$HOME/Workspaces/OPS/runtime/deploy-control`.
+It contains preparation receipts, exact deployment archives, fixed executors,
+and apply history. There is no fallback to the former root under NGS. During
+an operator-managed cutover, stop the old control consumers and move that
+single existing private tree, then re-pin the new fixed binary and wrapper
+paths before enabling the cycle. Do not leave a second active tree or add a
+symlink. The NGS release tree, Miniflare execution CWD, queue, and storage
+remain at their existing NGS locations.
 
 ## Prepare contract
 
@@ -36,7 +47,8 @@ performs the following in that order:
    can supply this proof.
 2. Call `assemble_verified(verified, control=…, releases=…, scratch=…,
    prior_plist=…, expected_prior_sha256=…, node=…, npm_cache=…)` with the
-   approved fixed local control/release/scratch paths, exact installed Node
+   approved fixed control/release/scratch paths (the defaults are the OPS
+   control root and existing NGS release/scratch roots), exact installed Node
    24.21.0, and an owner-private canonical offline npm cache. It returns
    `(installed, execution)`. It re-verifies the archive digest, source manifest,
    regular allowlisted members, and prior plist. The native startup, queue

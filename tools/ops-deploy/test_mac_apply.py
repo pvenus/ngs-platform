@@ -12,6 +12,13 @@ m = importlib.machinery.SourceFileLoader("mac_apply", str(Path(__file__).with_na
 SHA = "d" * 40
 
 
+class FixedPaths(unittest.TestCase):
+    def test_control_belongs_to_ops_and_app_paths_stay_with_ngs(self):
+        self.assertEqual(m.CONTROL, Path.home() / "Workspaces/OPS/runtime/deploy-control")
+        self.assertEqual(m.Mac.releases, Path.home() / "Workspaces/NGS/code/releases")
+        self.assertEqual(m.Mac.scratch, Path.home() / "Workspaces/NGS/runtime/local-miniflare-execution")
+
+
 class Host:
     def __init__(self, root):
         self.releases = root / "releases"

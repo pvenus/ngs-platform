@@ -21,7 +21,11 @@ STARTUP = (ENTRY, ENTRY.with_name("local-miniflare-runtime.mjs"),
            Path("local-miniflare/package-lock.json"), Path("local-miniflare/package.json"))
 LABEL = "com.vinus.ngs.local-mcp"
 NODE_VERSION = "24.21.0"
-ACTIVE_QUEUE = Path.home() / "Workspaces/NGS/data/local-request-queue/queue.sqlite"
+NGS = Path.home() / "Workspaces/NGS"
+DEFAULT_CONTROL = Path.home() / "Workspaces/OPS/runtime/deploy-control"
+DEFAULT_RELEASES = NGS / "code/releases"
+DEFAULT_SCRATCH = NGS / "runtime/local-miniflare-execution"
+ACTIVE_QUEUE = NGS / "data/local-request-queue/queue.sqlite"
 EXTERNAL_VOLUME = Path("/Volumes/무제")
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 A_PATH = re.compile(r"README\.md|package(?:-lock)?\.json|source-manifest\.json|"
@@ -183,7 +187,8 @@ def check_deps(tree, packages):
                  and (stat.S_ISDIR(s.st_mode) or stat.S_ISREG(s.st_mode)), "DEPENDENCY_MODE_INVALID")
 
 
-def assemble_verified(verified, *, control, releases, scratch, prior_plist, expected_prior_sha256, node, npm_cache,
+def assemble_verified(verified, *, control=DEFAULT_CONTROL, releases=DEFAULT_RELEASES, scratch=DEFAULT_SCRATCH,
+                      prior_plist, expected_prior_sha256, node, npm_cache,
                       queue=ACTIVE_QUEUE, _install=npm_install, _prior=prior_release):
     """Return unselected (source_root, execution_root); never publish OPS readiness."""
     head = verified["head"]

@@ -36,7 +36,7 @@ TOOLS = {"ngs_request_queue_list", "ngs_file_sync_begin", "ngs_file_sync_plan",
 ROOT = Path("/Volumes/무제")
 HOME = Path.home()
 NGS = HOME / "Workspaces/NGS"
-CONTROL = NGS / "runtime/deploy-control"
+CONTROL = HOME / "Workspaces/OPS/runtime/deploy-control"
 
 
 class Refused(RuntimeError):
