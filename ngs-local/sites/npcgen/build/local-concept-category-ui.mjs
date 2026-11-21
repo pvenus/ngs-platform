@@ -155,7 +155,7 @@ export function createConceptCategoryActions({modalOwner,projectId,signal,submit
      const result=await intake.send(values);
      if(result&&!signal.aborted){
       attempts.delete(key);form.hidden=true;
-      status.textContent=result.status==='queued'?'로컬 큐에 저장했습니다.':'요청을 접수했습니다. 요청 ID: '+result.officialRequestId;
+      status.textContent=result.status==='queued'?'NGS 대기열에 저장했습니다.':'요청을 접수했습니다. 요청 ID: '+result.officialRequestId;
      }
     }catch(error){
      if(!signal.aborted){

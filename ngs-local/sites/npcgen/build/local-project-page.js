@@ -34,7 +34,7 @@ function enableQueue(signal){
    if(state.textContent!==label)state.textContent=label;
    const rows=requests.map(item=>nodeOf('li','',item.projectId+' · '+(queueLabel[item.requestType]??item.requestType)+' · '+queueTime.format(item.queuedAt)));
    list.replaceChildren(...rows);
-  }catch{if(!signal.aborted){state.textContent='로컬 큐를 읽지 못했습니다.';list.replaceChildren();}}
+  }catch{if(!signal.aborted){state.textContent='요청 대기열을 읽지 못했습니다.';list.replaceChildren();}}
   finally{
    busy=false;
    if(queuePanel.open&&!signal.aborted){timer=setTimeout(refresh,again?0:2000);again=false;}
@@ -98,7 +98,11 @@ function render(){
 const spaceCatalogPath='/api/space/project-catalog';
 const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
-const spaceReadOnly=session=>exact(session,'backend,readOnly,state')&&session.state==='authenticated'&&session.backend==='space'&&session.readOnly===true;
+const spaceSession=session=>session?.state==='authenticated'&&session.backend==='space'&&
+ (exact(session,'backend,readOnly,state')&&session.readOnly===true||
+  exact(session,'backend,contextId,csrfToken,queueEnabled,readOnly,state')&&session.queueEnabled===true&&
+  typeof session.readOnly==='boolean'&&/^space\.[a-f0-9]{64}$/.test(session.contextId)&&/^[a-f0-9]{64}$/.test(session.csrfToken));
+const spaceReadOnly=session=>spaceSession(session)&&session.readOnly;
 function waitForSpaceCatalog(signal){
  return new Promise((resolve,reject)=>{
   const stop=()=>{clearTimeout(timer);reject(signal.reason);};
@@ -152,7 +156,8 @@ async function load(){
  };
  try{
   const session=await sameOrigin('/__npcgen_session');
-  if(spaceReadOnly(session)){
+  if(spaceSession(session)){
+   if(session.queueEnabled===true)enableQueue(signal);
    cards.clear();render();
    const rows=await readSpaceCatalog(signal,text=>{if(!signal.aborted)status.textContent=text;});
    if(signal.aborted)return;
@@ -463,6 +468,7 @@ async function loadWorkspace(search){
   note('항목을 읽고 있습니다.');
   const session=await request('/__npcgen_session');
   if(spaceReadOnly(session)){
+   if(session.queueEnabled===true)enableQueue(signal);
    note('Space에서는 현재 프로젝트 목록만 연결되어 있습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.');
    const home=nodeOf('a','','프로젝트 목록으로 돌아가기');home.href='/';
    detail.replaceChildren(nodeOf('h3','',label),home);

@@ -163,7 +163,7 @@ export function createNpcPlanningEditor({owner,submit,signal}){
     try{
      const values=adding?Object.fromEntries(Object.entries(inputs).map(([key,element])=>[key,element.value])):inputs.requirements.value;
      const receipt=await intake.send({npcId,role},values);
-     if(receipt&&!signal.aborted){uncertain.delete(key);form.hidden=true;status.textContent=receipt.status==='queued'?'로컬 큐에 저장했습니다.':'요청을 접수했습니다. 요청 ID: '+receipt.officialRequestId;}
+     if(receipt&&!signal.aborted){uncertain.delete(key);form.hidden=true;status.textContent=receipt.status==='queued'?'NGS 대기열에 저장했습니다.':'요청을 접수했습니다. 요청 ID: '+receipt.officialRequestId;}
     }catch(cause){
      if(intake.waiting)uncertain.set(key,intake);else uncertain.delete(key);
      if(!signal.aborted)error.textContent=intake.waiting?'접수 결과를 확인하지 못했습니다. 같은 요청만 다시 확인할 수 있습니다.':

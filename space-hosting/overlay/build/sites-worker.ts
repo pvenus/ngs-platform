@@ -3,20 +3,27 @@ import { sharedNgsResponse } from "./shared-ngs-assets";
 import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catalog.mjs";
 import { appProject, siteAppMaster } from "../lib/app-master";
 import { masterPrincipal } from "../lib/master-concept-transport";
+import { browserQueueResponse, machineResponse } from "./space-machine-routes.mjs";
 import { rejectCleanSpaceRequest } from "./clean-space-guard.mjs";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
 export default {
   async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
-    const shared = sharedNgsResponse(request, {catalogRelay:true});
-    if (shared) return shared;
     const db = env.DB;
-    const catalog = await projectCatalogResponse(request, db, {authorize: async (user:{userId:string}) => {
+    const secret = env.NPCGEN_SPACE_MACHINE_TOKEN;
+    const authorize = async (user:{userId:string}) => {
       if (!db) throw Object.assign(Error("SPACE_PROJECT_CATALOG_UNAVAILABLE"),{status:503});
       const grant = await appProject(db, siteAppMaster(user), "binari");
       return grant.project_id === "binari" && grant.revoked === 0;
-    }});
+    };
+    const machine = await machineResponse(request,{db,secret});
+    if (machine) return machine;
+    const browserQueue = await browserQueueResponse(request,{db,secret,authorize});
+    if (browserQueue) return browserQueue;
+    const shared = sharedNgsResponse(request, {catalogRelay:true});
+    if (shared) return shared;
+    const catalog = await projectCatalogResponse(request, db, {authorize});
     if (catalog) return catalog;
     const denied = await rejectCleanSpaceRequest(request,{catalogCall:(req:Request,message:unknown)=>
       projectCatalogMcp(req,message,db,{authorizeOwner:async (user:{userId:string,email:string}) => {
