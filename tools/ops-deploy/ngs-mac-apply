@@ -1,5 +1,6 @@
 #!/opt/homebrew/bin/python3.12
 """Owner-prepared, fixed native NGS role executor. No fetch/build or caller paths."""
+from datetime import UTC, datetime
 import fcntl
 import hashlib
 import http.client
@@ -331,7 +332,8 @@ def apply(sha, control, host):
             host.healthy(release, old_pid=pid)
             require(host.read_plist() == new and host.unchanged(env) == pins, "NATIVE_STORAGE_IDENTITY_DRIFT")
             receipt = {"sha": sha, "target": "mac", "state": "deployed", "health": "verified"}
-            atom(status, (json.dumps(receipt) + "\n").encode(), create=True)
+            private_receipt = {**receipt, "deployedAt": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")}
+            atom(status, (json.dumps(private_receipt) + "\n").encode(), create=True)
             return receipt
         except Exception:
             try:

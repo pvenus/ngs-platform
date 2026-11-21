@@ -137,6 +137,7 @@ class Apply(unittest.TestCase):
         self.assertEqual((self.folder / "prior.plist").read_bytes(), self.host.prior)
         self.assertEqual(self.host.queue.read_bytes(), b"real queue stand-in")
         self.assertEqual(self.status()["health"], "verified")
+        self.assertRegex(self.status()["deployedAt"], r"^\d{4}-\d{2}-\d{2}T[\d:]{8}Z$")
         with self.assertRaisesRegex(m.Refused, "ALREADY_ATTEMPTED"):
             self.run_apply()
         self.assertEqual(self.host.calls, ["stop", "replace", "start"])
