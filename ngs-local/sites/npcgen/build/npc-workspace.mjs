@@ -117,17 +117,18 @@ const nativeFiles={
 };
 const nativeIdentity=['npcId','generationId','posePreset','presetId','direction','sourceBindingHash','frameCount','fps'];
 const hash=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
-async function nativeTrack(project,npc,pos,preset,d){
+async function nativeTrack(project,npc,pos,preset,d,markPartial=()=>{}){
  if(pos!=='idle'||!nativeMotions.includes(preset)||!direction.includes(d))return null;
  const base=[pos,preset,d].join('/'),prefix='npcs/'+npc.id+'/';
  const read=async layer=>{
   const [directory,schema,assetKey]=nativeFiles[layer];
   const row=await readReplicaObject(project,prefix+directory+'/'+base+'.json');
-  return row?.schemaVersion===schema&&row.npcId===npc.id&&row.posePreset===pos&&row.presetId===preset&&row.direction===d&&
+  const valid=row?.schemaVersion===schema&&row.npcId===npc.id&&row.posePreset===pos&&row.presetId===preset&&row.direction===d&&
    id(row.generationId)&&hash(row.sourceBindingHash)&&fps(row.fps)&&
    Number.isSafeInteger(row.frameCount)&&row.frameCount>0&&row.frameCount<=1000&&Array.isArray(row.frames)&&
    row.frames.length===row.frameCount&&row.frames.every((frame,index)=>frame?.index===index&&mediaAsset(frame[assetKey],'.png'))
-   ?row:null;
+  if(row&&!valid)markPartial();
+  return valid?row:null;
  };
  const raw=await read('raw');
  if(!raw)return null;
@@ -136,6 +137,7 @@ async function nativeTrack(project,npc,pos,preset,d){
  const [a,p]=await Promise.all([read('alpha'),read('pixel')]);
  const alpha=same(a)?a:null;
  const pixel=alpha&&same(p)&&p.frames.every((f,i)=>f.alphaAssetId===alpha.frames[i].alphaAssetId)?p:null;
+ if(a&&!alpha||p&&!pixel)markPartial();
  return {base,prefix,raw,alpha,pixel};
 }
 function nativeFrame(track,index,layer){
@@ -144,17 +146,18 @@ function nativeFrame(track,index,layer){
  const asset=track[layer]?.frames[index]?.[assetKey];
  return mediaAsset(asset,'.png')?{asset,path:track.prefix+'assets/'+directory+'/'+track.base+'/'+layer+'-'+index+'.png',ext:'.png'}:null;
 }
-async function nativeFrameSets(project,npc,sets,materialized){
+async function nativeFrameSets(project,npc,sets,materialized,markPartial){
  for(const motion of nativeMotions){
   const merged=new Map(sets.find(x=>x.posePreset==='idle'&&x.presetId===motion)?.directions.map(row=>[row.direction,row])??[]);
   let changed=false;
-  const tracks=await sequenceMap(direction,d=>nativeTrack(project,npc,'idle',motion,d));
+  const tracks=await sequenceMap(direction,d=>nativeTrack(project,npc,'idle',motion,d,markPartial));
   for(const [i,d] of direction.entries()){
    const track=tracks[i];
    if(!track)continue;
    const frames=track.raw.frames.map((_,index)=>{
     const layerUrl=layer=>{
      const binding=nativeFrame(track,index,layer);
+     if(binding&&!materialized(binding))markPartial();
      return materialized(binding)?url(npc.id,['native-frame','idle',motion,d,String(index),layer].join('/'),binding):null;
     };
     return {index,pixelUrl:layerUrl('pixel'),rawUrl:layerUrl('raw'),alphaUrl:layerUrl('alpha')};
@@ -175,11 +178,11 @@ async function nativeFrameSets(project,npc,sets,materialized){
  }
  return sets;
 }
-async function planningDocuments(project,npc){
+async function planningDocuments(project,npc,markPartial){
  const prefix='npcs/'+npc.id+'/planning/';
  return (await sequenceMap(ids(npc.planningCategoryOrder),async category=>{
   const info=await readReplicaObject(project,prefix+category+'.json');
-  if(info?.id!==category)return [];
+  if(info?.id!==category){markPartial();return [];}
   const row={...pick(info,['id','planningRole']),name:string(info.name,category)};
   if(!Object.hasOwn(info,'contentFormat')&&!Object.hasOwn(info,'contentSha256'))
    return [{...row,...pick(info,['content'])}];
@@ -187,43 +190,49 @@ async function planningDocuments(project,npc){
   // planning-body read never downgrades to cached JSON or breaks media tabs.
   const typed={...row,contentFormat:'markdown.v1'};
   if(info.contentFormat!=='markdown.v1'||Object.hasOwn(info,'content')||
-     typeof info.contentSha256!=='string'||!/^[a-f0-9]{64}$/.test(info.contentSha256))return [typed];
+     typeof info.contentSha256!=='string'||!/^[a-f0-9]{64}$/.test(info.contentSha256)){markPartial();return [typed];}
   try{
    const bytes=await project.readBytes(prefix+category+'/content.md',1024*1024);
    if(bytes&&await hashReplicaBytes(bytes)===info.contentSha256)
     typed.markdown=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
   }catch{/* Unavailable for this document only; no fallback. */}
+  if(typeof typed.markdown!=='string')markPartial();
   return [typed];
  })).flat();
 }
-async function detail(project,npc){
- const np=npc.id,[planning,materialized]=await Promise.all([planningDocuments(project,npc),mediaInventory(project,np)]);
+async function detail(project,npc,markPartial){
+ const np=npc.id,[planning,materialized]=await Promise.all([planningDocuments(project,npc,markPartial),mediaInventory(project,np)]);
  const portraits=[];
  for(const pos of pose)for(const ref of Object.keys(portraitSlots)){
   const locator=['portrait',pos,ref].join('/');
   const binding=picture(npc,pos,ref);
+  if(npc.portraitSets?.[pos]?.[portraitSlots[ref]]&&!materialized(binding))markPartial();
   if(materialized(binding))portraits.push({id:locator,label:poseLabel[pos]+' '+portraitLabel[ref],
    posePreset:pos,referenceType:ref,url:url(np,locator,binding)});
  }
  for(const [pos,ref,d] of tokens(npc.poseViewKeys,3)){
   const locator=['pose',pos,ref,d].join('/');
   const binding=await view(project,npc,pos,ref,d);
+  if(!materialized(binding))markPartial();
   if(materialized(binding))portraits.push({id:locator,label:poseLabel[pos]+' '+d.toUpperCase(),
    posePreset:pos,referenceType:ref,direction:d,url:url(np,locator,binding)});
  }
  const animations=(await sequenceMap(tokens(npc.animationSlotKeys,3),async ([pos,preset,d])=>{
   const binding=await video(project,npc,pos,preset,d);
+  if(!materialized(binding))markPartial();
   return materialized(binding)?[{posePreset:pos,presetId:preset,direction:d,fps:binding.fps,frameCount:binding.frameCount,
    url:url(np,['animation',pos,preset,d].join('/'),binding)}]:[];
  })).flat();
  const frameSets=(await sequenceMap(tokens(npc.animationFrameSetKeys,2).slice(0,24),async ([pos,preset])=>{
   const set=await frameSet(project,npc,pos,preset);
+  if(!set)markPartial();
   const directions=direction.flatMap(d=>{
    const row=sequence(set,d);
-   if(!row)return [];
+   if(!row){if(set?.directions?.[d])markPartial();return [];}
    const frames=row.frames.map((_,index)=>{
     const layerUrl=layer=>{
      const binding=frame(set,d,row,index,layer);
+     if(binding&&!materialized(binding))markPartial();
      return materialized(binding)?url(np,['frame',pos,preset,d,String(index),layer].join('/'),binding):null;
     };
     return {index,pixelUrl:layerUrl('pixel'),rawUrl:layerUrl('raw'),alphaUrl:layerUrl('alpha')};
@@ -232,7 +241,7 @@ async function detail(project,npc){
   });
   return directions.length?[{posePreset:pos,presetId:preset,directions}]:[];
  })).flat();
- return {npc:pick(npc,npcKeys),planning,portraits,animations,frameSets:await nativeFrameSets(project,npc,frameSets,materialized)};
+ return {npc:pick(npc,npcKeys),planning,portraits,animations,frameSets:await nativeFrameSets(project,npc,frameSets,materialized,markPartial)};
 }
 async function media(project,npc,locator,sha256){
  const fields=locator.split('/'),[kind,pos,a,b,c,d]=fields;
@@ -278,6 +287,19 @@ export async function npcWorkspaceRead({openProject,query,authorize}){
  await authorize(projectId);
  if(projectId!=='binari')throw missing();
  const project=await openProject(projectId);
+ const cache=locator===null?project?.npcCache:null;
+ let generation;
+ if(cache){
+  try{
+   generation=await cache.version();
+   if(generation!==null){
+    const hit=await cache.read(npcId,generation);
+    if(hit?.projectId===projectId&&Array.isArray(hit.npcs)&&
+       (npcId===null?!Object.hasOwn(hit,'npc'):hit.npc?.id===npcId)&&
+       await cache.version()===generation)return {json:hit};
+   }
+  }catch{generation=null;} // Cache is optional; source reads still carry normal errors.
+ }
  const index=project?await readReplicaObject(project,'npcs/metadata.json'):null;
  const actId=id(index?.actId)?index.actId:null;
  const allowed=ids(index?.characterOrder);
@@ -294,8 +316,16 @@ export async function npcWorkspaceRead({openProject,query,authorize}){
  const base={projectId,actId,chapters:[...new Set(roster.flatMap(row=>ids(row.chapters)))].map(id=>({id,label:id})),
   npcs:roster.map(row=>({id:row.id,name:string(row.name,row.id),role:string(row.role),kind:string(row.kind),
    status:string(row.status),actId:id(row.actId)?row.actId:actId,chapters:ids(row.chapters),scope:projectId+'/npcs/'+row.id}))};
- if(!npcId)return {json:base};
- const npc=roster.find(row=>row.id===npcId);
- if(!npc)throw missing();
- return {json:{...base,...await detail(project,npc),mediaScopes:mediaScopes(projectId,npcId)}};
+ let full=Array.isArray(index?.characterOrder)&&roster.length===allowed.length;
+ const markPartial=()=>{full=false;};
+ let json=base;
+ if(npcId){
+  const npc=roster.find(row=>row.id===npcId);
+  if(!npc)throw missing();
+  json={...base,...await detail(project,npc,markPartial),mediaScopes:mediaScopes(projectId,npcId)};
+ }
+ if(cache&&generation!=null&&full){
+  try{await cache.store(npcId,generation,json);}catch{/* A cache write must not fail the authorized read. */}
+ }
+ return {json};
 }

@@ -44,10 +44,13 @@ function checkedRange(range){
     !int(range.length,1)||!int(range.offset+range.length-1))throw invalid();
  return {start:range.offset,end:range.offset+range.length-1};
 }
-function metaInput(value){
+function metaInput(value,key){
  if(value===undefined)return undefined;
+ const cache=typeof key==='string'&&/\/v2\/npc-read-cache-v1\/(?:roster|detail\/[0-9a-f]{2})$/u.test(key);
  if(!value||typeof value!=='object'||Array.isArray(value)||
-  Object.keys(value).some(k=>!['sha256','removed'].includes(k))||
+  Object.keys(value).some(k=>!(cache?['sha256','generation','scope']:['sha256','removed']).includes(k))||
+  cache&&(!/^[1-9][0-9]{0,15}$/u.test(value.generation??'')||typeof value.scope!=='string'||
+   !/^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,127})?$/u.test(value.scope))||
   (Object.hasOwn(value,'sha256')&&!sha(value.sha256))||(Object.hasOwn(value,'removed')&&value.removed!=='1'))throw invalid();
  return {...value};
 }
@@ -92,7 +95,7 @@ export function createS3ReplicaBucket({client,commands,bucketName}={}){
   if((!streamed&&!(body instanceof Uint8Array))||sha256!==undefined&&!sha(sha256))throw invalid();
   const length=streamed?size:body.byteLength;
   if(!int(length,0,5*1024**3)||!streamed&&size!==undefined&&size!==length||streamed&&!sha256)throw invalid();
-  const meta=metaInput(customMetadata);
+  const meta=metaInput(customMetadata,key);
   if(sha256!==undefined&&meta?.sha256!==sha256)throw invalid();
   const input=streamed?Readable.fromWeb(body):body;
   let value;

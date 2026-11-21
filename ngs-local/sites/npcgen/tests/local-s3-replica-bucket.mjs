@@ -47,6 +47,19 @@ test('conditional put/get uses provider conditions and true full size for matche
  assert.ok(calls.every(x=>x.input.Bucket==='ngs-local'));
 });
 
+test('NPC cache metadata belongs only to private fixed cache slots',async()=>{
+ const metadata={sha256:digest,generation:'42',scope:'npc.fixture'};
+ const {bucket,calls}=fixture((method,args)=>{
+  assert.equal(method,'PutObject');assert.deepEqual(args.Metadata,metadata);
+  return {ETag:'"cached"'};
+ });
+ const ns='ngs-replica/v1/binari/v2/npc-read-cache-v1/';
+ await bucket.put(ns+'detail/ab',bytes(1,2),{sha256:digest,customMetadata:metadata});
+ await assert.rejects(bucket.put('ngs-replica/v1/binari/files/npcs/metadata.json',bytes(1),{customMetadata:metadata}),/INPUT_INVALID/);
+ await assert.rejects(bucket.put(ns+'detail/ab',bytes(1),{customMetadata:{...metadata,scope:'../private'}}),/INPUT_INVALID/);
+ assert.equal(calls.length,1);
+});
+
 test('lists exact object metadata with HEAD and fails on mixed or unexpected listing',async()=>{
  const {bucket}=fixture((name,args)=>{
   if(name==='HeadObject')return {ETag:'"pin"',ContentLength:5,Metadata:{sha256:digest}};

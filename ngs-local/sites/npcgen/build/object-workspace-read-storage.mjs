@@ -28,7 +28,7 @@ export function openObjectWorkspaceProject(replica,id){
   const object=checkedMeta(await replica.head(path));return object?{size:object.size,sha256:object.customMetadata.sha256}:null;
  }
  return Object.freeze({
-  head,listFiles,
+  head,listFiles,npcCache:replica.npcCache,
   async listChildren(prefix){
    const rows=await listFiles(prefix),seen=new Map(),start=prefix?prefix.length+1:0;
    for(const {path} of rows){

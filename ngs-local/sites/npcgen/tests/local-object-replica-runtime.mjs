@@ -22,11 +22,11 @@ test('object local composition explicit and fail-closed; web index read-only and
  const evidence=[],ports={
   async openLocalS3ReplicaBucket({configPath}){assert.equal(configPath,fixtureS3);return {close:()=>evidence.push('bucket closed')};},
   openReplicaSqlite({filename,readOnly}){assert.equal(filename,fixtureIndex);evidence.push(readOnly);return {close:()=>evidence.push('db closed')};},
-  createObjectReplica({db,bucket,writePart}){assert.ok(db&&bucket&&writePart);return {list(){},head(){},get(){},progress(){},call(){}};},
+  createObjectReplica({db,bucket,writePart}){assert.ok(db&&bucket&&writePart);return {list(){},head(){},get(){},progress(){},call(){},npcCache:{version(){},read(){},store(){}}};},
   objectReplicaSyncTools:[{name:'fixture'}],
  };
  const web=await openLocalObjectReplicaFromEnv(env,{load:async()=>ports});
- assert.deepEqual(Object.keys(web.replica).sort(),['get','head','list','progress']);
+ assert.deepEqual(Object.keys(web.replica).sort(),['get','head','list','npcCache','progress']);
  web.close();
  const write=await openLocalObjectReplicaFromEnv(env,{writer:true,load:async()=>ports});
  assert.equal(typeof write.replica.call,'function');
