@@ -9,8 +9,10 @@ import {assertLoopbackRequest,createLoopbackAuth} from './loopback-auth.mjs';
 import {createLocalProjectFolders,validProjectId} from './local-project-folders.mjs';
 import {localProjectFolderRoute,projectFolderRoutes} from './local-project-folder-route.mjs';
 import {validFolderPath} from './local-recursive-folders.mjs';
-import {localProjectWorkspace} from './local-project-workspace.mjs';
+import {localProjectWorkspace,openLocalWorkspaceProject} from './local-project-workspace.mjs';
 import {localNpcWorkspace} from './local-npc-workspace.mjs';
+import {npcWorkspaceRead} from './npc-workspace.mjs';
+import {dispatchWorkspaceRead,workspaceReadRoute} from './workspace-read-registry.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
 import {openLocalRequestQueue} from './local-request-queue.mjs';
 import {conceptCategoryRequestType,validConceptCategoryRequest} from './local-concept-category-contract.mjs';
@@ -168,7 +170,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
      }
      const replace=command.payload.schemaVersion==='ngs.npc-one-stop.replace.v1';
      if(replace||typeof character?.npcId==='string'){
-      const roster=localNpcWorkspace({root,query:new URLSearchParams({projectId:command.payload.projectId}),authorize:()=>{}}).json.npcs;
+      const roster=(await localNpcWorkspace({root,query:new URLSearchParams({projectId:command.payload.projectId}),authorize:()=>{}})).json.npcs;
       if(replace){
        const target=roster.find(npc=>npc.id===character?.npcId);
        if(!target)throw failure('ONE_STOP_REPLACE_TARGET_NOT_FOUND',404);
@@ -216,12 +218,12 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
     res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'");
     return res.end(result.bytes.subarray(start,end+1));
    }
-   if(url.pathname==='/api/project-workspace'||url.pathname==='/api/npc-workspace'){
+   if(workspaceReadRoute(url.pathname)){
     const session=auth.read(req);
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
     if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
-    const read=url.pathname==='/api/npc-workspace'?localNpcWorkspace:localProjectWorkspace;
-    const result=read({root,query:url.searchParams,
+    const result=await dispatchWorkspaceRead({pathname:url.pathname,query:url.searchParams,
+     openProject:id=>openLocalWorkspaceProject(root,id),npcRead:npcWorkspaceRead,
      authorize:projectId=>projectPermission(session.principal,projectId,undefined,false)});
     res.setHeader('X-NPCGen-Frontend-Context',session.contextId);
     if(result.json)return json(200,result.json);
