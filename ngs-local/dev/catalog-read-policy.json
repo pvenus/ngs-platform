@@ -1,0 +1,177 @@
+{
+  "evidence": [
+    {
+      "manifestHash": "b2fd5ac42173289cdd9a7cf0cb454df0f6b76d33ea9d4c5f55477de774e99cf3",
+      "projectId": "binari",
+      "resources": 60,
+      "sourceRevisionVector": {
+        "concept": 32,
+        "concept.document": "b9047bba847124d7a3ed4b9ea794b404c5b505bc7b9ea4a328b607f667a5f8f5",
+        "concept.schema": "522b92b55a44a6cc14ae314494a5764b603138ed41c3dcfa9a753d1c7eb1f415",
+        "currentContent": "f399667d3c82beddd6bcb5691814bff7ac70e39e44165c5ba7c5caf93c212935",
+        "knowledge": 2,
+        "npcs": 26,
+        "story": 15
+      }
+    },
+    {
+      "manifestHash": "aed89a4a90ae1b667526388d64647c0ff309455d25828e2304a5af3f25867940",
+      "projectId": "masterconcept",
+      "resources": 2,
+      "sourceRevisionVector": {
+        "concept": 32,
+        "concept.document": "b9047bba847124d7a3ed4b9ea794b404c5b505bc7b9ea4a328b607f667a5f8f5",
+        "concept.schema": "522b92b55a44a6cc14ae314494a5764b603138ed41c3dcfa9a753d1c7eb1f415"
+      }
+    },
+    {
+      "projectId": "binari",
+      "requestId": "portrait-request.47a75dd8-3d59-44d6-ba0b-bbb6d7ad09df",
+      "resourceIds": [
+        "asset.e1559e28c95b93e562bc1683b2a69d4d83bc2aad1a9ae87cd518896be3f42be6.png",
+        "asset.31eea199bdc866c3975fc5f72337693cf015361996221c28b24020b1b46021c6.png",
+        "asset.048dfbfd930f7d88fc7c42984712ecc6bc6135f44db4ded1be42a6075628316c.png"
+      ],
+      "scope": "read own newly generated and PDS-registered portrait assets only; user-authorized local QA"
+    },
+    {
+      "projectId": "binari",
+      "requestId": "portrait-request.d619a527-f3fe-4738-96d6-987c70050956",
+      "resourceIds": [
+        "asset.326e78529d2fa5d2c29fd97c760ee8406204706a40a6a94721f4963d4c2964ea.png",
+        "asset.50b5e53510f26d3e0554eee934e41f2d6c3de4e5947c455b12251c3def208639.png",
+        "asset.6a0562a98822f5595c902e53c857affd42a9bc4c06a4762107150f0f5120fa5b.png"
+      ],
+      "scope": "Read only these three approved mother portraits for the existing local user; no new actor/project/write grant."
+    }
+  ],
+  "projects": [
+    {
+      "id": "binari",
+      "resources": [
+        "asset.048dfbfd930f7d88fc7c42984712ecc6bc6135f44db4ded1be42a6075628316c.png",
+        "asset.0a1b8afa341cf88730e841ab06c08f39b9926effb7a020a28e474083f3eedd10.png",
+        "asset.1629be71fc51e827d466a7ed0221bf4b32e58b6495b75721553d1335a56d04f8.png",
+        "asset.168f0cd047070f4399f749cdc30779eed65f288fa1e25e99c108d4bd5e5701d6.png",
+        "asset.17c25e8a4e9da19c3577f01dfe50480e490b518ac9882dfb9413e04642e6c968.png",
+        "asset.1a4b9525128d616620667a220b862999d95169d314e2da1304144d852cdc8328.png",
+        "asset.31eea199bdc866c3975fc5f72337693cf015361996221c28b24020b1b46021c6.png",
+        "asset.326e78529d2fa5d2c29fd97c760ee8406204706a40a6a94721f4963d4c2964ea.png",
+        "asset.38201f1e41ce47257f52aafb953117df393eef001505617bc640a25825fc5831.png",
+        "asset.419e572e1a70d898c08cfa96ff7391279f5dcb25d96a2d03851c881195247a20.png",
+        "asset.44d7652402c0c214b9d3b29f62fb78d2b78e996580b3446612fc1c6b3394f98e.png",
+        "asset.508c41d8c8cba1e26045752b39f505a137c1bef1bcf63bd4423e8734306caf1d.png",
+        "asset.50b5e53510f26d3e0554eee934e41f2d6c3de4e5947c455b12251c3def208639.png",
+        "asset.52f2d868dd3ef52ca755f33aebe08e2da523e05994950f7f77b4c8dd0d886db8.png",
+        "asset.53a41dcd7cc31901857cce013d8c8043ec49c3d1b5fa6b96d54224a196db3a65.png",
+        "asset.55742a338512ab10880125f698906340dd8e0a4677feef95e52f4d94414b08f2.png",
+        "asset.582b2efe60a8b3c8b77e925bf83ece5e4de326ad6e381091a37790d4394857e6.png",
+        "asset.5acfcf987238b305e3c2f727b14f921839b686d228ede5479203c9fa0f0944e0.png",
+        "asset.5b3d63e1bcf5a6d86534e6c6bbb8dc8214600fcb7f6b6ae83a433623db3bef13.png",
+        "asset.5b51ce2a96e123220e3f217b76a6ec1bc112d440a51912a8a8261539e3df9ff7.png",
+        "asset.607316d0e3a737a8819ea53bf965a341de615b3fe8cd8c52c0255bb99625e3ce.png",
+        "asset.663d33e5f2c5dc5b9a5b6bc9348d7ebafeeff70d87526c5ec54659688c55a5d4.png",
+        "asset.68b5844115fdfb99b5a2be6ecd9548811c9016d211bc6d48b51215e621291e2c.png",
+        "asset.6a0562a98822f5595c902e53c857affd42a9bc4c06a4762107150f0f5120fa5b.png",
+        "asset.74ef4c2f61eae9bf6b3a54ffbf08c9cad1be6e7a3a65647e58bcf4a187784c2d.png",
+        "asset.7aad15bd675fb55af35e0db8b501cb206013a921ef2f6d0e57e01fcab081a640.png",
+        "asset.7e31e33aad655c81afae799a0eeef38540d2dc6addad559247731d8f02825548.png",
+        "asset.7e3cd0a52641b962f30c492a3e190d303fc4e148bdb9ac259919b322a4994937.png",
+        "asset.814d36a6b05cd714f0efe4d0b68377817d3051e185ccb1a1c0411262b0196210.png",
+        "asset.83cec1df722dafded2001bcc757c8b153438547e18dbc3f3efd7c0dd3866fecd.png",
+        "asset.875c4b5c5955c7708af567172069f7fb2eec9b6b4986d9a9eb255e58214d3064.png",
+        "asset.8d52029a3963238b1c973dd63d2a4008d16f6c19b075d1bfbcddac795e4787c6.png",
+        "asset.9987d2f90b191e9d77f54ee6988943548ee5a2ec94efdb573929491a69eeed9d.png",
+        "asset.9a562b0be4cb0e1bfcfe1968cf921e70a1fda9f30bb58c8ad0870544833a273b.png",
+        "asset.a8b4c464bda70c00ea4d64bae04d60e923fbcc806d6f33398b82d8fbde44f36d.png",
+        "asset.aa663fe7134774439abcf1245401cad31971c3126096199efc0229fe357c9c5c.png",
+        "asset.ac050b137aecc6de9068e426b58180e3d6ad5d5607005e0906d0fe239239a197.png",
+        "asset.b1a5f913562de052a13976b05fc740ebabbdbc636bc4088b57ea737d8684511e.png",
+        "asset.b8cc9c44270122551c9742ccdff6192bc1f3a4172471c84bb1f93367735142c4.png",
+        "asset.b8eaa82ca3fc714046500bf72e090d32795f74cdfe55792202c62e92a91be5fd.png",
+        "asset.bdbe53ba9e412f979ae4cbaf909f5b7c715ae6ff1c44350b8dc1a78c4666a1e2.png",
+        "asset.c1375b168c8efd58edefa6a19f9693d84d9400a4aa99817c51389434317f93f4.png",
+        "asset.c2ddfab832a342dbbb34aa4255bd06efcc74cb756d9e540e739d4bc780ec4f4a.png",
+        "asset.c44f2f6eb3dd8612af3549ff7ce71a296aeacf590e15c6e1a42f07126934001d.png",
+        "asset.c58f7b1383d3164043daa042dbf75d8041a4b3363e95411f4d5dc9da760364ad.png",
+        "asset.c7c44a6c440bc433d57ce1a9f9b7941b599ebc7485868aa785a3ae947e41f731.png",
+        "asset.d6d9c77721b7096f8787e287157c40450947a1cbd1e86242fb45806a120d0ad4.png",
+        "asset.da3877c1ea47c5a57e598e778901aa12879b4b049582692693177a8dd9bb02d6.png",
+        "asset.dd45bf2f6e58444ed3e3fa6fa67d6be02df3112851925115ad81522592b174a7.png",
+        "asset.e1559e28c95b93e562bc1683b2a69d4d83bc2aad1a9ae87cd518896be3f42be6.png",
+        "asset.e82babf836c31bbefbb73e04021361bda66b9d28967ed495300f793b64ba17f6.png",
+        "asset.e853c10497d31bbf8de25874ec42586711641a183e4288a092e033ef09586525.png",
+        "asset.e8ed1d757ae1da08c6d0c1d2ff62099501aa8c17426f54ca602e358161b35287.png",
+        "asset.relationship.fear.png",
+        "asset.relationship.fear.svg",
+        "asset.relationship.goodwill.png",
+        "asset.relationship.goodwill.svg",
+        "asset.relationship.hostility.png",
+        "asset.relationship.hostility.svg",
+        "asset.relationship.trust.png",
+        "asset.relationship.trust.svg",
+        "asset.relationship.unknown.png",
+        "asset.relationship.unknown.svg",
+        "asset.relationship.vigilance.png",
+        "asset.relationship.vigilance.svg",
+        "asset.story-node.1ec36e8a7317d027009a485e32073f0266029c0c366fe0b59f1b438060d95274.png",
+        "asset.story-node.48842949a3cd9d6d7f371d0e7898f72cf02cccf6c9292d2f7ed79f981417e19a.png",
+        "asset.story-node.8958a83f6ee156736fe1a1437aedc82aac41705f35167a2d9a1c850cf75d498a.png",
+        "concept",
+        "concept.schema",
+        "knowledge.category.character-art",
+        "knowledge.category.documentation",
+        "knowledge.category.mcp",
+        "knowledge.category.workflow",
+        "knowledge.entry.character-image-generation-guide",
+        "knowledge.entry.codex-work-direction",
+        "knowledge.entry.document-migration-plan",
+        "knowledge.entry.mcp-capability-overview",
+        "knowledge.entry.seojin-character-brief",
+        "knowledge.overview",
+        "npc-profile-catalog",
+        "npcs",
+        "relationship-icon-manifest",
+        "story",
+        "asset.a65bcdd4d03c0e8d392511357331b97d50369d766723bb40c2ef7a05127be254.png",
+        "asset.9a95e7c04bf4952c731c0bf3047dea331d8c396c38004005e8b6ab4ed6f333c6.png",
+        "asset.69ae2d7eab6ec6efd11ea3d47a3ca35df6930582a00c4f8c9efc7dcc55c682f9.png",
+        "asset.cd581cc2e224f44893b6dc5584cf4debfabf3b9a0e1d6bf3010e801c7312ef5d.png",
+        "asset.4c046b1e287620ccb0df7659dc957efde375bcc6c02c6322bd27aa9886b4a6a0.png",
+        "asset.6f0eb6db13a035a93fb2ada545ad84621965fbf9df809d4797c891d40328160d.png",
+        "asset.350cd0d00395e46b7ab79c654da39a2d4acf814d9935fb5ad8e5e73f44763f8e.png",
+        "asset.d9a26bc7df1a9b0272b3514c0c38228fa6186bc2c86d24c0c92f6c0b6851bc3b.png",
+        "asset.78274d1c3e0d800ea91c0dcc0578e88bcbed5c93c680096d4475aa077fa75a1c.png",
+        "asset.67bcdeeb8f7e8d2b1497de952f423a234a6b9ad26c4978aa3b22d02a9b41a8ea.png",
+        "asset.b9bcbde30a1584b5b10b65c96baa3829585e18a37e8e9e8116e8b99398b1df2e.png",
+        "asset.ec9443509e5efa74f497425a18f97e7b25b7d215f6d371f884c4aa1bd1c01cbb.png",
+        "asset.59590c9e81312a4bb8ca43e8c696828fa2864231913339341e9f9cd457bd1bfc.png"
+      ],
+      "write": false
+    },
+    {
+      "id": "masterconcept",
+      "resources": [
+        "concept",
+        "concept.schema"
+      ],
+      "write": false
+    }
+  ],
+  "verifiedWorkerAssets": {
+    "schemaVersion": "binari-verified-worker-assets.v1",
+    "version": 1,
+    "enabled": true,
+    "projectId": "binari",
+    "provider": "local",
+    "subject": "browser-fixture",
+    "allowedKinds": [
+      "portrait.generate",
+      "npc.pixel-sd.normalized"
+    ],
+    "allowUploads": false,
+    "allowLegacy": false,
+    "allowSpace": false,
+    "authorization": "User approved project-scoped local reads only for formally generated, verified, registered worker assets. Existing identity and explicit allowlists preserved."
+  }
+}

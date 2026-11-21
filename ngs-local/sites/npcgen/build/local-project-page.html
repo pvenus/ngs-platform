@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NPC Gen</title>
+<link rel="stylesheet" href="/local-project-page.css">
+<script type="module" src="/local-project-page.js"></script>
+</head>
+<body>
+<div class="workspace catalog-workspace project-home" id="app">
+ <header class="site-header">
+  <a class="brand" href="/" aria-label="NPC Gen 프로젝트 홈">
+   <img class="brand-mark" src="/assets/vinus-mark.png" alt="VINUS">
+   <div><h1>NPC Gen</h1><span class="overline">BY VINUS</span></div>
+  </a>
+  <div class="project-header-identity" id="workspace-identity" hidden><div id="workspace-icon" aria-hidden="true"></div><span id="workspace-title"></span></div>
+  <nav class="catalog-header-tools" id="workspace-tools" aria-label="프로젝트 메뉴" hidden>
+   <a href="/" class="home-icon-button" aria-label="프로젝트 홈으로" title="프로젝트 홈으로">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+   </a>
+  </nav>
+ </header>
+ <main class="project-home-main" id="project-home" aria-label="로컬 프로젝트">
+  <div class="home-intro"><div><span class="overline">YOUR PROJECTS</span><h2>어떤 이야기를 만들까요?</h2><p>프로젝트를 열고 이야기와 인물을 이어가세요.</p></div>
+  <button type="button" id="reload">다시 조회</button></div>
+  <ul id="projects" class="project-card-grid" aria-label="프로젝트 목록"></ul>
+  <p id="status" role="status">프로젝트를 불러오고 있습니다.</p>
+ </main>
+ <main class="project-layout" id="project-workspace" hidden>
+  <aside class="project-sidebar"><nav class="project-category-nav" id="project-categories" aria-label="프로젝트 카테고리"></nav></aside>
+  <div class="project-main-content">
+   <div class="project-content-heading"><span class="overline">PROJECT WORKSPACE</span><h2 id="area-title"></h2><p id="workspace-status" class="meta" role="status"></p></div>
+   <div class="catalog-grid">
+    <aside class="surface catalog-list" aria-labelledby="items-title"><div class="concept-category-heading"><h3 id="items-title">항목</h3><span id="concept-category-tools" hidden></span></div><ul id="workspace-items"></ul></aside>
+    <section class="surface catalog-detail" id="workspace-detail" aria-label="항목 상세"></section>
+   </div>
+  </div>
+ </main>
+</div>
+</body>
+</html>

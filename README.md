@@ -68,3 +68,7 @@ Those projects are separate setup dependencies, not bundled implementations here
 Only source and configuration templates are published. Generated images, audio,
 video, databases, model weights, private operational settings and old Git history
 are excluded. This publication does not change existing local services.
+
+## Local NGS production source
+
+The current standalone local application is in [ngs-local](ngs-local/README.md). Runtime data and credentials are not included.

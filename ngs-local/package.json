@@ -1,0 +1,12 @@
+{
+  "name": "vinus-ngs-local",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node sites/npcgen/build/local-project-page-server.mjs",
+    "test": "node --test sites/npcgen/tests/*.mjs"
+  }
+}
