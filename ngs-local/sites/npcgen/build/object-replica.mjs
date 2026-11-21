@@ -2,12 +2,9 @@
 import {createHash} from 'node:crypto';
 const project='binari',defaultNamespace='ngs-replica/v1/binari/';
 const passes='ngs_replica_pass_v2',receives='ngs_replica_receive_v2',entries='ngs_replica_version_v2',resets='ngs_replica_reset_v2';
+const progressRows='ngs_replica_progress_v1',progressResults='ngs_replica_progress_item_v1';
 const inactivity=60*60_000,maxPaths=32768,maxInventoryBytes=16*1024*1024;
 export const objectReplicaChunkSize=1024*1024;
-export const objectReplicaBatchTool='ngs_file_sync_file_batch';
-export const objectReplicaBatchFiles=32;
-export const objectReplicaBatchRawBytes=2*objectReplicaChunkSize;
-export const objectReplicaBatchRpcBytes=4*Math.ceil(objectReplicaBatchRawBytes/3)+96*1024;
 const chunkSize=objectReplicaChunkSize,minPart=5*chunkSize,maxParts=10000;
 // Shared wire tolerates the full supported R2 object range, not a product size cap.
 const nativeObjectMaximum=5*1024**4-5*1024**3;
@@ -29,23 +26,14 @@ const begin='ngs_file_sync_begin',chunk='ngs_file_sync_file_chunk',reset='ngs_fi
 export const objectReplicaSyncTools=Object.freeze([
  tool(begin,'Open a Binari replica sync pass and read the digest inventory.',{scope:{const:project}}),
  tool(chunk,'Write one bounded piece to a private, per-file replica transfer.',{syncId:string,path:string,sha256:string,size:integer,offset:integer,dataBase64:string}),
- tool(objectReplicaBatchTool,'Submit up to 32 complete small files and receive one status per file (2 MiB total).',{
-  syncId:string,files:{type:'array',minItems:1,maxItems:objectReplicaBatchFiles,items:{
-   type:'object',additionalProperties:false,required:['path','sha256','size','dataBase64'],
-   properties:{path:string,sha256:string,size:{...integer,maximum:objectReplicaChunkSize},dataBase64:string},
-  }},
- }),
+ tool('ngs_file_sync_plan','Set the changed-file count once for the active serial pass.',{syncId:string,totalFiles:{type:'integer',minimum:0,maximum:maxPaths}}),
+ tool('ngs_file_sync_file_failed','Record one exhausted and unpublished file once.',{syncId:string,path:string}),
  tool(reset,'Discard one incomplete file transfer. Its live replica is not altered.',{syncId:string,path:string}),
  tool(remove,'Hide one digest-matched replica file without deleting its earlier bytes.',{syncId:string,path:string,sha256:string}),
  tool(finish,'Close a replica sync pass; report files committed by it.',{syncId:string}),
  tool(abort,'Cancel unfinished replica transfers without altering live files.',{syncId:string}),
 ]);
 const names=new Set(objectReplicaSyncTools.map(t=>t.name));
-const batchErrors=new Map([
- ['NGS_FILE_SYNC_CONTENT_MISMATCH',409],['NGS_FILE_SYNC_REPLICA_CHANGED',409],
- ['NGS_FILE_SYNC_OFFSET_INVALID',409],['NGS_FILE_SYNC_INCOMPLETE',409],
- ['NGS_FILE_SYNC_UNAVAILABLE',503],
-]);
 const decoded=b64=>{
  need(typeof b64==='string'&&b64.length<=4*Math.ceil(chunkSize/3)&&/^[A-Za-z0-9+/]*={0,2}$/u.test(b64));
  let data;try{data=atob(b64);}catch{need(false);}
@@ -170,7 +158,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   const expired=await all(`SELECT sync_id FROM ${passes} WHERE expiry<=? ORDER BY expiry LIMIT 2`,now());
   for(const {sync_id} of expired){
    const fenced=await run(`DELETE FROM ${passes} WHERE sync_id=? AND expiry<=?`,sync_id,now());
-   if(fenced)await clearPassTransfers(sync_id);
+   if(fenced){await settleProgress(sync_id,false);await clearPassTransfers(sync_id);}
   }
  }
  async function start(args){
@@ -255,28 +243,46 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   if(length!==f.size||hasher.digest('hex')!==f.sha256)content();
   if(f.path==='icon.png')headerCheck(f.path,initial??new Uint8Array());
  }
+ const progressCapacity=`(NOT EXISTS(SELECT 1 FROM ${progressRows} WHERE sync_id=?)
+   OR EXISTS(SELECT 1 FROM ${progressRows} WHERE sync_id=? AND state='syncing' AND completed+failed<total)
+   OR EXISTS(SELECT 1 FROM ${progressResults} WHERE sync_id=? AND path=? AND state='completed'))`;
+ const persistDone=(f,id,guard,...bindings)=>stmt(`INSERT INTO ${progressResults}(sync_id,path,state)
+  SELECT ?,?,'completed' WHERE EXISTS(SELECT 1 FROM ${progressRows} WHERE sync_id=? AND state='syncing')
+  AND (${guard}) ON CONFLICT(sync_id,path) DO NOTHING`,id,f.path,id,...bindings);
  async function publish(f,session){
+  const id=session.sync_id,capacity=[id,id,id,f.path];
   if(!f.same){
-   const changed=await run(`INSERT INTO ${entries}(path,sha256,object_key,size,sync_id,last_sha)
-    SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
-    AND EXISTS(SELECT 1 FROM ${receives} WHERE sync_id=? AND path=? AND attempt=? AND received=size)
-    AND COALESCE((SELECT MAX(version) FROM ${entries} WHERE path=?),0)=?`,f.path,f.sha256,objectKey(f.attempt),f.size,session.sync_id,f.last_sha,
-    session.sync_id,now(),session.sync_id,f.path,f.attempt,f.path,f.prior);
-   if(!changed){
+   const key=objectKey(f.attempt);
+   const [appended]=await db.batch([
+    stmt(`INSERT INTO ${entries}(path,sha256,object_key,size,sync_id,last_sha)
+     SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
+     AND EXISTS(SELECT 1 FROM ${receives} WHERE sync_id=? AND path=? AND attempt=? AND received=size)
+     AND COALESCE((SELECT MAX(version) FROM ${entries} WHERE path=?),0)=?
+     AND ${progressCapacity} AND NOT EXISTS(SELECT 1 FROM ${progressResults} WHERE sync_id=? AND path=? AND state='failed')`,
+     f.path,f.sha256,key,f.size,id,f.last_sha,id,now(),id,f.path,f.attempt,f.path,f.prior,...capacity,id,f.path),
+    persistDone(f,id,`EXISTS(SELECT 1 FROM ${entries} WHERE object_key=?)`,key),
+   ]);
+   if(!appended.meta.changes){
     const live=await current(f.path);
-    if(live?.object_key!==objectKey(f.attempt))stale();
+    if(live?.object_key!==key)stale();
    }
-   await run(`DELETE FROM ${receives} WHERE sync_id=? AND path=? AND attempt=?`,session.sync_id,f.path,f.attempt);
+   await run(`DELETE FROM ${receives} WHERE sync_id=? AND path=? AND attempt=?`,id,f.path,f.attempt);
   }else{
    const live=await current(f.path);
    if((live?.version??0)!==f.prior)stale();
+   await db.batch([persistDone(f,id,`EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
+    AND EXISTS(SELECT 1 FROM ${receives} WHERE sync_id=? AND path=? AND attempt=? AND received=size)
+    AND COALESCE((SELECT MAX(version) FROM ${entries} WHERE path=?),0)=? AND ${progressCapacity}`,
+    id,now(),id,f.path,f.attempt,f.path,f.prior,...capacity)]);
+   const tracked=await first(`SELECT state FROM ${progressRows} WHERE sync_id=?`,id);
+   if(tracked&&(await first(`SELECT state FROM ${progressResults} WHERE sync_id=? AND path=?`,id,f.path))?.state!=='completed')stale();
   }
   return {nextOffset:null};
  }
- async function send(args,session,verifiedBytes){
+ async function send(args,session){
   need(exact(args,'syncId','path','sha256','size','offset','dataBase64')&&pathOK(args.path)&&hash(args.sha256)&&
    safeInt(args.size,0,headerBound(args.path))&&safeInt(args.offset,0,args.size)&&args.offset%chunkSize===0);
-  const {path,sha256,size,offset}=args,data=verifiedBytes??decoded(args.dataBase64),chunkHash=verifiedBytes?sha256:digest(data);
+  const {path,sha256,size,offset}=args,data=decoded(args.dataBase64),chunkHash=digest(data);
   need(data.byteLength===Math.min(chunkSize,size-offset)&&(size===0||offset<size));
   const next=offset+data.byteLength,final=next===size;
   const epoch=(await generation(session.sync_id,path))?.generation??0;
@@ -334,41 +340,6 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   if(f.upload_id)await verifyLarge(f,JSON.parse(f.parts));
   return await publish(f,session);
  }
- function batchPreflight(args){
-  need(exact(args,'syncId','files')&&Array.isArray(args.files)&&
-   args.files.length>=1&&args.files.length<=objectReplicaBatchFiles);
-  const paths=new Set();
-  let rawBytes=0;
-  return args.files.map(row=>{
-   need(exact(row,'path','sha256','size','dataBase64')&&pathOK(row.path)&&hash(row.sha256)&&
-    safeInt(row.size,0,Math.min(chunkSize,headerBound(row.path)))&&!paths.has(row.path));
-   paths.add(row.path);
-   const bytes=decoded(row.dataBase64);
-   rawBytes+=bytes.length;
-   need(bytes.length===row.size&&rawBytes<=objectReplicaBatchRawBytes);
-   return {row,bytes};
-  });
- }
- async function sendBatch(files,session){
-  const results=[];
-  // The envelope is already structurally checked in full. The existing
-  // per-file commit and progress rules still apply, in input order.
-  for(const {row,bytes} of files){
-   const {path,sha256}=row;
-   try{
-    // Also validate when the replica already held these bytes, where send()
-    // can otherwise accept an idempotent same-object acknowledgement.
-    if(digest(bytes)!==sha256)content();
-    const result=await send({syncId:session.sync_id,...row,offset:0},session,bytes);
-    if(result.nextOffset!==null)unavailable();
-    results.push({path,sha256,status:'accepted'});
-   }catch(e){
-    const code=batchErrors.get(e?.message)===e?.status&&typeof e?.status==='number'?e.message:'NGS_FILE_SYNC_UNAVAILABLE';
-    results.push({path,sha256,status:'failed',code});
-   }
-  }
-  return {results};
- }
  async function resetFile(args,session){
   need(exact(args,'syncId','path')&&pathOK(args.path));
   const id=session.sync_id,path=args.path;
@@ -396,6 +367,55 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   if(!changed)stale();
   return {removed:true};
  }
+ async function planProgress(args,session){
+  need(exact(args,'syncId','totalFiles')&&safeInt(args.totalFiles,0,maxPaths));
+  const id=session.sync_id;
+  const discard=`SELECT sync_id FROM ${progressRows} WHERE state<>'syncing' AND sync_id NOT IN
+   (SELECT sync_id FROM ${progressRows} WHERE total>0 ORDER BY rowid DESC LIMIT 4)`;
+  const [,,inserted]=await db.batch([
+   stmt(`DELETE FROM ${progressResults} WHERE sync_id IN (${discard})`),
+   stmt(`DELETE FROM ${progressRows} WHERE sync_id IN (${discard})`),
+   stmt(`INSERT INTO ${progressRows}(sync_id,total) SELECT ?,? WHERE
+    EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?) ON CONFLICT(sync_id) DO NOTHING`,id,args.totalFiles,id,now()),
+  ]);
+  if(!inserted.meta.changes&&(await first(`SELECT total FROM ${progressRows} WHERE sync_id=?`,id))?.total!==args.totalFiles)stale();
+  return {ok:true};
+ }
+ async function recordFailed(args,session){
+  need(exact(args,'syncId','path')&&pathOK(args.path));
+  const id=session.sync_id,path=args.path;
+  const marked=await run(`INSERT INTO ${progressResults}(sync_id,path,state)
+   SELECT ?,?,'failed' WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
+   AND EXISTS(SELECT 1 FROM ${progressRows} WHERE sync_id=? AND state='syncing' AND completed+failed<total)
+   AND NOT EXISTS(SELECT 1 FROM ${entries} WHERE sync_id=? AND path=? AND object_key IS NOT NULL)
+   ON CONFLICT(sync_id,path) DO NOTHING`,id,path,id,now(),id,id,path);
+  if(!marked&&(await first(`SELECT state FROM ${progressResults} WHERE sync_id=? AND path=?`,id,path))?.state!=='failed')stale();
+  return {ok:true};
+ }
+ function finalizeProgressStatement(id,finished){
+  return stmt(`UPDATE ${progressRows} SET state=CASE WHEN ?=1 AND completed=total AND failed=0
+   THEN 'completed' WHEN completed>0 THEN 'partial' ELSE 'failed' END WHERE sync_id=? AND state='syncing'`,finished?1:0,id);
+ }
+ const settleProgress=(id,finished)=>finalizeProgressStatement(id,finished).run();
+ async function progress(){
+  ready();
+  const row=await first(`SELECT p.sync_id,p.state,p.total,p.completed,p.failed,s.expiry FROM ${progressRows} p
+   LEFT JOIN ${passes} s ON p.sync_id=s.sync_id WHERE p.total>0 ORDER BY p.rowid DESC LIMIT 1`);
+  if(!row)return {state:'idle',fileName:null,percent:null,completed:0,total:0,failed:0};
+  let {state,total,completed,failed}=row,fileName=null,percent=null;
+  if(state==='syncing'&&!(row.expiry>now()))state=completed>0?'partial':'failed';
+  if(state==='syncing'){
+   const pending=await first(`SELECT r.path,r.size,r.received FROM ${receives} r WHERE r.sync_id=?
+    AND NOT EXISTS(SELECT 1 FROM ${progressResults} x WHERE x.sync_id=r.sync_id AND x.path=r.path)
+    ORDER BY r.rowid DESC LIMIT 1`,row.sync_id);
+   if(pending){
+    fileName=pending.path.split('/').at(-1).replace(/[\p{Cc}\p{Cf}]/gu,'')||null;
+    percent=pending.size>0?Math.min(99,Math.floor(100*pending.received/pending.size)):0;
+   }
+  }else if(state==='completed')percent=100;
+  else failed=Math.max(failed,total-completed);
+  return {state,fileName,percent,completed,total,failed};
+ }
  async function clearPassTransfers(id){
   const pending=await all(`SELECT * FROM ${receives} WHERE sync_id=?`,id);
   await run(`DELETE FROM ${receives} WHERE sync_id=?`,id);
@@ -404,7 +424,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
  }
  async function close(name,id){
   // End the pass before cleanup; other passes and readers remain available.
-  await run(`DELETE FROM ${passes} WHERE sync_id=?`,id);
+  await db.batch([finalizeProgressStatement(id,name===finish),stmt(`DELETE FROM ${passes} WHERE sync_id=?`,id)]);
   await clearPassTransfers(id);
   if(name===abort)return {ok:true};
   const answer=await first(`SELECT COUNT(*) AS written FROM ${entries} WHERE sync_id=? AND object_key IS NOT NULL`,id);
@@ -414,15 +434,15 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   ready();need(names.has(name),404,'NGS_FILE_SYNC_TOOL_UNKNOWN');
   if(name===begin)return await start(args);
   need(syncOK(args?.syncId));
-  const batch=name===objectReplicaBatchTool?batchPreflight(args):null;
   const session=await loadSession(args.syncId);
   await run(`UPDATE ${passes} SET expiry=? WHERE sync_id=? AND expiry>?`,now()+inactivity,args.syncId,now());
   if(name===chunk)return await send(args,session);
-  if(batch)return await sendBatch(batch,session);
+  if(name==='ngs_file_sync_plan')return await planProgress(args,session);
+  if(name==='ngs_file_sync_file_failed')return await recordFailed(args,session);
   if(name===reset)return await resetFile(args,session);
   if(name===remove)return await removeFile(args,session);
   need(exact(args,'syncId'));
   return await close(name,args.syncId);
  }
- return {call,list,head,get};
+ return {call,list,head,get,progress};
 }

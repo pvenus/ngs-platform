@@ -1,5 +1,6 @@
 import handler from "vinext/server/fetch-handler";
 import { sharedNgsResponse } from "./shared-ngs-assets";
+import { replicaSyncProgressPath,readReplicaSyncProgress } from "../ngs-local/sites/npcgen/build/replica-sync-progress.mjs";
 import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catalog.mjs";
 import { appProject, siteAppMaster } from "../lib/app-master";
 import { masterPrincipal } from "../lib/master-concept-transport";
@@ -29,6 +30,23 @@ export default {
     };
     const fileReplica = db && env.BUCKET ? createSpaceFileReplica({db,bucket:env.BUCKET}) : undefined;
     const replicaReads = env.NPCGEN_SPACE_REPLICA_READ_ENABLED === "1" && !!fileReplica && machineTokenConfigured(secret);
+    if (new URL(request.url).pathname === replicaSyncProgressPath) {
+      const headers = {"cache-control":"private, no-store","x-content-type-options":"nosniff"};
+      const userId=request.headers.get("oai-authenticated-user-id"),email=request.headers.get("oai-authenticated-user-email");
+      if (!userId||!email||userId.length>200||email.length>320) return Response.json({error:"SIGN_IN_REQUIRED"},{status:401,headers});
+      const url=new URL(request.url),origin=request.headers.get("Origin");
+      if (origin&&origin!==url.origin||request.headers.get("Sec-Fetch-Site")==="cross-site")
+        return Response.json({error:"ORIGIN_FORBIDDEN"},{status:403,headers});
+      try {
+        const value=await readReplicaSyncProgress({method:request.method,query:url.searchParams,
+          authorize:()=>authorize({userId}),read:replicaReads?fileReplica?.progress:undefined});
+        return Response.json(value,{headers});
+      } catch (error: unknown) {
+        const cause=(error&&typeof error==='object'?error:{}) as {status?:number;message?:string};
+        const status=cause.status&&[400,403,405].includes(cause.status)?cause.status:503;
+        return Response.json({error:status===503?"NGS_SYNC_PROGRESS_UNAVAILABLE":cause.message},{status,headers});
+      }
+    }
     const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools});
     if (machine) return machine;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,authorizeWrite:async user=>{

@@ -85,3 +85,41 @@ test('web mode checks an existing dedicated schema and never bootstraps or mutat
  await assert.rejects(reader.batch([reader.prepare(count)]),/INVALID/);
  assert.equal(await writer.prepare(count).first('total'),1);
 });
+
+test('an exact v14 replica upgrades with rows preserved and can revert only new progress schema',async t=>{
+ const path=join(fixture(t),'legacy.sqlite'),source=replicaSqliteSchema();
+ const {createHash}=await import('node:crypto');
+ const db=new DatabaseSync(path);
+ db.exec(source);
+ db.exec('CREATE TABLE ngs_replica_schema_pin_v1(tag TEXT PRIMARY KEY NOT NULL,digest TEXT NOT NULL)');
+ db.prepare('INSERT INTO ngs_replica_schema_pin_v1(tag,digest) VALUES(?,?)').run('space-file-replica-v2',createHash('sha256').update(source).digest('hex'));
+ db.exec('PRAGMA application_id=0x4e475352; PRAGMA user_version=14; PRAGMA journal_mode=WAL');
+ db.prepare('INSERT INTO ngs_replica_version_v2(path,sha256,object_key,size,sync_id) VALUES(?,?,?,?,?)')
+  .run('original/asset.bin','a'.repeat(64),'preserve-original-object',25,'legacy-pass');
+ const original={...db.prepare('SELECT * FROM ngs_replica_version_v2').get()};
+ const oldTables=db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(r=>r.name);
+ db.close();chmodSync(path,0o600);
+ assert.throws(()=>openReplicaSqlite({filename:path,readOnly:true}),/SCHEMA_MISMATCH/);
+ const writer=openReplicaSqlite({filename:path});
+ await writer.prepare("INSERT INTO ngs_replica_progress_v1(sync_id,total) VALUES(?,?)").bind('progress-only',1).run();
+ await writer.prepare("INSERT INTO ngs_replica_progress_item_v1(sync_id,path,state) VALUES(?,?,'completed')").bind('progress-only','x').run();
+ assert.equal((await writer.prepare("SELECT completed FROM ngs_replica_progress_v1 WHERE sync_id=?").bind('progress-only').first()).completed,1);
+ const reader=openReplicaSqlite({filename:path,readOnly:true});
+ assert.deepEqual(await reader.prepare('SELECT * FROM ngs_replica_version_v2').first(),original);
+ reader.close();writer.close();
+ const reverted=new DatabaseSync(path);
+ assert.equal(reverted.prepare('PRAGMA user_version').get().user_version,15);
+ reverted.exec(`BEGIN IMMEDIATE;
+ DROP TRIGGER ngs_replica_progress_count_v1;
+ DROP TABLE ngs_replica_progress_item_v1;
+ DROP TABLE ngs_replica_progress_v1;
+ DELETE FROM ngs_replica_schema_pin_v1 WHERE tag='replica-sync-progress-v1';
+ PRAGMA user_version=14;
+ COMMIT;`);
+ assert.deepEqual(reverted.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(r=>r.name),oldTables);
+ assert.equal(reverted.prepare('PRAGMA application_id').get().application_id,0x4e475352);
+ assert.equal(reverted.prepare('PRAGMA user_version').get().user_version,14);
+ assert.deepEqual({...reverted.prepare('SELECT * FROM ngs_replica_version_v2').get()},original);
+ assert.deepEqual(reverted.prepare('SELECT tag FROM ngs_replica_schema_pin_v1').all().map(r=>r.tag),['space-file-replica-v2']);
+ reverted.close();
+});

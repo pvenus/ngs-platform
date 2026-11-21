@@ -34,6 +34,6 @@ export async function openLocalObjectReplicaFromEnv(env=process.env,{
   const complete=createObjectReplica({db,bucket,fixedLengthStream:()=>new TransformStream(),
    writePart:(upload,part,body,length)=>upload.uploadPart(part,body,length)});
   if(writer)return {replica:complete,fileSyncToolDefinitions:objectReplicaSyncTools,close};
-  return {replica:{list:complete.list,head:complete.head,get:complete.get},close};
+  return {replica:{list:complete.list,head:complete.head,get:complete.get,progress:complete.progress},close};
  }catch(error){close();throw error;}
 }

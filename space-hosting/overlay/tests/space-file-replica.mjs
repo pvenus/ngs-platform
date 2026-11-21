@@ -10,7 +10,8 @@ const receiver=readFileSync(here('../build/space-file-replica.mjs'),'utf8');
 const sourcePath='ngs-local/sites/npcgen/build/object-replica.mjs';
 const base=existsSync(here('../'+sourcePath))?'../':'../../../';
 const core=readFileSync(here(base+sourcePath),'utf8');
-const schema=readFileSync(here(base+'ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
+const schema=['0014_space_file_replica_versions.sql','0015_replica_sync_progress.sql']
+ .flatMap(file=>readFileSync(here(base+'ngs-local/dev/'+file),'utf8').split('--> statement-breakpoint'));
 const module=(path,relative)=>({type:'ESModule',path,contents:readFileSync(here(relative),'utf8')});
 const localBuild='ngs-local/sites/npcgen/build/';
 const token='a'.repeat(64); // fixture only, no external access
@@ -31,7 +32,7 @@ const mini=new Miniflare({
     const item=await replica.get(args.path,args.options);
     return item?new Response(item.body):new Response(null,{status:404});
    }
-   const result=method==='list'?await replica.list(args?.prefix):await replica.call(method,args);
+   const result=method==='list'?await replica.list(args?.prefix):method==='progress'?await replica.progress():await replica.call(method,args);
    return Response.json(result);
   }catch(e){return Response.json({message:e.message},{status:e.status??500});}
  }};
@@ -58,7 +59,7 @@ const envelope=(session,path,data,offset=0,sha=digest(data))=>({
 });
 try{
  const db=await mini.getD1Database('DB'),bucket=await mini.getR2Bucket('BUCKET');
- for(const sql of schema.split('--> statement-breakpoint'))await db.prepare(sql).run();
+ for(const sql of schema)await db.prepare(sql).run();
  await bucket.put(other,'untouched');
  await rpc('begin',{scope:'other'},403);
  const a=await rpc('begin',{scope:'binari'});
@@ -151,36 +152,30 @@ try{
  assert.equal(await (await bucket.get(other)).text(),'untouched');
  assert.deepEqual((await bucket.list({prefix:root+'v2/stage/'})).objects,[]);
  const {syncId}=await rpc('begin',{scope:'binari'});
- const tool='ngs_file_sync_file_batch',small=Buffer.from('small file'),badDigest='a'.repeat(64);
- const item=(path,data,sha256=digest(data))=>({path,sha256,size:data.length,dataBase64:data.toString('base64')});
- const firstItem=item('batch/first.bin',small),badItem=item('batch/fail.bin',small,badDigest);
- const empty=item('batch/empty.bin',Buffer.alloc(0));
- const args={syncId,files:[firstItem,badItem,empty]};
- assert.equal((await machine(tool,args,{Origin:'http://receiver.invalid'})).status,403);
- assert.equal((await machine(tool,args,{'X-NGS-Machine-Token':'b'.repeat(64)})).status,403);
- const doubled=await machine(tool,{syncId,files:[firstItem,firstItem]});
- assert.equal((await doubled.json()).result.structuredContent.status,400);
- assert.equal((await send('read',{path:firstItem.path})).status,404);
- const reply=await (await machine(tool,args)).json();
- assert.equal(reply.result.isError,false);
- assert.deepEqual(reply.result.structuredContent,{results:[
-  {path:firstItem.path,sha256:firstItem.sha256,status:'accepted'},
-  {path:badItem.path,sha256:badDigest,status:'failed',code:'NGS_FILE_SYNC_CONTENT_MISMATCH'},
-  {path:empty.path,sha256:empty.sha256,status:'accepted'},
- ]});
- assert.equal((await send('read',{path:badItem.path})).status,404);
- assert.deepEqual(Buffer.from(await (await send('read',{path:firstItem.path})).arrayBuffer()),small);
- const retry=item(badItem.path,small);
- assert.equal((await (await machine(tool,{syncId,files:[retry]})).json()).result.structuredContent.results[0].status,'accepted');
- const firstLarge=item('batch/one.bin',Buffer.alloc(part,33)),secondLarge=item('batch/two.bin',Buffer.alloc(part,34));
- const started=performance.now(),largeBatch=[firstLarge,secondLarge,...Array.from({length:30},(_,i)=>item('batch/zero-'+i,Buffer.alloc(0)))];
- const full=await machine(tool,{syncId,files:largeBatch});
- assert.equal(full.status,200);
- const fullResults=(await full.json()).result.structuredContent.results;
- assert.equal(fullResults.length,32);assert.ok(fullResults.every(row=>row.status==='accepted'));
- console.log('Space exact 32-file and 2-MiB-raw batch accepted in isolated workerd; request ms='+Math.round(performance.now()-started));
- assert.equal((await machine('space_requests_pending',{padding:'x'.repeat(33000)})).status,413);
- assert.equal((await machine('ngs_file_sync_file_chunk',{syncId,...firstLarge,offset:0,dataBase64:'a'.repeat(1600000)})).status,413);
- assert.deepEqual(await rpc('finish',{syncId}),{ok:true,written:35});
+ const plan='ngs_file_sync_plan',serial='ngs_file_sync_file_chunk';
+ const pl={syncId,totalFiles:2};
+ assert.equal((await machine(plan,pl,{Origin:'http://receiver.invalid'})).status,403);
+ assert.equal((await machine(plan,pl,{'X-NGS-Machine-Token':'b'.repeat(64)})).status,403);
+ assert.deepEqual((await (await machine(plan,pl)).json()).result.structuredContent,{ok:true});
+ const file='private/folder/safe-name.bin',content=Buffer.alloc(part+30,21);
+ const args=envelope({syncId},file,content);
+ assert.deepEqual((await (await machine(serial,args)).json()).result.structuredContent,{nextOffset:part});
+ const progress=async()=>await (await send('progress',{})).json();
+ assert.deepEqual(await progress(),{state:'syncing',fileName:'safe-name.bin',percent:99,completed:0,total:2,failed:0});
+ const final=envelope({syncId},file,content,part);
+ assert.deepEqual((await (await machine(serial,final)).json()).result.structuredContent,{nextOffset:null});
+ assert.deepEqual((await (await machine(serial,final)).json()).result.structuredContent,{nextOffset:null});
+ const fail=await machine('ngs_file_sync_file_failed',{syncId,path:'not-published.bin'});
+ assert.deepEqual((await fail.json()).result.structuredContent,{ok:true});
+ assert.deepEqual((await (await machine('ngs_file_sync_file_failed',{syncId,path:file})).json()).result.structuredContent,
+  {status:409,error:'NGS_FILE_SYNC_REPLICA_CHANGED'});
+ assert.equal((await (await machine('ngs_file_sync_file_batch',{syncId,files:[]})).json()).error.code,-32602);
+ assert.equal((await machine('ngs_file_sync_file_batch',{syncId,data:'x'.repeat(33000)})).status,413);
+ assert.deepEqual(await rpc('finish',{syncId}),{ok:true,written:1});
+ const partial={state:'partial',fileName:null,percent:null,completed:1,total:2,failed:1};
+ assert.deepEqual(await progress(),partial);
+ const zero=await rpc('begin',{scope:'binari'});await rpc('plan',{syncId:zero.syncId,totalFiles:0});
+ await rpc('finish',{syncId:zero.syncId});
+ assert.deepEqual(await progress(),partial);
  console.log('Space file replica: real workerd D1/R2 integrity, scoped inventory, replay, range, recoverable deletion and no unrelated changes PASS');
 }finally{await mini.dispose();}

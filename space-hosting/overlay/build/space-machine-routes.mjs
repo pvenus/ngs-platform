@@ -2,8 +2,8 @@
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
 export const machineTokenConfigured=validMachineToken;
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
-const chunkTool='ngs_file_sync_file_chunk',batchTool='ngs_file_sync_file_batch',small=32*1024;
-const chunkRpc=4*Math.ceil(1024*1024/3)+32*1024,batchRpc=4*Math.ceil((2*1024*1024)/3)+96*1024;
+const chunkTool='ngs_file_sync_file_chunk',small=32*1024;
+const chunkRpc=4*Math.ceil(1024*1024/3)+32*1024;
 const privateHeaders={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin'};
 const json=(value,status=200)=>Response.json(value,{status,headers:privateHeaders});
 const fail=(status,error)=>json({error},status);
@@ -60,15 +60,11 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
  try{
   const configuredFileTools=fileReplica?fileTools:[];
   const names=new Set(configuredFileTools.map(x=>x.name));
-  const maxRequestBody=names.has(batchTool)?batchRpc:chunkRpc;
-  const {value:message,read}=await body(request,maxRequestBody);
+  const {value:message,read}=await body(request,chunkRpc);
   need(fields(message,['jsonrpc','id','method','params'])&&message.jsonrpc==='2.0'&&typeof message.method==='string'&&
     (!Object.hasOwn(message,'id')||idOK(message.id)));
   const {id,method,params}=message;
-  if(read>small){
-   const name=params?.name,methodBound=name===chunkTool?chunkRpc:name===batchTool?batchRpc:0;
-   need(method==='tools/call'&&names.has(name)&&read<=methodBound,413,'SPACE_BODY_TOO_LARGE');
-  }
+  if(read>small)need(method==='tools/call'&&params?.name===chunkTool&&names.has(chunkTool),413,'SPACE_BODY_TOO_LARGE');
   if(id===undefined){
    return method==='notifications/initialized'&&(!params||exact(params,[]))?new Response(null,{status:202,headers:privateHeaders}):
     fail(400,'SPACE_REQUEST_INVALID');

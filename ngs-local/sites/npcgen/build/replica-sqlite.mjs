@@ -7,10 +7,13 @@ import {DatabaseSync} from 'node:sqlite';
 
 const source=realpathSync(fileURLToPath(new URL('../../../',import.meta.url)));
 const migrationPath=new URL('../../../dev/0014_space_file_replica_versions.sql',import.meta.url);
+const progressPath=new URL('../../../dev/0015_replica_sync_progress.sql',import.meta.url);
 const applicationId=0x4e475352; // NGSR; SQLite file header never identifies an RS store
-const schemaVersion=14;
+const oldSchemaVersion=14,schemaVersion=15;
 const maximumSchema=32*1024;
-const knownTables=['ngs_replica_pass_v2','ngs_replica_receive_v2','ngs_replica_reset_v2','ngs_replica_schema_pin_v1','ngs_replica_version_v2'];
+const oldTables=['ngs_replica_pass_v2','ngs_replica_receive_v2','ngs_replica_reset_v2','ngs_replica_schema_pin_v1','ngs_replica_version_v2'];
+const knownTables=[...oldTables,'ngs_replica_progress_v1','ngs_replica_progress_item_v1'].sort();
+const baseTag='space-file-replica-v2',progressTag='replica-sync-progress-v1';
 const sqliteMagic=Buffer.from('SQLite format 3\0');
 const error=(code='NGS_REPLICA_SQLITE_UNAVAILABLE')=>Object.assign(Error(code),{status:503});
 const invalid=()=>error('NGS_REPLICA_SQLITE_INVALID');
@@ -24,6 +27,9 @@ const same=(a,b)=>a.dev===b.dev&&a.ino===b.ino;
 
 export function replicaSqliteSchema(){
  try{return readFileSync(migrationPath,'utf8');}catch{throw schemaWrong();}
+}
+export function replicaProgressSchema(){
+ try{return readFileSync(progressPath,'utf8');}catch{throw schemaWrong();}
 }
 function migration(value){
  if(typeof value!=='string'||!value.length||Buffer.byteLength(value)>maximumSchema||value.includes('\0'))throw schemaWrong();
@@ -75,6 +81,11 @@ function permittedBindings(args){
 /** `migrationSql` is trusted release source; falsey inputs are not implicitly accepted. */
 export function openReplicaSqlite({filename,migrationSql=replicaSqliteSchema(),readOnly=false}={}){
  const {commands,sha256}=migration(migrationSql);
+ const progress=replicaProgressSchema();
+ if(!progress||Buffer.byteLength(progress)>maximumSchema)throw schemaWrong();
+ const progressCommands=progress.split('--> statement-breakpoint').map(sql=>sql.trim()).filter(Boolean);
+ if(progressCommands.length!==3)throw schemaWrong();
+ const progressDigest=createHash('sha256').update(progress).digest('hex');
  const memory=filename===':memory:';
  if(typeof readOnly!=='boolean'||memory&&readOnly)throw invalid();
  const file=memory?null:checkFile(filename,readOnly);
@@ -83,20 +94,31 @@ export function openReplicaSqlite({filename,migrationSql=replicaSqliteSchema(),r
  try{
   db.exec('PRAGMA busy_timeout=5000; PRAGMA trusted_schema=OFF');
   db.exec(readOnly?'PRAGMA query_only=ON':'PRAGMA synchronous=FULL');
-  if(memory||file.fresh){
-   // Keep SQLite's initial rollback journal until the file marker is durable.
+  const haveTables=()=>db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(x=>x.name);
+  const pinned=tag=>db.prepare('SELECT digest FROM ngs_replica_schema_pin_v1 WHERE tag=?').get(tag)?.digest;
+  const version=()=>db.prepare('PRAGMA user_version').get()?.user_version;
+  const marker=()=>db.prepare('PRAGMA application_id').get()?.application_id;
+  const fresh=memory||file?.fresh;
+  if(!readOnly&&(fresh||version()===oldSchemaVersion)){
    db.exec('BEGIN IMMEDIATE');
    try{
-    for(const sql of commands)db.exec(sql);
-    db.exec('CREATE TABLE ngs_replica_schema_pin_v1(tag TEXT PRIMARY KEY NOT NULL, digest TEXT NOT NULL)');
-    db.prepare('INSERT INTO ngs_replica_schema_pin_v1(tag,digest) VALUES(?,?)').run('space-file-replica-v2',sha256);
-    db.exec('PRAGMA application_id='+applicationId+'; PRAGMA user_version='+schemaVersion+'; COMMIT');
+    if(fresh){
+     for(const sql of commands)db.exec(sql);
+     db.exec('CREATE TABLE ngs_replica_schema_pin_v1(tag TEXT PRIMARY KEY NOT NULL, digest TEXT NOT NULL)');
+     db.prepare('INSERT INTO ngs_replica_schema_pin_v1(tag,digest) VALUES(?,?)').run(baseTag,sha256);
+     db.exec('PRAGMA application_id='+applicationId+'; PRAGMA user_version='+oldSchemaVersion);
+    }
+    if(version()===oldSchemaVersion){
+     if(marker()!==applicationId||JSON.stringify(haveTables())!==JSON.stringify(oldTables)||pinned(baseTag)!==sha256)throw schemaWrong();
+     for(const sql of progressCommands)db.exec(sql);
+     db.prepare('INSERT INTO ngs_replica_schema_pin_v1(tag,digest) VALUES(?,?)').run(progressTag,progressDigest);
+     db.exec('PRAGMA user_version='+schemaVersion);
+    }
+    db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
   }
-  const app=db.prepare('PRAGMA application_id').get(),version=db.prepare('PRAGMA user_version').get();
-  const tables=db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(x=>x.name);
-  if(app?.application_id!==applicationId||version?.user_version!==schemaVersion||JSON.stringify(tables)!==JSON.stringify(knownTables)||
-     db.prepare('SELECT digest FROM ngs_replica_schema_pin_v1 WHERE tag=?').get('space-file-replica-v2')?.digest!==sha256)throw schemaWrong();
+  if(marker()!==applicationId||version()!==schemaVersion||JSON.stringify(haveTables())!==JSON.stringify(knownTables)||
+     pinned(baseTag)!==sha256||pinned(progressTag)!==progressDigest)throw schemaWrong();
   if(!memory){
    const pathCheck=lstatSync(filename);
    if(!regular(pathCheck)||!same(file.initial,pathCheck)||realpathSync(filename)!==filename)throw denied();

@@ -5,7 +5,6 @@ import { MAX_QUEUE_LIST, LOCAL_QUEUE_MCP_DEFAULT_PORT, openLocalRequestQueue } f
 
 import {fileSyncChunkTool,fileSyncTools,localFileSyncReceiverFromEnv,maxFileSyncRpcBytes} from './local-replica-file-receiver.mjs';
 import {openLocalObjectReplicaFromEnv} from './local-object-replica-runtime.mjs';
-import {objectReplicaBatchRpcBytes,objectReplicaBatchTool} from './object-replica.mjs';
 
 const protocolVersion='2025-06-18';
 const inputSchema=(properties,required=[])=>({type:'object',additionalProperties:false,properties,required});
@@ -21,7 +20,7 @@ const rpcFailure=(id,code,message)=>({jsonrpc:'2.0',id,error:{code,message}});
 
 export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitions=fileSyncTools}={}){
  const syncNames=new Set(fileSync?fileSyncToolDefinitions.map(tool=>tool.name):[]);
- const maxRequestBody=syncNames.has(objectReplicaBatchTool)?objectReplicaBatchRpcBytes:fileSync?maxFileSyncRpcBytes:8192;
+ const maxRequestBody=fileSync?maxFileSyncRpcBytes:8192;
  return createServer({requestTimeout:5000,headersTimeout:5000,maxHeaderSize:8192},async(req,res)=>{
   const port=res.socket.localPort;
   if(req.headers.host!=='127.0.0.1:'+port||req.headers.origin!==undefined||req.headers['sec-fetch-site']!==undefined||
@@ -45,12 +44,9 @@ export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitio
    if(total>8192){res.writeHead(413,{Connection:'close'}).end();return;}
    response(rpcFailure(null,-32700,'Parse error'));return;
   }
-  if(total>8192){
-   const name=message?.params?.name;
-   const methodBound=name===fileSyncChunkTool?maxFileSyncRpcBytes:name===objectReplicaBatchTool?objectReplicaBatchRpcBytes:0;
-   if(message?.method!=='tools/call'||!syncNames.has(name)||total>methodBound){
-    res.writeHead(413,{Connection:'close'}).end();return;
-   }
+  if(total>8192&&(message?.method!=='tools/call'||message?.params?.name!==fileSyncChunkTool||
+    !syncNames.has(fileSyncChunkTool))){
+   res.writeHead(413,{Connection:'close'}).end();return;
   }
   const id=message?.id;
   if(message?.jsonrpc!=='2.0'||typeof message.method!=='string'||

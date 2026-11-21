@@ -7,6 +7,7 @@ import {homedir} from 'node:os';
 import {dirname,isAbsolute,join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {projectPermission} from './auth-core.mjs';
+import {replicaSyncProgressPath,readReplicaSyncProgress} from './replica-sync-progress.mjs';
 import {assertLoopbackRequest,createLoopbackAuth} from './loopback-auth.mjs';
 import {createLocalProjectFolders,validProjectId} from './local-project-folders.mjs';
 import {localProjectFolderRoute,projectFolderRoutes} from './local-project-folder-route.mjs';
@@ -199,6 +200,14 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken});
+   }
+   if(url.pathname===replicaSyncProgressPath){
+    const session=auth.read(req);
+    if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
+    return json(200,await readReplicaSyncProgress({
+     method:req.method,query:url.searchParams,read:objectReplica?.progress,
+     authorize:id=>{projectPermission(session.principal,id,undefined,false);return true;},
+    }));
    }
    if(url.pathname==='/api/audio-workspace'){
     if(audioWorkspaceEnabled!==true)throw failure('AUDIO_WORKSPACE_UNAVAILABLE',404);
