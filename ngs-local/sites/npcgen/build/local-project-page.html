@@ -32,6 +32,7 @@
  <main class="project-home-main" id="project-home" aria-label="로컬 프로젝트">
   <div class="home-intro"><div><span class="overline">YOUR PROJECTS</span><h2>어떤 이야기를 만들까요?</h2><p>프로젝트를 열고 이야기와 인물을 이어가세요.</p></div>
   <button type="button" id="reload">다시 조회</button></div>
+  <section id="home-sync-progress" class="ngs-sync-progress" aria-label="NGS MCP 파일 동기화 상태" hidden></section>
   <ul id="projects" class="project-card-grid" aria-label="프로젝트 목록"></ul>
   <p id="status" role="status">프로젝트를 불러오고 있습니다.</p>
  </main>
@@ -39,6 +40,7 @@
   <aside class="project-sidebar"><nav class="project-category-nav" id="project-categories" aria-label="프로젝트 카테고리"></nav></aside>
   <div class="project-main-content">
    <div class="project-content-heading"><span class="overline">PROJECT WORKSPACE</span><h2 id="area-title"></h2><p id="workspace-status" class="meta" role="status"></p></div>
+   <section id="workspace-sync-progress" class="ngs-sync-progress" aria-label="NGS MCP 파일 동기화 상태" hidden></section>
    <div class="catalog-grid">
     <aside class="surface catalog-list" aria-labelledby="items-title"><div class="concept-category-heading"><h3 id="items-title">항목</h3><span id="concept-category-tools" hidden></span></div><ul id="workspace-items"></ul></aside>
     <section class="surface catalog-detail" id="workspace-detail" aria-label="항목 상세"></section>

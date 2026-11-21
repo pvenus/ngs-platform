@@ -49,6 +49,112 @@ function enableQueue(signal){
 }
 
 
+const syncStates=new Set(['idle','syncing','completed','partial','failed']);
+// Local and Space currently publish sync lifecycle for this configured scope.
+// Endpoint authorization (not catalog visibility) determines who may see it.
+const syncReplicaProject='binari';
+const syncCatalogProjects=rows=>rows.filter(row=>row?.projectId===syncReplicaProject).slice(0,1);
+const syncCatalogOrPending=rows=>syncCatalogProjects(rows).length?syncCatalogProjects(rows):[{projectId:syncReplicaProject}];
+const syncProgressPollMs=2500;
+const syncProgressDoneMs=20000;
+function safeSyncProgress(row){
+ if(!row||typeof row!=='object'||Array.isArray(row)||
+    Object.keys(row).sort().join(',')!=='completed,failed,fileName,percent,state,total'||!syncStates.has(row.state)||
+    ![row.completed,row.total,row.failed].every(n=>Number.isSafeInteger(n)&&n>=0)||
+    row.completed>row.total||row.failed>row.total-row.completed||
+    row.percent!==null&&(typeof row.percent!=='number'||!Number.isFinite(row.percent)||row.percent<0||row.percent>100)||
+    row.fileName!==null&&(typeof row.fileName!=='string'||!row.fileName.isWellFormed()||!row.fileName.trim()||
+     row.fileName==='.'||row.fileName==='..'||row.fileName.length>260||/[\/\\\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(row.fileName)))return null;
+ if(row.state==='idle'&&(row.fileName!==null||row.percent!==null||row.completed||row.total||row.failed)||
+    row.state==='completed'&&(row.failed||row.completed!==row.total))return null;
+ return row;
+}
+
+function watchSyncProgress(slot,signal,{home=false}={}){
+ if(!slot)return {projects(){}};
+ const entries=new Map();
+ let timer,busy=false;
+ const active=()=>!signal.aborted&&!document.hidden;
+ function render(){
+  const nodes=[];
+  for(const entry of entries.values()){
+   const row=entry.row;
+   if(!row||row.state==='idle'||row.state==='completed'&&Date.now()-entry.terminalAt>=syncProgressDoneMs)continue;
+   const stateLabels={syncing:'동기화 중',completed:'동기화 완료',partial:'일부 파일 미완료',failed:'동기화 실패'};
+   const wrap=nodeOf('div','ngs-sync-progress-row ngs-sync-'+row.state);
+   const header=nodeOf('div','ngs-sync-progress-line');
+   const prefix=(home&&entry.label?entry.label+' · ':'')+stateLabels[row.state];
+   header.append(nodeOf('strong','ngs-sync-project',prefix));
+   if(row.fileName)header.append(nodeOf('span','ngs-sync-file',row.fileName));
+   if(row.fileName&&row.percent!==null)header.append(nodeOf('span','ngs-sync-file-percent',numbers.format(Math.floor(row.percent))+'%'));
+   header.append(nodeOf('span','ngs-sync-count','완료 '+numbers.format(row.completed)+'/'+numbers.format(row.total)));
+   if(row.failed)header.append(nodeOf('span','ngs-sync-failures','실패 '+numbers.format(row.failed)));
+   wrap.append(header);
+   if(row.state==='syncing'){
+    const bar=nodeOf('progress','ngs-sync-meter');
+    bar.max=100;
+    if(row.fileName&&row.percent!==null)bar.value=row.percent;
+    bar.setAttribute('aria-label',row.fileName?'현재 파일 진행률':'파일 동기화 진행 중');
+    wrap.append(bar);
+   }
+   nodes.push(wrap);
+  }
+  slot.replaceChildren(...nodes);slot.hidden=nodes.length===0;
+ }
+ function schedule(){
+  clearTimeout(timer);
+  if(active()&&[...entries.values()].some(entry=>!entry.unsupported))timer=setTimeout(poll,syncProgressPollMs);
+ }
+ async function poll(){
+  clearTimeout(timer);
+  if(!active()||busy)return;
+  busy=true;
+  try{
+   await Promise.all([...entries].map(async ([projectId,entry])=>{
+    if(entry.unsupported)return;
+    try{
+     const url='/api/ngs-sync-progress?'+new URLSearchParams({projectId});
+     const response=await fetch(url,{cache:'no-store',credentials:'same-origin',redirect:'error',
+      signal:AbortSignal.any([signal,AbortSignal.timeout(8000)])});
+     if(signal.aborted)return;
+     if([401,403,404].includes(response.status)){
+      entry.row=null;entry.unsupported=true;return;
+     }
+     const row=response.ok?safeSyncProgress(await response.json()):null;
+     if(!row)throw Error('NGS_SYNC_PROGRESS_UNAVAILABLE');
+     if(row.state==='completed'&&entry.row?.state!=='completed')entry.terminalAt=Date.now();
+     entry.row=row;entry.missed=0;
+    }catch{
+     // Unavailable or stale data must never look like a finished download.
+     if(!signal.aborted&&++entry.missed>=2)entry.row=null;
+    }
+   }));
+   if(active())render();
+  }finally{busy=false;schedule();}
+ }
+ document.addEventListener('visibilitychange',()=>{
+  if(active())void poll();else clearTimeout(timer);
+ },{signal});
+ signal.addEventListener('abort',()=>{
+  clearTimeout(timer);slot.replaceChildren();slot.hidden=true;
+ },{once:true});
+ return {projects(rows){
+  const wasEmpty=!entries.size;
+  const known=new Set();
+  for(const row of Array.isArray(rows)?syncCatalogProjects(rows):[]){
+   const projectId=row?.projectId;
+   if(projectId!==syncReplicaProject)continue;
+   known.add(projectId);
+   const entry=entries.get(projectId)??{row:null,missed:0};
+   entry.label=typeof row.name==='string'?row.name:'';
+   entries.set(projectId,entry);
+  }
+  for(const key of entries.keys())if(!known.has(key))entries.delete(key);
+  if(wasEmpty&&entries.size)void poll();
+  else if(!busy&&active()){render();schedule();}
+ }};
+}
+
 function render(){
  for(const [id,node] of cardNodes){
   if(!cards.has(id)){node.card.remove();cardNodes.delete(id);}
@@ -162,6 +268,7 @@ async function load(){
  run?.abort();
  run=new AbortController();
  const {signal}=run;
+ const sync=watchSyncProgress(document.querySelector('#home-sync-progress'),signal,{home:true});
  states.clear();progress.clear();render();
  status.textContent=cards.size?'':'프로젝트를 불러오고 있습니다.';
  const sameOrigin=async(url,options={})=>{
@@ -184,6 +291,9 @@ async function load(){
     await readSpaceCatalog(signal,text=>{if(!signal.aborted)status.textContent=text;});
    if(signal.aborted)return;
    if(!Array.isArray(rows))throw Error('SPACE_CATALOG_UNAVAILABLE');
+   // Binari is the single configured hosted replica today. The same progress
+   // endpoint independently enforces its project grant before a panel can show.
+   if(replica)sync.projects(spaceWorkspaceReady(session)?syncCatalogOrPending(rows):syncCatalogProjects(rows));
    if(replica&&!rows.length){
     status.textContent='Space에서 프로젝트 파일을 기다리는 중입니다.';
     // The initial publication may finish after this page was opened. Only
@@ -203,6 +313,7 @@ async function load(){
     }
    }
    if(signal.aborted)return;
+   if(replica)sync.projects(spaceWorkspaceReady(session)?syncCatalogOrPending(rows):syncCatalogProjects(rows));
    for(const row of rows)cards.set(row.projectId,replica&&!spaceWorkspaceReady(session)?{...row,legacySpaceReplica:true}:row);
    render();
    status.textContent=rows.length?'':replica?'프로젝트 파일이 아직 도착하지 않았습니다. 다시 조회할 수 있어요.':'원본에서 확인된 프로젝트가 없습니다.';
@@ -215,6 +326,7 @@ async function load(){
   const local=await sameOrigin('/api/project-folders');
   if(signal.aborted)return;
   cards.clear();
+  if(session.state==='authenticated')sync.projects(syncCatalogOrPending(local.projects));
   for(const row of local.projects){
    cards.set(row.projectId,row);
    if(row.refreshState)states.set(row.projectId,row.refreshState);
@@ -231,6 +343,7 @@ async function load(){
    if(signal.aborted)return;
    for(const projectId of remote.projects)if(!cards.has(projectId))cards.set(projectId,{projectId,name:projectId,needsRefresh:true,available:false});
   }catch(error){if(!cards.size)throw error;}
+  if(session.state==='authenticated')sync.projects(syncCatalogOrPending([...cards.values()]));
 
   const projectIds=[...cards.values()].filter(row=>row.needsRefresh||row.refreshState==='refreshing').map(row=>row.projectId);
   if(signal.aborted)return;
@@ -524,6 +637,7 @@ async function loadWorkspace(search){
     return;
    }
   }else enableQueue(signal);
+  watchSyncProgress(document.querySelector('#workspace-sync-progress'),signal).projects([{projectId}]);
   // Same metadata and workspace routes in both environments; only the replica
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});

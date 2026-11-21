@@ -21,18 +21,27 @@ function dom(){
   addEventListener(name,handler){events.set(name,handler);},fire(name){events.get(name)?.();},remove(){},
  };
 }
-function browser(handler,search='',extra={}){
+function browser(handler,search='',extra={},progressEnabled=false){
  const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,dom());return nodes.get(id);};
- const calls=[];
- const context={document:{querySelector:node,documentElement:{dataset:{audioWorkspace:'enabled'}},createElement:()=>dom(),
-  createElementNS:()=>dom()},location:{search},window:{addEventListener(){}},Intl,URLSearchParams,AbortController,AbortSignal,
+ const calls=[],events=new Map(),syncTimer=new Map();
+ let sequence=0;
+ const document={querySelector:id=>!progressEnabled&&id.endsWith('-sync-progress')?null:node(id),
+  documentElement:{dataset:{audioWorkspace:'enabled'}},createElement:()=>dom(),createElementNS:()=>dom(),
+  hidden:false,addEventListener(name,fn,opts){events.set(name,{fn,signal:opts?.signal});}};
+ const context={document,location:{search},window:{addEventListener(){}},Intl,URLSearchParams,AbortController,AbortSignal,
   mountAudioWorkspace:()=>dom(),showAudioResults:()=>{},refreshAudioResults,setInterval:()=>42,clearInterval(){},
-  setTimeout:(fn,ms)=>setTimeout(fn,ms===2000?ms:0),clearTimeout,fetch:async(url,opts)=>{
-   calls.push([url,opts.method??'GET',opts.body,opts.headers]);
+  setTimeout:(fn,ms)=>{
+   if(ms===2500){const id=++sequence;syncTimer.set(id,fn);return id;}
+   return setTimeout(fn,ms===2000?ms:0);
+  },clearTimeout:id=>{if(typeof id==='number')syncTimer.delete(id);else clearTimeout(id);},fetch:async(url,opts)=>{
+   calls.push([url,opts.method??'GET',opts.body,opts.headers,opts]);
    return handler(url,opts,calls.length,node);
   },...extra};
  runInNewContext(source,context);
- return {context,calls,node};
+ return {context,calls,node,
+  setHidden(value){document.hidden=value;const item=events.get('visibilitychange');if(!item?.signal?.aborted)item?.fn();},
+  async nextProgress(){const next=syncTimer.values().next().value;assert.ok(next);await next();},
+  pendingProgress:()=>syncTimer.size};
 }
 test('native hosted session polls one exact ticket and renders only live project rows',async()=>{
  const app=browser((url,opts,n,node)=>{
@@ -233,4 +242,80 @@ test('Space workspaceReady is not a write grant, but verified request owner uses
  const refused=browser(()=>Response.json(malformed));
  await refused.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=npcs'));
  assert.deepEqual(refused.calls.map(([url])=>url),['/__npcgen_session']);
+});
+
+const progressPath='/api/ngs-sync-progress?projectId=binari';
+const progressActive={state:'syncing',fileName:'abc.png',percent:67,completed:10,total:100,failed:0};
+const progressIdle={state:'idle',fileName:null,percent:null,completed:0,total:0,failed:0};
+const nextTurn=()=>new Promise(resolve=>setImmediate(resolve));
+const projectAuth={state:'authenticated',contextId:'local',csrfToken:'owned'};
+const activeSpaceProgress={...readyReplica,workspaceReady:true};
+
+test('authenticated Local and Space render a file meter and distinct complete count from the same GET',async()=>{
+ for(const session of [projectAuth,activeSpaceProgress]){
+  let row=progressActive;
+  const app=browser((url,opts)=>{
+   if(url==='/__npcgen_session')return Response.json(session);
+   if(url==='/api/project-folders')return Response.json({projects:[project]});
+   if(url==='/api/project-workspace?projectId=binari&tab=motion-presets')return Response.json({items:[]});
+   assert.equal(url,progressPath);
+   assert.equal(opts.method,undefined);assert.equal(opts.credentials,'same-origin');assert.equal(opts.cache,'no-store');
+   assert.equal(opts.redirect,'error');
+   return Response.json(row);
+  },'',{},true);
+  await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=motion-presets'));
+  await nextTurn();
+  const slot=app.node('#workspace-sync-progress');
+  assert.equal(slot.hidden,false);
+  assert.deepEqual(slot.children[0].children[0].children.map(n=>n.textContent),['동기화 중','abc.png','67%','완료 10/100']);
+  assert.equal(slot.children[0].children[1].value,67);
+  row={...progressActive,state:'partial',fileName:null,percent:null,failed:90};
+  await app.nextProgress();
+  assert.deepEqual(slot.children[0].children[0].children.map(n=>n.textContent),['일부 파일 미완료','완료 10/100','실패 90']);
+  assert.equal(slot.children[0].children.length,1);
+  row=progressIdle;
+  await app.nextProgress();
+  assert.equal(slot.hidden,true);
+  assert.equal(slot.children.length,0);
+ }
+});
+
+test('authorized empty hosted catalog shows MCP progress without fabricating a project card',async()=>{
+ const app=browser((url,opts)=>{
+  assert.equal(opts.method,undefined);
+  if(url==='/__npcgen_session')return Response.json(activeSpaceProgress);
+  if(url==='/api/project-folders')return Response.json({projects:[]});
+  if(url===progressPath)return Response.json(progressActive);
+  throw Error('unexpected '+url);
+ },'',{},true);
+ await app.context.load();
+ assert.equal(app.node('#projects').children.length,0);
+ assert.equal(app.node('#home-sync-progress').hidden,false);
+ assert.equal(app.node('#home-sync-progress').children[0].children[0].children[1].textContent,'abc.png');
+});
+
+test('visibility stops progress polling; errors clear stale rows and authorization revocation stops project polling',async()=>{
+ let fail=null, row={...progressActive,fileName:'..\/internal/secret.png'};
+ const app=browser(url=>{
+  if(url==='/__npcgen_session')return Response.json(activeSpaceProgress);
+  if(url==='/api/project-folders')return Response.json({projects:[project]});
+  if(url.startsWith('/api/project-workspace?'))return Response.json({items:[]});
+  assert.equal(url,progressPath);
+  return fail?new Response(null,{status:fail}):Response.json(row);
+ },'',{},true);
+ await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=motion-presets'));
+ await nextTurn();
+ const slot=app.node('#workspace-sync-progress');
+ assert.equal(slot.hidden,true);
+ row=progressActive;await app.nextProgress();
+ assert.equal(slot.hidden,false);
+ app.setHidden(true);
+ assert.equal(app.pendingProgress(),0);
+ app.setHidden(false);await nextTurn();
+ assert.equal(app.pendingProgress(),1);
+ fail=503;
+ await app.nextProgress();assert.equal(slot.hidden,false);
+ await app.nextProgress();assert.equal(slot.hidden,true);
+ fail=403;
+ await app.nextProgress();assert.equal(app.pendingProgress(),0);assert.equal(slot.hidden,true);
 });
