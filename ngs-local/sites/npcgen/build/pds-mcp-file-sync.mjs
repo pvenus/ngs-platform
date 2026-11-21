@@ -1,18 +1,20 @@
 /** Push canonical file changes via MCP only, without exposing a Filex path. */
 import {startOpsHealthReport} from './local-ops-health-report.mjs';
 import {createHash} from 'node:crypto';
+import {createReadStream} from 'node:fs';
+import {mkdtemp,open,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {Readable} from 'node:stream';
 import {setTimeout as pause} from 'node:timers/promises';
 import {pathToFileURL} from 'node:url';
 import {createFolderMcpClient} from './folder-mcp-client.mjs';
 import {DEFAULT_PROJECT_FOLDER_MCP_URL,loopbackJsonMCP} from './folder-mcp-loopback.mjs';
 import {validFolderPath} from './local-recursive-folders.mjs';
-import {createSpaceMachineMcp,spaceMachineConfiguration,fileTools} from './space-machine-mcp.mjs';
+import {createSpaceMachineMcp,createSpaceFileSyncUpload,spaceMachineConfiguration,fileTools} from './space-machine-mcp.mjs';
+import {createLoopbackFileUpload} from './file-sync-raw-client.mjs';
 
 const maxChunk=1024*1024,maxEntries=32768;
-const definiteChunkFailures=new Set([
- 'NGS_FILE_SYNC_INVALID','NGS_FILE_SYNC_CONTENT_MISMATCH','NGS_FILE_SYNC_REPLICA_CHANGED',
- 'NGS_FILE_SYNC_OFFSET_INVALID','NGS_FILE_SYNC_INCOMPLETE',
-]);
 const direct=run=>run();
 const hash=/^[a-f0-9]{64}$/;
 const id=/^ngs\.sync\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -59,35 +61,34 @@ function changes(value,scope,previous){
  return {files,deleted};
 }
 
-async function pushFile({pds,ngs,scope,syncId,row,signal,unknownFinal=()=>{}}){
- const reader=pds.file(scope,row.path,row.sha256,row.size).body.getReader();
- const hash=createHash('sha256');let offset=0;
- const send=async bytes=>{
-  signal?.throwIfAborted();
-  const end=offset+bytes.byteLength;
-  try{
-   const reply=await ngs('ngs_file_sync_file_chunk',{syncId,...row,offset,dataBase64:Buffer.from(bytes).toString('base64')});
-   if(!exact(reply,'nextOffset')||reply.nextOffset!==(end===row.size?null:end))throw invalid();
-  }catch(error){
-   if(end===row.size&&!definiteChunkFailures.has(error?.message))unknownFinal();
-   throw error;
-  }
-  offset=end;
- };
+// The canonical PDS port is chunked only internally. Spool one file privately
+// and verify its whole digest before opening any destination upload request.
+async function withVerifiedFile({pds,scope,row,signal},use){
+ const directory=await mkdtemp(join(tmpdir(),'ngs-file-sync-'));
+ const path=join(directory,'verified-file');
  try{
-  for(;;){
-   signal?.throwIfAborted();
-   const {done,value}=await reader.read();
-   if(done)break;
-   if(!(value instanceof Uint8Array)||!value.byteLength||value.byteLength>maxChunk||value.byteLength>row.size-offset)throw invalid();
-   hash.update(value);
-   // The receiver independently verifies the same whole-file hash before publication.
-   if(offset+value.byteLength===row.size&&hash.copy().digest('hex')!==row.sha256)throw invalid();
-   await send(value);
-  }
-  if(offset!==row.size||hash.digest('hex')!==row.sha256)throw invalid();
-  if(row.size===0)await send(new Uint8Array());
- }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+  const file=await open(path,'wx',0o600);
+  try{
+   const reader=pds.file(scope,row.path,row.sha256,row.size).body.getReader();
+   const hash=createHash('sha256');let seen=0;
+   try{
+    for(;;){
+     signal?.throwIfAborted();
+     const {done,value}=await reader.read();if(done)break;
+     if(!(value instanceof Uint8Array)||!value.byteLength||value.byteLength>maxChunk||value.byteLength>row.size-seen)throw invalid();
+     hash.update(value);seen+=value.byteLength;
+     let written=0;
+     while(written<value.byteLength){
+      const count=(await file.write(value,written,value.byteLength-written,null)).bytesWritten;
+      if(count<1)throw invalid();
+      written+=count;
+     }
+    }
+    if(seen!==row.size||hash.digest('hex')!==row.sha256)throw invalid();
+   }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+  }finally{await file.close();}
+  return await use(()=>Readable.toWeb(createReadStream(path)));
+ }finally{await rm(directory,{recursive:true,force:true});}
 }
 
 async function control(ngs,name,args){
@@ -95,37 +96,58 @@ async function control(ngs,name,args){
  if(!exact(reply,'ok')||reply.ok!==true)throw invalid();
 }
 
-async function pushDestination({scope,pds,ngs,signal,object=false,fileSlot=direct,onFileError=()=>{}}){
- if(typeof scope!=='string'||!project.test(scope)||typeof fileSlot!=='function')throw invalid();
+async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,onFileError=()=>{}}){
+ if(typeof scope!=='string'||!project.test(scope)||typeof fileSlot!=='function'||typeof upload!=='function')throw invalid();
  let syncId;
  try{
   const start=await ngs('ngs_file_sync_begin',{scope},{limit:48*1024*1024});
   if(id.test(start?.syncId??''))syncId=start.syncId;
   const previous=inventory(start,scope);
   const {files,deleted}=changes(await pds.compare(scope,start.files,{includeDeleted:true}),scope,previous);
-  if(object)await control(ngs,'plan',{syncId,totalFiles:files.length});
+  await control(ngs,'plan',{syncId,totalFiles:files.length});
   let failed=0;
   for(const row of files){
    await fileSlot(async()=>{
     signal?.throwIfAborted();
     let uncertain=false,reason,attempts=1;
-    const fileArgs={pds,ngs,scope,syncId,row,signal,unknownFinal:()=>{uncertain=true;}};
-    try{await pushFile(fileArgs);return;}
-    catch(error){if(!object||signal?.aborted)throw error;reason=error;}
-    try{await control(ngs,'file_reset',{syncId,path:row.path});attempts++;}
-    catch{
+    const send=async bodyFactory=>{
+     try{
+      const reply=await upload({syncId,...row},bodyFactory);
+      if(!exact(reply,'ok')||reply.ok!==true)throw invalid();
+      return true;
+     }catch(error){
+      signal?.throwIfAborted();
+      if(error?.definite!==true)uncertain=true;
+      reason=error;
+      return false;
+     }
+    };
+    let prepared=false;
+    const prepare=()=>withVerifiedFile({pds,scope,row,signal},async bodyFactory=>{
+     prepared=true;
+     if(await send(bodyFactory))return true;
+     try{await control(ngs,'file_reset',{syncId,path:row.path});}
+     catch{
+      signal?.throwIfAborted();
+      if(uncertain)throw Error('NGS_FILE_SYNC_FILE_ACK_UNRESOLVED');
+      return false;
+     }
+     attempts++;
+     return await send(bodyFactory);
+    });
+    let sent;
+    try{sent=await prepare();}
+    catch(error){
      signal?.throwIfAborted();
-     if(uncertain)throw Error('NGS_FILE_SYNC_FILE_ACK_UNRESOLVED');
+     if(prepared)throw error;
+     reason=error;attempts++;
+     try{sent=await prepare();}
+     catch(second){signal?.throwIfAborted();if(prepared)throw second;reason=second;}
     }
-    if(attempts===2){
-     try{await pushFile(fileArgs);return;}
-     catch(error){signal?.throwIfAborted();reason=error;}
-    }
-    // An ambiguous final chunk might already be published. A full retry with
-    // the exact same bytes resolves it; otherwise don't invent failure or finish.
+    if(sent)return;
+    // A reply-lost atomic write may already be visible. Don't fabricate a
+    // failure or touch tombstones while that exact replay is unresolved.
     if(uncertain)throw Error('NGS_FILE_SYNC_FILE_ACK_UNRESOLVED');
-    // file_failed settles the path (and fences any private partial upload) only
-    // after a definite failure, so subsequent paths can proceed independently.
     await control(ngs,'file_failed',{syncId,path:row.path});
     failed++;
     onFileError(scope,row,reason,attempts);
@@ -144,15 +166,15 @@ async function pushDestination({scope,pds,ngs,signal,object=false,fileSlot=direc
   const result=await ngs('ngs_file_sync_finish',{syncId});
   if(!exact(result,'ok,written')||result.ok!==true||!Number.isSafeInteger(result.written)||result.written<0||result.written>files.length)
    throw invalid();
-  return object?{...result,failed}:result;
+  return {...result,failed};
  }catch(error){
   if(syncId)try{await ngs('ngs_file_sync_abort',{syncId});}catch{}
   throw error;
  }
 }
 
-export const pushProjectFiles=options=>pushDestination(options);
-export const pushObjectProjectFiles=options=>pushDestination({...options,object:true});
+export const pushProjectFiles=pushDestination;
+export const pushObjectProjectFiles=pushDestination;
 export const pushSpaceProjectFiles=pushObjectProjectFiles;
 
 // A file, including its recovery, holds the shared slot until it settles.
@@ -196,13 +218,8 @@ export async function watchPdsMcpFileSync({
  projects,pdsUrl=DEFAULT_PROJECT_FOLDER_MCP_URL,ngsUrl,
  now=()=>performance.now(),sleep=pause,signal,fileSlot,onResult=()=>{},onError=()=>{},onFileError,push=pushProjectFiles,
  pds=senderPds(pdsUrl,signal),
- ngs=loopbackJsonMCP(ngsUrl,{clientName:'pds-ngs-file-sender',signal,decodeToolError(name,result){
-  if(name!=='ngs_file_sync_file_chunk')return null;
-  const failure=result?.structuredContent;
-  const status=failure?.error==='NGS_FILE_SYNC_INVALID'?400:409;
-  return exact(failure,'error,status')&&failure.status===status&&definiteChunkFailures.has(failure.error)
-   ?Error(failure.error):null;
- }}),
+ ngs=loopbackJsonMCP(ngsUrl,{clientName:'pds-ngs-file-sender',signal}),
+ upload=ngsUrl?createLoopbackFileUpload(ngsUrl,{signal}):undefined,
 }={}){
  if(!Array.isArray(projects)||!projects.length||projects.length>maxEntries||
   projects.some(item=>typeof item!=='string'||!project.test(item))||new Set(projects).size!==projects.length)throw invalid();
@@ -223,7 +240,7 @@ export async function watchPdsMcpFileSync({
    for(const scope of projects){
     if(signal?.aborted)return;
     if(!discovered.has(scope))continue;
-    try{onResult(scope,await push({scope,pds,ngs,signal,fileSlot,onFileError}));}
+    try{onResult(scope,await push({scope,pds,ngs,upload,signal,fileSlot,onFileError}));}
     catch(error){if(!signal?.aborted)onError(scope,error);}
    }
   }catch(error){if(!signal?.aborted)onError(null,error);}
@@ -256,20 +273,20 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const {PDS_MCP_URL,NGS_FILE_SYNC_MCP_URL,NGS_FILE_SYNC_PROJECTS}=process.env;
  const controller=new AbortController(),health=startOpsHealthReport({serverName:'pds-mcp'});
  const signal=controller.signal;
- const localObject=process.env.NGS_LOCAL_FILE_SYNC_OBJECT_MODE==='1';
  const fileSlot=shareFileTransferSlot();
  const pds=sharePdsCompareSlot(senderPds(PDS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,signal));
  for(const action of ['SIGTERM','SIGINT'])process.once(action,()=>controller.abort());
  let space;
  if(process.env.NGS_SPACE_FILE_SYNC_ENABLED==='1'){
   try{
-   const ngs=createSpaceFileSyncDestination({...spaceMachineConfiguration(),signal});
-   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,fileSlot,push:pushSpaceProjectFiles,
+   const config={...spaceMachineConfiguration(),signal};
+   const ngs=createSpaceFileSyncDestination(config),upload=createSpaceFileSyncUpload(config);
+   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,upload,signal,fileSlot,push:pushSpaceProjectFiles,
     ...reportFileLoop('space')}).catch(()=>reportFileLoop('space').onError(null));
   }catch{reportFileLoop('space').onError(null,Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED'));}
  }
  try{
   await watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
-   pds,signal,fileSlot,push:localObject?pushObjectProjectFiles:pushProjectFiles,...reportFileLoop('local')});
+   pds,signal,fileSlot,push:pushProjectFiles,...reportFileLoop('local')});
  }finally{controller.abort();await space;health.stop();}
 }
