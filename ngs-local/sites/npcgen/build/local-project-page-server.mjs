@@ -1,6 +1,8 @@
 /** NGS browser app: serve the local replica and enqueue validated requests. */
 import {readFileSync,lstatSync,mkdirSync,realpathSync} from 'node:fs';
 import {createServer} from 'node:http';
+import {Readable} from 'node:stream';
+import {pipeline} from 'node:stream/promises';
 import {homedir} from 'node:os';
 import {dirname,isAbsolute,join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -9,8 +11,9 @@ import {assertLoopbackRequest,createLoopbackAuth} from './loopback-auth.mjs';
 import {createLocalProjectFolders,validProjectId} from './local-project-folders.mjs';
 import {localProjectFolderRoute,projectFolderRoutes} from './local-project-folder-route.mjs';
 import {validFolderPath} from './local-recursive-folders.mjs';
-import {localProjectWorkspace,openLocalWorkspaceProject} from './local-project-workspace.mjs';
-import {localNpcWorkspace} from './local-npc-workspace.mjs';
+import {openLocalWorkspaceProject} from './local-project-workspace.mjs';
+import {localObjectReplicaViews} from './local-object-replica-views.mjs';
+import {openLocalObjectReplicaFromEnv} from './local-object-replica-runtime.mjs';
 import {dispatchWorkspaceRead,workspaceReadRoute} from './workspace-read-registry.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
 import {openLocalRequestQueue} from './local-request-queue.mjs';
@@ -84,14 +87,17 @@ export function configuration(env=process.env){
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,audioWorkspaceEnabled=false,brandMarkPath}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,brandMarkPath}){
  const projects=approvedProjectReads();
- prepareFreshParent(root);
- const projectCatalog=createLocalProjectFolders({root});
+ const object=objectReplica?localObjectReplicaViews(objectReplica):null;
+ if(!object)prepareFreshParent(root);
+ const projectCatalog=object?.catalog??createLocalProjectFolders({root});
+ const openProject=object?.openProject??(id=>openLocalWorkspaceProject(root,id));
+ const readWorkspace=(pathname,query,authorize)=>dispatchWorkspaceRead({pathname,query,openProject,authorize});
  // Preserve the established browser paths, but only the separate receiver
  // may mutate content. Discovery, list, icon and workspace use local files.
  const catalog={...projectCatalog,
-  discover:async()=>projectCatalog.list(()=>true).map(project=>project.projectId),
+  discover:async()=>(await projectCatalog.list(()=>true)).map(project=>project.projectId),
   compare:async()=>({groups:[],unavailable:[]}),
   refresh:async()=>{throw failure('NGS_FILE_SYNC_PUSH_OWNED',409);},
  };
@@ -101,7 +107,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
  async function allowedCombat(preset){
   if(preset==='walk'||preset==='run')return false;
   const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',item:preset});
-  const {json:items}=await localProjectWorkspace({root,query,authorize:()=>{}});
+  const {json:items}=await readWorkspace('/api/project-workspace',query,()=>{});
   const motion=items?.motionPreset;
   return motion?.posePreset==='combat'&&motion.directions.filter(row=>row.path).length===8&&
    new Set(motion.directions.map(row=>row.direction)).size===8;
@@ -169,7 +175,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
      }
      const replace=command.payload.schemaVersion==='ngs.npc-one-stop.replace.v1';
      if(replace||typeof character?.npcId==='string'){
-      const roster=(await localNpcWorkspace({root,query:new URLSearchParams({projectId:command.payload.projectId}),authorize:()=>{}})).json.npcs;
+      const roster=(await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId:command.payload.projectId}),()=>{})).json.npcs;
       if(replace){
        const target=roster.find(npc=>npc.id===character?.npcId);
        if(!target)throw failure('ONE_STOP_REPLACE_TARGET_NOT_FOUND',404);
@@ -199,10 +205,25 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
     const session=auth.read(req);
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
     if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
-    const result=localAudioResults({root,query:url.searchParams,
-     authorize:projectId=>projectPermission(session.principal,projectId,undefined,false)});
+    const args={root,query:url.searchParams,range:req.headers.range,
+     authorize:projectId=>projectPermission(session.principal,projectId,undefined,false)};
+    const result=object?await object.audio(args):localAudioResults(args);
+    if(object&&auth.read(req)?.contextId!==session.contextId){
+     result.response?.body?.cancel().catch(()=>{});
+     throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+    }
     res.setHeader('X-NPCGen-Frontend-Context',session.contextId);
     if(result.json)return json(200,result.json);
+    if(result.response){
+     for(const key of ['Accept-Ranges','Content-Type','Content-Length','Content-Range','Content-Security-Policy']){
+      const value=result.response.headers.get(key);
+      if(value!==null)res.setHeader(key,value);
+     }
+     res.statusCode=result.response.status;
+     if(!result.response.body)return res.end();
+     await pipeline(Readable.fromWeb(result.response.body),res);
+     return;
+    }
     const size=result.bytes.length,range=audioResponseRange(req.headers.range,size);
     res.setHeader('Accept-Ranges','bytes');
     if(!range){
@@ -221,9 +242,9 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
     const session=auth.read(req);
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
     if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
-    const result=await dispatchWorkspaceRead({pathname:url.pathname,query:url.searchParams,
-     openProject:id=>openLocalWorkspaceProject(root,id),
-     authorize:projectId=>projectPermission(session.principal,projectId,undefined,false)});
+    const result=await readWorkspace(url.pathname,url.searchParams,
+     projectId=>projectPermission(session.principal,projectId,undefined,false));
+    if(object&&auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     res.setHeader('X-NPCGen-Frontend-Context',session.contextId);
     if(result.json)return json(200,result.json);
     res.setHeader('Content-Type',result.mime);
@@ -269,16 +290,18 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,a
    }
    throw failure('NOT_FOUND',404);
   }catch(error){
-   if(!res.writableEnded)json(error.status??(error.message==='FOLDER_SYNC_COMPARE_REQUIRED'?409:503),{error:/^[A-Z0-9_]+$/.test(error.message)?error.message:'LOCAL_PROJECT_PAGE_UNAVAILABLE'});
+   if(!res.writableEnded&&!res.headersSent)json(error.status??(error.message==='FOLDER_SYNC_COMPARE_REQUIRED'?409:503),{error:/^[A-Z0-9_]+$/.test(error.message)?error.message:'LOCAL_PROJECT_PAGE_UNAVAILABLE'});
   }
  });
- server.once('close',()=>{auth.close();ownedQueue?.close();});
+ server.once('close',()=>{auth.close();ownedQueue?.close();closeReplica?.();});
  return server;
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  try{
-  const config=configuration(),server=createLocalProjectPageServer(config);
+  const config=configuration();
+  const service=await openLocalObjectReplicaFromEnv();
+  const server=createLocalProjectPageServer({...config,objectReplica:service?.replica,closeReplica:service?.close});
   server.on('error',()=>{console.error('LOCAL_PROJECT_PAGE_LISTEN_FAILED');process.exitCode=1;});
   server.listen(config.port,'127.0.0.1',()=>{
    console.log('LOCAL_PROJECT_PAGE_READY http://127.0.0.1:'+config.port);

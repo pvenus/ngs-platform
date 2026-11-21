@@ -34,7 +34,8 @@ export async function localProjectFolderRoute(req,res,{origin,catalog,session,au
    throw reject('PROJECT_FOLDER_ICON_QUERY_INVALID',400);
   }
   allowed(latest(),projectId);
-  const icon=catalog.icon(projectId,hash);
+  const icon=await catalog.icon(projectId,hash);
+  allowed(latest(),projectId);
   if(!icon)throw reject('PROJECT_FOLDER_ICON_NOT_FOUND',404);
   return reply(icon,'image/png');
  }
@@ -76,6 +77,7 @@ export async function localProjectFolderRoute(req,res,{origin,catalog,session,au
   return reply({projects:ids.filter(filter(latest()))});
  }
  const readable=filter(latest());
- const projects=catalog.list(readable),refreshes=catalog.refreshes?.(readable);
- return reply({projects,...(refreshes?.length?{refreshes}:{})});
+ const projects=await catalog.list(readable),refreshes=catalog.refreshes?.(readable);
+ const stillAllowed=filter(latest());
+ return reply({projects:projects.filter(p=>stillAllowed(p.projectId)),...(refreshes?.length?{refreshes}:{})});
 }

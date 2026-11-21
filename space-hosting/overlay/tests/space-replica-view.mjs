@@ -1,22 +1,25 @@
 /** Real workerd D1 + R2, sterile synthetic publications and owner-auth fixtures only. */
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {readFileSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 const here=x=>new URL(x,import.meta.url);
 const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../../../sites/npcgen/package.json'))('miniflare');
 const mod=(path,filename)=>({type:'ESModule',path,contents:readFileSync(here(filename),'utf8')});
+const shared='ngs-local/sites/npcgen/build/';
+const sharedRoot=existsSync(here('../'+shared+'object-replica-view.mjs'))?'../':'../../../';
+
 const mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  modules:[{type:'ESModule',path:'test.mjs',contents:`
  import {createSpaceFileReplica} from './build/space-file-replica.mjs';
- import {spaceReplicaView} from './view.mjs';
+ import {spaceReplicaView} from './build/space-replica-view.mjs';
  export default {fetch(request,env){
   const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
   return spaceReplicaView(request,replica,{authorize:async (user,project)=>user.userId==='owner-fixture'&&project==='binari'})
    .then(response=>response??new Response(null,{status:404}));
  }};
- `},mod('build/space-file-replica.mjs','../build/space-file-replica.mjs'),
- mod('ngs-local/sites/npcgen/build/object-replica.mjs','../../../ngs-local/sites/npcgen/build/object-replica.mjs'),mod('view.mjs','../build/space-replica-view.mjs')],
+ `},mod('build/space-file-replica.mjs','../build/space-file-replica.mjs'),mod('build/space-replica-view.mjs','../build/space-replica-view.mjs'),
+ mod(shared+'object-replica-view.mjs',sharedRoot+shared+'object-replica-view.mjs'),mod(shared+'object-replica.mjs',sharedRoot+shared+'object-replica.mjs')],
 });
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const auth={'oai-authenticated-user-id':'owner-fixture','oai-authenticated-user-email':'owner@example.invalid'};
@@ -33,7 +36,7 @@ const meta=(id,generatedAt,t=title)=>({schemaVersion:'workflow.audio-result.v1',
  sampleRate:8000,frames:800,durationSeconds:0.1}});
 try{
  const db=await mini.getD1Database('DB');
- const schema=readFileSync(here('../ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
+ const schema=readFileSync(here(sharedRoot+'ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
  for(const sql of schema.split('--> statement-breakpoint'))await db.prepare(sql).run();
  const bucket=await mini.getR2Bucket('BUCKET');
  async function publish(path,body,extra={}){

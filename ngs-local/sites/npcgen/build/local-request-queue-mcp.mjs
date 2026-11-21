@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { MAX_QUEUE_LIST, LOCAL_QUEUE_MCP_DEFAULT_PORT, openLocalRequestQueue } from './local-request-queue.mjs';
 
 import {fileSyncChunkTool,fileSyncTools,localFileSyncReceiverFromEnv,maxFileSyncRpcBytes} from './local-replica-file-receiver.mjs';
+import {openLocalObjectReplicaFromEnv} from './local-object-replica-runtime.mjs';
 
 const protocolVersion='2025-06-18';
 const inputSchema=(properties,required=[])=>({type:'object',additionalProperties:false,properties,required});
@@ -17,8 +18,8 @@ const keys=(value,...names)=>value&&typeof value==='object'&&!Array.isArray(valu
 const toolResult=(value,isError=false)=>({isError,content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value});
 const rpcFailure=(id,code,message)=>({jsonrpc:'2.0',id,error:{code,message}});
 
-export function createLocalRequestQueueMcp(queue,{fileSync}={}){
- const syncNames=new Set(fileSync?fileSyncTools.map(tool=>tool.name):[]);
+export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitions=fileSyncTools}={}){
+ const syncNames=new Set(fileSync?fileSyncToolDefinitions.map(tool=>tool.name):[]);
  return createServer({requestTimeout:5000,headersTimeout:5000,maxHeaderSize:8192},async(req,res)=>{
   const port=res.socket.localPort;
   if(req.headers.host!=='127.0.0.1:'+port||req.headers.origin!==undefined||req.headers['sec-fetch-site']!==undefined||
@@ -56,7 +57,7 @@ export function createLocalRequestQueueMcp(queue,{fileSync}={}){
   }
   if(req.headers['mcp-protocol-version']&&req.headers['mcp-protocol-version']!==protocolVersion){res.writeHead(400).end();return;}
   if(method==='ping'){ok({});return;}
-  if(method==='tools/list'){ok({tools:fileSync?[...tools,...fileSyncTools]:tools});return;}
+  if(method==='tools/list'){ok({tools:fileSync?[...tools,...fileSyncToolDefinitions]:tools});return;}
   if(method!=='tools/call'){response(rpcFailure(id,-32601,'Method not found'));return;}
   const args=params?.arguments??{};
   if(fileSync&&syncNames.has(params?.name)){
@@ -81,8 +82,9 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const port=Number(NGS_REQUEST_QUEUE_MCP_PORT??LOCAL_QUEUE_MCP_DEFAULT_PORT);
  if(!Number.isInteger(port)||port<1||port>65535)throw Error('NGS_REQUEST_QUEUE_MCP_PORT_INVALID');
  const queue=openLocalRequestQueue(NGS_REQUEST_QUEUE_DB);
- const fileSync=localFileSyncReceiverFromEnv();
- const server=createLocalRequestQueueMcp(queue,{fileSync});
- for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>server.close(()=>{fileSync?.close();queue.close();}));
+ const service=await openLocalObjectReplicaFromEnv(process.env,{writer:true});
+ const fileSync=service?.replica??localFileSyncReceiverFromEnv();
+ const server=createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitions:service?.fileSyncToolDefinitions});
+ for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>server.close(()=>{if(service)service.close();else fileSync?.close();queue.close();}));
  server.listen(port,'127.0.0.1');
 }

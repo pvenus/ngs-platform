@@ -8,7 +8,7 @@ const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../..
 const source=(path,relative)=>({type:'ESModule',path,contents:readFileSync(here(relative),'utf8')});
 const shared='ngs-local/sites/npcgen/build/';
 const sharedRoot=existsSync(here('../'+shared+'npc-workspace.mjs'))?'../':'../../../';
-const files=['object-replica.mjs','npc-workspace.mjs','project-workspace-view.mjs','workspace-read-storage.mjs','workspace-read-registry.mjs','local-concept-category-contract.mjs'];
+const files=['object-replica.mjs','npc-workspace.mjs','project-workspace-view.mjs','workspace-read-storage.mjs','object-workspace-read-storage.mjs','workspace-read-registry.mjs','local-concept-category-contract.mjs'];
 const mini=new Miniflare({compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  d1Databases:['DB'],r2Buckets:['BUCKET'],modules:[
  {type:'ESModule',path:'test.mjs',contents:`
@@ -30,7 +30,7 @@ const request=(q,allowed=true)=>mini.dispatchFetch('http://fixture.test/api/npc-
  {headers:{'oai-authenticated-user-id':allowed?'fake-authorized':'fake-not-authorized','oai-authenticated-user-email':'fixture@example.invalid'}});
 try{
  const db=await mini.getD1Database('DB'),bucket=await mini.getR2Bucket('BUCKET');
- const migration=readFileSync(here('../ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
+ const migration=readFileSync(here(sharedRoot+'ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
  for(const sql of migration.split('--> statement-breakpoint'))await db.prepare(sql).run();
  const put=async (relative,body)=>{
   const bytes=Buffer.isBuffer(body)?body:Buffer.from(JSON.stringify(body));
