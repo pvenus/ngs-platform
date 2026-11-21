@@ -38,7 +38,7 @@
     "sites/npcgen/build/loopback-auth.mjs": "bd920a871bd7cfd864b9cf3095c4aa7b5e987893ead87422524b4c69279e45f3",
     "sites/npcgen/build/npc-workspace.mjs": "621beef07405b78cc5bf0f5783583aa669dcfba2035b0d2b88b195ceed31b0b0",
     "sites/npcgen/build/object-replica-view.mjs": "60ca1a14b843a884414c25649da607b9bff2359036d3dfaaacb452d9a3a9ab2b",
-    "sites/npcgen/build/object-replica.mjs": "d299e991c9bfdfc6b8f5bab1b05c8eb40dce7b1ba47e1042de5ed775245260bd",
+    "sites/npcgen/build/object-replica.mjs": "89de6b010b525dd6085fefac2b9231358b0d6372f45c3c686236074ff2098d24",
     "sites/npcgen/build/object-workspace-read-storage.mjs": "e4db3cee938dbdf469648654c48d3096371b5f9e34f06b75c8c9114071d19b1f",
     "sites/npcgen/build/pds-mcp-file-sync.mjs": "829ed71c4c95980dbe253c8541d0172d74d786605757f0027fcd62c8bf9d1bde",
     "sites/npcgen/build/project-workspace-view.mjs": "7f975bd1218b5470031de91b45e3e8910ead8e6606232acd2401433dbfdf9ade",

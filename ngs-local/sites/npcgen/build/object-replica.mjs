@@ -154,6 +154,9 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
  // Keys are fixed slots and not replica files; stored generation must match.
  const npcCacheRoot=namespace+'v2/npc-read-cache-v1/';
  const npcCacheLimit=8*1024*1024;
+ // Some S3-compatible stores drop empty user metadata headers. A stable
+ // non-empty roster scope works for both object providers.
+ const npcCacheRosterScope='roster';
  const npcCacheKey=npcId=>{
   if(npcId===null)return npcCacheRoot+'roster';
   need(typeof npcId==='string'&&/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(npcId));
@@ -172,7 +175,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
    const row=await bucket.get(npcCacheKey(npcId));
    if(!row)return null;
    const meta=row.customMetadata;
-   if(meta?.generation!==String(version)||meta?.scope!==(npcId??'')||!hash(meta?.sha256)||
+   if(meta?.generation!==String(version)||meta?.scope!==(npcId??npcCacheRosterScope)||!hash(meta?.sha256)||
       !safeInt(row.size,2,npcCacheLimit)||typeof row.arrayBuffer!=='function'){
     void row.body?.cancel().catch(()=>{});
     return null;
@@ -189,7 +192,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
    // Published state can change while JSON was projected. Old cache objects
    // are never eligible, even if an older writer finishes its put after this.
    if(await npcCache.version()!==version)return;
-   await bucket.put(npcCacheKey(npcId),bytes,{sha256,customMetadata:{sha256,generation:String(version),scope:npcId??''}});
+   await bucket.put(npcCacheKey(npcId),bytes,{sha256,customMetadata:{sha256,generation:String(version),scope:npcId??npcCacheRosterScope}});
   },
  });
  async function activePrior(path,session){

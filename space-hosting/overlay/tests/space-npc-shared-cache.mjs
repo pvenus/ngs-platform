@@ -89,6 +89,7 @@ try{
  const roster=await obtain(one,'viewer-a',null);
  assert.equal(roster.body.npcs[0].name,'First');
  assert.equal(roster.counts.cacheWrites,1);
+ assert.equal((await bucket.head(root+'v2/npc-read-cache-v1/roster')).customMetadata.scope,'roster');
  const rosterWarm=await obtain(two,'viewer-b',null);
  assert.deepEqual(rosterWarm.body,roster.body);
  assert.equal(rosterWarm.counts.sourceReads,0);
