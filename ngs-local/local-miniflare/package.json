@@ -1,0 +1,7 @@
+{
+  "name": "vinus-ngs-local-miniflare",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24"},
+  "dependencies": {"miniflare": "4.20260515.0"}
+}
