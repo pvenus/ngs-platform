@@ -84,3 +84,20 @@ test('machine exact pending/get and ack verify official source hash, clear paylo
  assert.deepEqual(await (await browser('/api/requests?queueId='+q,'GET',a)).json(),{queueId:q,status:'registered',receipt:{officialRequestId,status:'registered'}});
  assert.equal((await db.prepare('SELECT payload FROM ngs_space_request_queue_v1 WHERE queue_id=?').bind(q).first()).payload,null);
 });
+
+test('only successful authorized pending responses carry compiled canonical source identity',async t=>{
+ const db=store(t),sha='a12c'.repeat(10),forged='f'.repeat(40);
+ const args={name:'space_requests_pending',arguments:{}};
+ const probe=(commitSha,method='tools/call',params=args,extra={})=>machineResponse(
+  request('/api/space-machine-mcp','POST',{'X-NGS-Machine-Token':token,'X-NGS-Commit-Sha':forged,...extra},
+   {jsonrpc:'2.0',id:1,method,params}),{db,secret:token,commitSha});
+ const ok=await probe(sha);
+ assert.equal(ok.headers.get('X-NGS-Commit-Sha'),sha);
+ assert.deepEqual((await ok.json()).result.structuredContent,{requests:[]});
+ for(const untrusted of [undefined,sha.toUpperCase(),sha+'\n','1'.repeat(7)])
+  assert.equal((await probe(untrusted)).headers.get('X-NGS-Commit-Sha'),null);
+ const denied=await probe(sha,'tools/call',args,{'X-NGS-Machine-Token':'d'.repeat(64)});
+ assert.equal(denied.status,403);assert.equal(denied.headers.get('X-NGS-Commit-Sha'),null);
+ assert.equal((await probe(sha,'tools/list',{})).headers.get('X-NGS-Commit-Sha'),null);
+ assert.equal((await probe(sha,'tools/call',{...args,arguments:{projectId:'other'}})).headers.get('X-NGS-Commit-Sha'),null);
+});

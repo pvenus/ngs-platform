@@ -174,7 +174,7 @@ def load_plan(sha, control, releases, scratch):
     return folder, spec, selected, workdir
 
 
-def select(raw, release, workdir, releases, scratch, queue):
+def select(raw, release, workdir, releases, scratch, queue, sha):
     plist = plistlib.loads(raw)
     args = plist["ProgramArguments"]
     env = plist["EnvironmentVariables"]
@@ -193,6 +193,8 @@ def select(raw, release, workdir, releases, scratch, queue):
             "STORAGE_STARTUP_INPUTS_CHANGED")
     plist["ProgramArguments"] = [args[0], str(release / ENTRY)]
     plist["WorkingDirectory"] = str(workdir)
+    require(SHA.fullmatch(sha) and release.name == "project-page-github-" + sha, "NATIVE_RELEASE_SHA_DRIFT")
+    plist["EnvironmentVariables"] = {**env, "NGS_COMMIT_SHA": sha}
     return old, plistlib.dumps(plist), env
 
 
@@ -313,7 +315,7 @@ def apply(sha, control, host):
         armed = folder / "prior.plist"
         status = folder / "result.json"
         prior = host.read_plist()
-        old, new, env = select(prior, release, workdir, host.releases, host.scratch, host.queue)
+        old, new, env = select(prior, release, workdir, host.releases, host.scratch, host.queue, sha)
         require(not armed.exists() and not armed.is_symlink() and not status.exists() and not status.is_symlink(),
                 "RELEASE_ALREADY_ATTEMPTED_RECONCILE")
         require(old != release and digest(prior) == spec["expectedPriorPlistSha256"], "PRIOR_RELEASE_DRIFT")

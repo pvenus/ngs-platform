@@ -134,6 +134,8 @@ class Apply(unittest.TestCase):
     def test_exact_success_and_no_rerun(self):
         self.assertEqual(self.run_apply(), {"sha": SHA, "target": "mac", "state": "deployed", "health": "verified"})
         self.assertEqual(self.host.calls, ["stop", "replace", "start"])
+        self.assertEqual(plistlib.loads(self.host.raw)["EnvironmentVariables"],
+                         {**plistlib.loads(self.host.prior)["EnvironmentVariables"], "NGS_COMMIT_SHA": SHA})
         self.assertEqual((self.folder / "prior.plist").read_bytes(), self.host.prior)
         self.assertEqual(self.host.queue.read_bytes(), b"real queue stand-in")
         self.assertEqual(self.status()["health"], "verified")

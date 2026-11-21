@@ -6,7 +6,8 @@ const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-
 const chunkTool='ngs_file_sync_file_chunk',small=32*1024;
 const chunkRpc=4*Math.ceil(1024*1024/3)+32*1024;
 const privateHeaders={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin'};
-const json=(value,status=200)=>Response.json(value,{status,headers:privateHeaders});
+const json=(value,status=200,commitSha)=>Response.json(value,{status,headers:{...privateHeaders,
+ ...(typeof commitSha==='string'&&commitSha.length===40&&/^[0-9a-f]{40}$/.test(commitSha)?{'X-NGS-Commit-Sha':commitSha}:{})}});
 const fail=(status,error)=>json({error},status);
 const need=(allowed,status=400,code='SPACE_REQUEST_INVALID')=>{if(!allowed)throw Object.assign(Error(code),{status});};
 const postJSON=req=>/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers.get('content-type')??'');
@@ -44,14 +45,14 @@ const responseError=error=>{
  const status=[400,401,403,404,405,409,413,415].includes(error?.status)?error.status:503;
  return fail(status,status===503?'SPACE_QUEUE_UNAVAILABLE':error.message);
 };
-const rpc=(id,result)=>json({jsonrpc:'2.0',id,result});
-const rpcResult=(id,value,isError=false)=>rpc(id,{content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value,isError});
+const rpc=(id,result,commitSha)=>json({jsonrpc:'2.0',id,result},200,commitSha);
+const rpcResult=(id,value,isError=false,commitSha)=>rpc(id,{content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value,isError},commitSha);
 const rpcError=(id,code,message)=>json({jsonrpc:'2.0',id,error:{code,message}});
 const idOK=id=>typeof id==='string'&&id.length<=128||Number.isSafeInteger(id);
 const fields=(v,keys)=>record(v)&&Object.keys(v).every(k=>keys.includes(k));
 
 /** No machine request falls through to visitor MCP, even with an invalid token. */
-export async function machineResponse(request,{db,secret,fileReplica,fileTools=[]}={}){
+export async function machineResponse(request,{db,secret,fileReplica,fileTools=[],commitSha}={}){
  const url=new URL(request.url),supplied=request.headers.get('X-NGS-Machine-Token');
  const whole=url.pathname===wholeFileSyncPath;
  if(!whole&&url.pathname!==machinePath)return supplied===null?null:fail(404,'SPACE_MACHINE_ROUTE_NOT_FOUND');
@@ -91,7 +92,8 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   if(!fields(params,['name','arguments','_meta'])||typeof params.name!=='string'||!record(params.arguments))
    return rpcError(id,-32602,'Invalid tool or arguments');
   try{
-   if(machineTools.some(tool=>tool.name===params.name))return rpcResult(id,await new SpaceRequestQueue(db).call(params.name,params.arguments));
+   if(machineTools.some(tool=>tool.name===params.name))return rpcResult(id,await new SpaceRequestQueue(db).call(params.name,params.arguments),
+    false,params.name==='space_requests_pending'?commitSha:undefined);
    if(fileReplica&&names.has(params.name))return rpcResult(id,await fileReplica.call(params.name,params.arguments));
    return rpcError(id,-32602,'Invalid tool or arguments');
   }catch(error){

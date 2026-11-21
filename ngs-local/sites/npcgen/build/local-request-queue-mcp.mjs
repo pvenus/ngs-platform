@@ -20,7 +20,8 @@ const keys=(value,...names)=>value&&typeof value==='object'&&!Array.isArray(valu
 const toolResult=(value,isError=false)=>({isError,content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value});
 const rpcFailure=(id,code,message)=>({jsonrpc:'2.0',id,error:{code,message}});
 
-export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitions=fileSyncTools}={}){
+export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitions=fileSyncTools,commitSha=process.env.NGS_COMMIT_SHA}={}){
+ const listedVersion=typeof commitSha==='string'&&commitSha.length===40&&/^[0-9a-f]{40}$/.test(commitSha)?commitSha:null;
  const syncNames=new Set(fileSync?fileSyncToolDefinitions.map(tool=>tool.name):[]);
  const maxRequestBody=fileSync?maxFileSyncRpcBytes:8192;
  return createServer({requestTimeout:5000,headersTimeout:5000,maxHeaderSize:8192},async(req,res)=>{
@@ -45,7 +46,8 @@ export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitio
   if(req.url!=='/mcp'){res.writeHead(404).end();return;}
   if(req.method!=='POST'){res.writeHead(405,{allow:'POST'}).end();return;}
   if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']??'')){res.writeHead(415).end();return;}
-  const response=v=>res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).end(JSON.stringify(v));
+  const response=(v,version)=>res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
+   ...(version?{'X-NGS-Commit-Sha':version}:{})}).end(JSON.stringify(v));
   let message,total=0;
   try{
    const buffers=[];
@@ -68,7 +70,7 @@ export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitio
    (id!==undefined&&typeof id!=='string'&&!Number.isSafeInteger(id))){response(rpcFailure(null,-32600,'Invalid request'));return;}
   const {method,params}=message;
   if(id===undefined){res.writeHead(202).end();return;}
-  const ok=value=>response({jsonrpc:'2.0',id,result:value});
+  const ok=(value,version)=>response({jsonrpc:'2.0',id,result:value},version);
   if(method==='initialize'){
    ok({protocolVersion,capabilities:{tools:{}},serverInfo:{name:'ngs-local-request-queue',version:'1'}});return;
   }
@@ -83,7 +85,7 @@ export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitio
    return;
   }
   try{
-   if(params?.name==='ngs_request_queue_list'&&(keys(args)||keys(args,'limit')||keys(args,'cursor')||keys(args,'cursor','limit'))){ok(toolResult(queue.list(args.limit,args.cursor)));return;}
+   if(params?.name==='ngs_request_queue_list'&&(keys(args)||keys(args,'limit')||keys(args,'cursor')||keys(args,'cursor','limit'))){ok(toolResult(queue.list(args.limit,args.cursor)),listedVersion);return;}
    if(params?.name==='ngs_request_queue_ack'&&keys(args,'queueId','receipt')){ok(toolResult(queue.ack(args.queueId,args.receipt)));return;}
    response(rpcFailure(id,-32602,'Invalid tool or arguments'));
   }catch(e){

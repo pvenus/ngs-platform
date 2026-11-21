@@ -30,3 +30,9 @@ entries, repeatable and non-destructive; optional opaque cursor from the prior
 full page as nextCursor) and `ngs_request_queue_ack`. The
 spool backpressures at 128 retained entries, and queue reads/receipts do not
 transfer request state back from RS after acknowledgment.
+
+An authenticated machine `ngs_request_queue_list` success can include the
+optional HTTP response header `X-NGS-Commit-Sha`. The Mac launch selector
+sets `NGS_COMMIT_SHA` only from the verified immutable release. If no full
+lowercase canonical Git SHA is supplied, the header is omitted. The JSON-RPC
+envelope, queue contents, and other tools are unchanged.

@@ -9,6 +9,7 @@ import { spaceWorkspaceReadResponse } from "./space-workspace-read-response.mjs"
 import { PromptService } from "../lib/prompt-service";
 import { createSpaceFileReplica, spaceFileSyncTools } from "./space-file-replica.mjs";
 import { browserQueueResponse, machineResponse, machineTokenConfigured } from "./space-machine-routes.mjs";
+import { ngsCommitSha } from "./ngs-release-provenance.mjs";
 import { rejectCleanSpaceRequest } from "./clean-space-guard.mjs";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
@@ -47,7 +48,7 @@ export default {
         return Response.json({error:status===503?"NGS_SYNC_PROGRESS_UNAVAILABLE":cause.message},{status,headers});
       }
     }
-    const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools});
+    const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools,commitSha:ngsCommitSha});
     if (machine) return machine;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,authorizeWrite:async user=>{
       try { const grant=await masterPrincipal(user); return grant.role==="owner" && grant.projectId==="binari"; }

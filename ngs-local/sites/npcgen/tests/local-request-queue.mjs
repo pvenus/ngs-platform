@@ -83,3 +83,31 @@ test('bounded pagination crosses acknowledged and expired anchors without starvi
  assert.throws(()=>queue.list(16,'garbage'),{status:400});
  queue.close();
 });
+
+test('only a successful list exposes the supplied canonical response header',async t=>{
+ const pinned='a12c'.repeat(10),forged='f'.repeat(40);
+ async function probe(commitSha,method='tools/call',params={name:'ngs_request_queue_list',arguments:{}},extra={}){
+  const server=createLocalRequestQueueMcp({list(limit){
+   if(limit===0)throw Object.assign(Error('NOT_VALID'),{status:400});
+   return {requests:[]};}},{commitSha});
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  try{
+   return await new Promise((resolve,reject)=>{
+    const req=request({hostname:'127.0.0.1',port:server.address().port,path:'/mcp',method:'POST',
+     headers:{'Content-Type':'application/json','X-NGS-Commit-Sha':forged,...extra}},res=>{
+     let body='';res.on('data',b=>body+=b);res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body:body?JSON.parse(body):null}));
+    });
+    req.once('error',reject);req.end(JSON.stringify({jsonrpc:'2.0',id:1,method,params}));
+   });
+  }finally{await new Promise(resolve=>server.close(resolve));}
+ }
+ const ok=await probe(pinned);
+ assert.equal(ok.headers['x-ngs-commit-sha'],pinned);
+ assert.deepEqual(ok.body.result.structuredContent,{requests:[]});
+ for(const untrusted of ['',pinned.toUpperCase(),pinned+'\n','1'.repeat(7),null])
+  assert.equal((await probe(untrusted)).headers['x-ngs-commit-sha'],undefined);
+ const denied=await probe(pinned,'tools/call',{name:'ngs_request_queue_list',arguments:{}},{Origin:'https://denied.invalid'});
+ assert.equal(denied.status,403);assert.equal(denied.headers['x-ngs-commit-sha'],undefined);
+ assert.equal((await probe(pinned,'tools/list',{})).headers['x-ngs-commit-sha'],undefined);
+ assert.equal((await probe(pinned,'tools/call',{name:'ngs_request_queue_list',arguments:{limit:0}})).headers['x-ngs-commit-sha'],undefined);
+});
