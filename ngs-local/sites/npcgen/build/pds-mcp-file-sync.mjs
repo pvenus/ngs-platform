@@ -1,4 +1,4 @@
-/** Push changed canonical files via MCP only, without exposing a Filex path. */
+/** Push canonical file changes via MCP only, without exposing a Filex path. */
 import {createHash} from 'node:crypto';
 import {setTimeout as pause} from 'node:timers/promises';
 import {pathToFileURL} from 'node:url';
@@ -27,8 +27,8 @@ function inventory(value,scope){
 }
 
 function changes(value,scope,previous){
- if((!exact(value,'groups,scope')&&!exact(value,'deleted,groups,scope'))||value.scope!==scope||
-  !Array.isArray(value.groups)||value.deleted!==undefined&&(!Array.isArray(value.deleted)||value.deleted.length))throw invalid();
+ if(!exact(value,'deleted,groups,scope')||value.scope!==scope||
+  !Array.isArray(value.groups)||!Array.isArray(value.deleted))throw invalid();
  const files=[],found=new Set(),folders=new Set();
  for(const group of value.groups){
   if(!exact(group,'files,folder')||typeof group.folder!=='string'||
@@ -43,7 +43,13 @@ function changes(value,scope,previous){
    found.add(row.path);files.push(row);
   }
  }
- return files;
+ const deleted=[];
+ for(const row of value.deleted){
+  if(!exact(row,'path,sha256')||!pathWithin(scope,row.path)||!digestOk(row.sha256)||found.has(row.path)||
+   previous.get(row.path)!==row.sha256||files.length+deleted.length>=maxEntries)throw invalid();
+  found.add(row.path);deleted.push(row);
+ }
+ return {files,deleted};
 }
 
 export async function pushProjectFiles({scope,pds,ngs}){
@@ -53,7 +59,7 @@ export async function pushProjectFiles({scope,pds,ngs}){
   const start=await ngs('ngs_file_sync_begin',{scope},{limit:48*1024*1024});
   if(id.test(start?.syncId??''))syncId=start.syncId;
   const previous=inventory(start,scope);
-  const files=changes(await pds.compare(scope,start.files),scope,previous);
+  const {files,deleted}=changes(await pds.compare(scope,start.files,{includeDeleted:true}),scope,previous);
   for(const row of files){
    const reader=pds.file(scope,row.path,row.sha256,row.size).body.getReader();
    const hash=createHash('sha256');let offset=0;
@@ -75,6 +81,16 @@ export async function pushProjectFiles({scope,pds,ngs}){
     if(offset!==row.size||hash.digest('hex')!==row.sha256)throw invalid();
     if(row.size===0)await send(new Uint8Array());
    }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+  }
+  if(deleted.length){
+   // Canonical source may have restored a file while changed files were being sent.
+   const candidates=new Map(deleted.map(row=>[row.path,row.sha256]));
+   const confirmed=changes(await pds.compare(scope,deleted,{includeDeleted:true}),scope,candidates).deleted;
+   if(confirmed.length!==deleted.length)throw Error('PDS_NGS_FILE_SYNC_TOMBSTONE_CHANGED');
+   for(const row of deleted){
+    const reply=await ngs('ngs_file_sync_remove',{syncId,...row});
+    if(!exact(reply,'removed')||typeof reply.removed!=='boolean')throw invalid();
+   }
   }
   const result=await ngs('ngs_file_sync_finish',{syncId});
   if(!exact(result,'ok,written')||result.ok!==true||!Number.isSafeInteger(result.written)||result.written<0||result.written>files.length)

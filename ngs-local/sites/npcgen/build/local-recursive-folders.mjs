@@ -80,6 +80,28 @@ async function inventory(root,scope){
  if(home)await walk('',home);
  return result;
 }
+/** Move exact replica bytes into a same-volume recovery receipt. Callers serialize writers. */
+export async function moveReplicaFileToTrash(root,relative,sha256){
+ if(!validFolderPath(relative)||!validHash(sha256))throw invalid();
+ const parent=dirname(relative),relativeParent=parent==='.'?'':parent,path=join(root,relative);
+ const folder=directory(root,relativeParent);
+ if(!folder)return false; // Already absent; never create a source directory for a deletion.
+ const before=await digest(path);
+ if(!before)return false;
+ if(before.hash!==sha256)throw stale();
+ const trash=checkedDir(join(root,'.deleted-sync'),true);
+ if(!trash)throw invalid();
+ const staging=checkedDir(mkdtempSync(join(trash,'entry-')),false);
+ const target=join(staging,'content'),receipt=join(staging,'receipt.json');
+ writeFileSync(receipt,JSON.stringify({relativePath:relative,sha256}),{flag:'wx',mode:0o600,flush:true});
+ const current=checkedFile(path);
+ if(!current||pin(current)!==before.pin||directory(root,relativeParent)!==folder||
+    checkedDir(trash,false)!==trash||checkedDir(staging,false)!==staging||
+    stat(staging).dev!==current.dev||stat(target))throw stale();
+ renameSync(path,target); // Same-volume atomic, recoverable move. No user bytes are unlinked.
+ return true;
+}
+
 // Use the same private path, file identity, and integrity checks for offline
 // replica reception. Cross-process writer exclusivity is an activation gate.
 export const localReplicaFilePrimitives=Object.freeze({stat,pin,directory,checkedFile,digest,inventory,validateProjectFolderFile});
@@ -314,25 +336,7 @@ export function createRecursiveFolderSync({root,pds,projectCatalog,readableProje
  async function moveToTrash(scope,row){
   const relative=scope?scope+'/'+row.path:row.path;
   if(!validFolderPath(relative))throw invalid();
-  const parent=dirname(relative),relativeParent=parent==='.'?'':parent,path=join(root,relative);
-  return await locked(path,async()=>{
-   const folder=directory(root,relativeParent);
-   if(!folder)return false; // Already absent; never create a source directory for a deletion.
-   const before=await digest(path);
-   if(!before)return false;
-   if(before.hash!==row.sha256)throw stale();
-   const trash=checkedDir(join(root,'.deleted-sync'),true);
-   if(!trash)throw invalid();
-   const staging=checkedDir(mkdtempSync(join(trash,'entry-')),false);
-   const target=join(staging,'content'),receipt=join(staging,'receipt.json');
-   writeFileSync(receipt,JSON.stringify({relativePath:relative,sha256:row.sha256}),{flag:'wx',mode:0o600,flush:true});
-   const current=checkedFile(path);
-   if(!current||pin(current)!==before.pin||directory(root,relativeParent)!==folder||
-      checkedDir(trash,false)!==trash||checkedDir(staging,false)!==staging||
-      stat(staging).dev!==current.dev||stat(target))throw stale();
-   renameSync(path,target); // Same-volume atomic, recoverable move. No user bytes are unlinked.
-   return true;
-  });
+  return await locked(join(root,relative),()=>moveReplicaFileToTrash(root,relative,row.sha256));
  }
  async function apply(scope,folder,id){
   const op=current(id);

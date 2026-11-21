@@ -59,7 +59,11 @@ fixture queue DB and `NGS_REQUEST_QUEUE_MCP_PORT=15275` for the receiver.
 In push mode the browser reads only that replica. Legacy compare routes return
 no work and refresh/write routes reject. Do not point the receiver at a replica still written by the
 legacy browser pull mode. Publishing is atomic per file, not per project.
-The initial push does not remove local copies when upstream files vanish;
-retain the existing pull path in production until source deletion parity is
-verified. Dot directories, including nested `.deleted`, never participate.
-Local testing does not enable the Space transport.
+For an active project, remove a stale replica file only when PDS explicitly
+reports it absent and reconfirms the exact path and prior replica hash. NGS
+then checks that its current file still has that hash and moves it out of the
+visible tree to the existing recoverable `.deleted-sync` area; it never
+permanently deletes a file or mutates a PDS source path. An unavailable or
+undiscovered project is not an instruction to remove it. Dot directories,
+including nested `.deleted`, never participate. Local testing does not
+enable the Space transport.

@@ -11,7 +11,7 @@ import {loopbackJsonMCP} from '../build/folder-mcp-loopback.mjs';
 
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const prefix='ngs_file_sync_';
-const ops=(call)=>Object.fromEntries(['begin','file_chunk','finish','abort'].map(op=>[op,args=>call(prefix+op,args)]));
+const ops=(call)=>Object.fromEntries(['begin','file_chunk','remove','finish','abort'].map(op=>[op,args=>call(prefix+op,args)]));
 const file=(receipt,path,source)=>({syncId:receipt.syncId,path,sha256:hash(source),size:source.length});
 const chunk=(bound,bytes,offset=0)=>({...bound,offset,dataBase64:bytes.toString('base64')});
 const small=Buffer.from('replica change'),before=Buffer.from('previous fixture');
@@ -72,6 +72,49 @@ test('local path/content drift, symlink, malformed chunk or wrong hash never wri
  assert.deepEqual(await f.finish({syncId:receipt.syncId}),{ok:true,written:0});
  assert.deepEqual(readdirSync(join(f.root,'.file-sync-stage')),[]);
 });
+test('one prior replica file moves recoverably; exact replay and fresh inventory are safe',async t=>{
+ const f=fixture(t),receipt=await f.begin({scope:'binari'});
+ const target={syncId:receipt.syncId,path:'keep.txt',sha256:hash(before)};
+ await assert.rejects(f.remove({...target,sha256:'0'.repeat(64)}),{status:409});
+ await assert.rejects(f.remove({...target,path:'.deleted/retained.txt'}),{status:400});
+ await assert.rejects(f.remove({...target,path:'../other/keep.txt'}),{status:400});
+ await assert.rejects(f.remove({...target,path:'unseen.txt'}),{status:409});
+ assert.deepEqual(await f.remove(target),{removed:true});
+ assert.equal(existsSync(join(f.project,'keep.txt')),false);
+ assert.deepEqual(await f.remove(target),{removed:false});
+ await assert.rejects(f.file_chunk(chunk(file(receipt,'keep.txt',small),small)),{status:409});
+ const trash=join(f.root,'.deleted-sync'),[name]=readdirSync(trash);
+ assert.match(name,/^entry-/);
+ assert.deepEqual(readFileSync(join(trash,name,'content')),before);
+ assert.deepEqual(JSON.parse(readFileSync(join(trash,name,'receipt.json'))),{
+  relativePath:'binari/keep.txt',sha256:hash(before),
+ });
+ assert.deepEqual(await f.finish({syncId:receipt.syncId}),{ok:true,written:0});
+ const round=await f.begin({scope:'binari'});
+ assert.deepEqual(round.files,[]);
+ assert.deepEqual(readFileSync(join(f.project,'.deleted/retained.txt')),before);
+});
+
+test('incoming file overlaps, new local bytes, and resurrected paths cannot be removed',async t=>{
+ const f=fixture(t),receipt=await f.begin({scope:'binari'});
+ const bind={syncId:receipt.syncId,path:'keep.txt',sha256:hash(before)};
+ writeFileSync(join(f.project,'keep.txt'),small);
+ await assert.rejects(f.remove(bind),{status:409});
+ writeFileSync(join(f.project,'keep.txt'),before);
+ const exact=file(receipt,'keep.txt',small);
+ await f.file_chunk(chunk(exact,small.subarray(0,5)));
+ await assert.rejects(f.remove(bind),{status:409});
+ await f.file_chunk(chunk(exact,small.subarray(5),5));
+ await assert.rejects(f.remove({...bind,sha256:hash(small)}),{status:409});
+ assert.deepEqual(await f.finish({syncId:receipt.syncId}),{ok:true,written:1});
+ const second=await f.begin({scope:'binari'});
+ const changedBind={...bind,syncId:second.syncId,sha256:hash(small)};
+ assert.deepEqual(await f.remove(changedBind),{removed:true});
+ writeFileSync(join(f.project,'keep.txt'),before,{mode:0o600});
+ await assert.rejects(f.remove(changedBind),{status:409});
+ assert.deepEqual(readFileSync(join(f.project,'keep.txt')),before);
+});
+
 test('opt-in extends only exact file MCP; default and non-file JSON limit stay intact',async t=>{
  const f=fixture(t);
  assert.equal(localFileSyncReceiverFromEnv({}),undefined);
@@ -86,6 +129,7 @@ test('opt-in extends only exact file MCP; default and non-file JSON limit stay i
  const boundOps=ops(call),receipt=await boundOps.begin({scope:'binari'});
  const args=chunk(file(receipt,'large.txt',Buffer.alloc(1024*1024,88)),Buffer.alloc(1024*1024,88));
  assert.deepEqual(await boundOps.file_chunk(args),{nextOffset:null});
+ assert.deepEqual(await boundOps.remove({syncId:receipt.syncId,path:'keep.txt',sha256:hash(before)}),{removed:true});
  assert.deepEqual(await boundOps.finish({syncId:receipt.syncId}),{ok:true,written:1});
  assert.deepEqual(await call('ngs_request_queue_list',{}),{requests:[]});
  const request=(name,arguments_,headers={})=>fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',...headers},

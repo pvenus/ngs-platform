@@ -3,7 +3,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {closeSync,fsyncSync,openSync,readFileSync,realpathSync,renameSync,unlinkSync,writeSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {dirname,isAbsolute,join} from 'node:path';
-import {localReplicaFilePrimitives as fs,validFolderPath} from './local-recursive-folders.mjs';
+import {localReplicaFilePrimitives as fs,moveReplicaFileToTrash,validFolderPath} from './local-recursive-folders.mjs';
 
 const policy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const idleTimeout=120_000,maxFile=64*1024*1024,chunkSize=1024*1024,maxInventoryBytes=16*1024*1024;
@@ -19,6 +19,7 @@ export const fileSyncTools=Object.freeze([
  rpcTool('ngs_file_sync_begin','Start one local project-replica cycle and get the current hash inventory.',{scope:rpcString}),
  rpcTool(fileSyncChunkTool,'Send one ordered bounded chunk for a file selected by unchanged PDS MCP reads.',{
   syncId,path:rpcString,sha256:rpcString,size:int(maxFile),offset:int(maxFile),dataBase64:rpcString}),
+ rpcTool('ngs_file_sync_remove','Recoverably move one exact prior local replica file after live source absence confirmation.',{syncId,path:rpcString,sha256:rpcString}),
  rpcTool('ngs_file_sync_finish','End a finished local replica file cycle.',{syncId}),
  rpcTool('ngs_file_sync_abort','Cancel the current incomplete replica file transfer.',{syncId}),
 ]);
@@ -78,7 +79,7 @@ export function createLocalFileSyncReceiver({root,projects,now=()=>performance.n
    return row;
   });
   inventories.set(args.scope,{files,inventoryAt,updatedAt:inventoryAt});
-  active={syncId:'ngs.sync.'+randomUUID(),scope:args.scope,inventory:inventories.get(args.scope),file:null,written:0,touched:now()};
+  active={syncId:'ngs.sync.'+randomUUID(),scope:args.scope,inventory:inventories.get(args.scope),file:null,written:0,removed:new Map(),uploaded:new Set(),touched:now()};
   return {syncId:active.syncId,scope:active.scope,inventoryAt,files:rows};
  }
  async function chunk(args,s){
@@ -91,6 +92,7 @@ export function createLocalFileSyncReceiver({root,projects,now=()=>performance.n
   if(bytes.toString('base64')!==args.dataBase64||bytes.length>chunkSize||args.offset+bytes.length>args.size||
     !bytes.length&&args.size!==0)fail();
   const {path,sha256,size,offset}=args;
+  if(s.removed.has(path))stale();
   if(!s.file){
    if(offset!==0)fail('NGS_FILE_SYNC_OFFSET_INVALID',409);
    const before=await current(s.scope,path);
@@ -124,10 +126,28 @@ export function createLocalFileSyncReceiver({root,projects,now=()=>performance.n
     if(owned(s.scope,path)!==folder||fs.pin(fs.checkedFile(dest))!==(f.before?.pin??null))stale();
     renameSync(f.temp,dest);f.temp=null;s.written++;
    }
-   s.inventory.files.set(path,sha256);s.inventory.updatedAt=wall();
+   s.inventory.files.set(path,sha256);s.inventory.updatedAt=wall();s.uploaded.add(path);
    discard();
    return {nextOffset:null};
   }catch(e){discard();throw e;}
+ }
+ async function remove(args,s){
+  if(!exact(args,'syncId','path','sha256')||!validFolderPath(args.path)||!validFolderPath(s.scope+'/'+args.path)||
+    typeof args.sha256!=='string'||args.sha256.length!==64||!hashPattern.test(args.sha256))fail();
+  const {path,sha256}=args;
+  if(s.file||s.uploaded.has(path))stale();
+  if(s.removed.get(path)===sha256){
+   // Do not assert replay absence if a new file appeared since the move.
+   if(await current(s.scope,path))stale();
+   s.touched=now();return {removed:false};
+  }
+  if(s.inventory.files.get(path)!==sha256)stale();
+  let removed;
+  try{removed=await moveReplicaFileToTrash(root,s.scope+'/'+path,sha256);}
+  catch(e){if(e?.message==='FOLDER_SYNC_COMPARE_REQUIRED')stale();throw e;}
+  s.inventory.files.delete(path);s.inventory.updatedAt=wall();
+  s.removed.set(path,sha256);s.touched=now();
+  return {removed};
  }
  return {
   async call(name,args){
@@ -138,6 +158,7 @@ export function createLocalFileSyncReceiver({root,projects,now=()=>performance.n
     const s=active;
     if(!s||args?.syncId!==s.syncId)fail('NGS_FILE_SYNC_INVALID_SESSION',409);
     if(name===fileSyncChunkTool)return await chunk(args,s);
+    if(name==='ngs_file_sync_remove')return await remove(args,s);
     if(!exact(args,'syncId'))fail();
     if(name==='ngs_file_sync_abort'){discard();active=null;return {ok:true};}
     if(name==='ngs_file_sync_finish'){
