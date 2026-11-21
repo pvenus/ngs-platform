@@ -249,8 +249,11 @@ with ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
   `},{type:'ESModule',path:'build/space-file-replica.mjs',contents:source},
      {type:'ESModule',path:'ngs-local/sites/npcgen/build/object-replica.mjs',contents:core}]});
  const db=await mini.getD1Database('DB'),bucket=await mini.getR2Bucket('BUCKET');
- const migration=readFileSync(join(fileOverlay,'drizzle','0014_space_file_replica_versions.sql'),'utf8');
- for(const sql of migration.split('--> statement-breakpoint'))await db.prepare(sql).run();
+ const stages=[
+  join(fileOverlay,'drizzle','0014_space_file_replica_versions.sql'),
+  fileURLToPath(new URL('../../../dev/0015_replica_sync_progress.sql',import.meta.url)),
+ ];
+ for(const stage of stages)for(const sql of readFileSync(stage,'utf8').split('--> statement-breakpoint'))if(sql.trim())await db.prepare(sql).run();
  await bucket.put('legacy/untouched','older untouched bytes');
  const fileReplica={async call(name,args){
   const r=await mini.dispatchFetch('http://fixture.invalid',{method:'POST',body:JSON.stringify({name,args})});
