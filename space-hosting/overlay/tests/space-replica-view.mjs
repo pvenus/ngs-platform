@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 const here=x=>new URL(x,import.meta.url);
 const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../../../sites/npcgen/package.json'))('miniflare');
 const mod=(path,filename)=>({type:'ESModule',path,contents:readFileSync(here(filename),'utf8')});
-const mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',
+const mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  modules:[{type:'ESModule',path:'test.mjs',contents:`
  import {createSpaceFileReplica} from './storage.mjs';
  import {spaceReplicaView} from './view.mjs';
@@ -31,6 +31,9 @@ const meta=(id,generatedAt,t=title)=>({schemaVersion:'workflow.audio-result.v1',
  bpm:83,bpmBasis:'model',generatedAt,audio:{path:'audio.wav',mimeType:'audio/wav',sha256,bytes:data.length,channels:1,bitsPerSample:16,
  sampleRate:8000,frames:800,durationSeconds:0.1}});
 try{
+ const db=await mini.getD1Database('DB');
+ const schema=readFileSync(here('../drizzle/0014_space_file_replica_versions.sql'),'utf8');
+ for(const sql of schema.split('--> statement-breakpoint'))await db.prepare(sql).run();
  const bucket=await mini.getR2Bucket('BUCKET');
  async function publish(path,body,extra={}){
   if(!Buffer.isBuffer(body))body=Buffer.from(JSON.stringify(body));

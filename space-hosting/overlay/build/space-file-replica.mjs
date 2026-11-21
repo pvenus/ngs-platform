@@ -1,242 +1,356 @@
-/** Private hosted Binari replica. Callers must authorize every action at the host boundary. */
-const project='binari',prefix='ngs-replica/v1/binari/',current=prefix+'files/',stage=prefix+'stage/',recovery=prefix+'recovery/';
-const table='ngs_space_file_replica_sync_v1',ttl=5*60_000,maxFiles=32768,maxInventoryBytes=16*1024*1024;
+/** Private hosted replica: temporary data never becomes visible until pointer CAS. */
+import {createHash} from 'node:crypto';
+const project='binari',prefix='ngs-replica/v1/binari/',legacy=prefix+'files/';
+const stage=prefix+'v2/stage/',versions=prefix+'v2/objects/';
+const passes='ngs_replica_pass_v2',receives='ngs_replica_receive_v2',entries='ngs_replica_version_v2',resets='ngs_replica_reset_v2';
+const inactivity=60*60_000,maxPaths=32768,maxInventoryBytes=16*1024*1024;
 export const spaceFileChunkSize=1024*1024;
-const maxFile=64*spaceFileChunkSize;
-const encoder=new TextEncoder();
-const hash=v=>typeof v==='string'&&/^[0-9a-f]{64}$/u.test(v);
-const validPath=p=>typeof p==='string'&&p.isWellFormed()&&encoder.encode(current+p).length<=1024&&p.split('/').length<=64&&
+const chunkSize=spaceFileChunkSize,minPart=5*chunkSize,maxParts=10000;
+const r2ObjectMaximum=5*1024**4-5*1024**3;
+const partSize=size=>Math.max(minPart,Math.ceil(size/(maxParts*chunkSize))*chunkSize);
+const encoder=new TextEncoder(),hash=v=>typeof v==='string'&&/^[0-9a-f]{64}$/u.test(v);
+const safeInt=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
+const pathOK=p=>typeof p==='string'&&p.isWellFormed()&&encoder.encode(legacy+p).length<=1024&&p.split('/').length<=64&&
  p.split('/').every(c=>c.length&&encoder.encode(c).length<=255&&!c.startsWith('.')&&!/[\\\x00-\x1f\x7f]/u.test(c));
-const validSync=v=>typeof v==='string'&&/^ngs\.sync\.[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u.test(v);
+const uuidOK=v=>typeof v==='string'&&/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u.test(v);
+const syncOK=v=>typeof v==='string'&&v.startsWith('ngs.sync.')&&uuidOK(v.slice(9));
 const exact=(v,...keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const need=(value,status=400,code='NGS_FILE_SYNC_INVALID')=>{if(!value)throw Object.assign(Error(code),{status});};
 const stale=()=>need(false,409,'NGS_FILE_SYNC_REPLICA_CHANGED');
-const string={type:'string'},integer={type:'integer',minimum:0,maximum:maxFile};
+const content=()=>need(false,409,'NGS_FILE_SYNC_CONTENT_MISMATCH');
+const badOffset=()=>need(false,409,'NGS_FILE_SYNC_OFFSET_INVALID');
+const unavailable=()=>need(false,503,'NGS_FILE_SYNC_UNAVAILABLE');
+const string={type:'string'},integer={type:'integer',minimum:0,maximum:r2ObjectMaximum};
 const tool=(name,description,properties)=>({name,description,inputSchema:{type:'object',additionalProperties:false,required:Object.keys(properties),properties}});
-const begin='ngs_file_sync_begin',chunk='ngs_file_sync_file_chunk',remove='ngs_file_sync_remove',finish='ngs_file_sync_finish',abort='ngs_file_sync_abort';
+const begin='ngs_file_sync_begin',chunk='ngs_file_sync_file_chunk',reset='ngs_file_sync_file_reset',
+ remove='ngs_file_sync_remove',finish='ngs_file_sync_finish',abort='ngs_file_sync_abort';
 export const spaceFileSyncTools=Object.freeze([
- tool(begin,'Read the private Binari replica hash inventory and open a bounded sync pass.',{scope:{const:project}}),
- tool(chunk,'Submit one ordered chunk from the canonical PDS Binari scope.',{syncId:string,path:string,sha256:string,size:integer,offset:integer,dataBase64:string}),
- tool(remove,'Hide one exact obsolete replica entry after preserving immutable recovery bytes.',{syncId:string,path:string,sha256:string}),
- tool(finish,'Close the current completed replica sync.',{syncId:string}),
- tool(abort,'Discard the current incomplete replica transfer.',{syncId:string}),
+ tool(begin,'Open a Binari replica sync pass and read the digest inventory.',{scope:{const:project}}),
+ tool(chunk,'Write one bounded piece to a private, per-file replica transfer.',{syncId:string,path:string,sha256:string,size:integer,offset:integer,dataBase64:string}),
+ tool(reset,'Discard one incomplete file transfer. Its live replica is not altered.',{syncId:string,path:string}),
+ tool(remove,'Hide one digest-matched replica file without deleting its earlier bytes.',{syncId:string,path:string,sha256:string}),
+ tool(finish,'Close a replica sync pass; report files committed by it.',{syncId:string}),
+ tool(abort,'Cancel unfinished replica transfers without altering live files.',{syncId:string}),
 ]);
 const names=new Set(spaceFileSyncTools.map(t=>t.name));
-const shaBytes=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),n=>n.toString(16).padStart(2,'0')).join('');
-const sourceKey=p=>current+p;
-const absent=o=>o?.customMetadata?.removed==='1';
-function decoded(b64) {
- need(typeof b64==='string'&&b64.length<=4*Math.ceil(spaceFileChunkSize/3)&&/^[A-Za-z0-9+/]*={0,2}$/u.test(b64));
- let text;try{text=atob(b64);}catch{need(false);}
- need(btoa(text)===b64);
- return Uint8Array.from(text,c=>c.charCodeAt(0));
-}
-const integerRange=(v,a,b)=>Number.isSafeInteger(v)&&v>=a&&v<=b;
-const stagedKey=(id,f,offset)=>stage+id+'/'+f.key+'/'+offset;
-function trustedObject(o){
- if(!o)return null;
- need(hash(o.customMetadata?.sha256)&&typeof o.etag==='string'&&integerRange(o.size,0,maxFile),503,'NGS_FILE_SYNC_UNAVAILABLE');
+const decoded=b64=>{
+ need(typeof b64==='string'&&b64.length<=4*Math.ceil(chunkSize/3)&&/^[A-Za-z0-9+/]*={0,2}$/u.test(b64));
+ let data;try{data=atob(b64);}catch{need(false);}
+ need(btoa(data)===b64);
+ return Uint8Array.from(data,c=>c.charCodeAt(0));
+};
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+const stageKey=(attempt,offset)=>stage+attempt+'/'+offset;
+const objectKey=attempt=>versions+attempt;
+const noOverwrite=()=>new Headers({'If-None-Match':'*'});
+function verifiedMeta(o){
+ if(o&&!(hash(o.customMetadata?.sha256)&&typeof o.etag==='string'&&safeInt(o.size,0,r2ObjectMaximum)))unavailable();
  return o;
 }
-const byteLength=p=>p==='project.json'?64*1024:p==='icon.png'?2*spaceFileChunkSize:maxFile;
-async function verifyHeader(p,file,data){
- if(p==='icon.png'){
-  const rg=await data();
-  need([137,80,78,71,13,10,26,10].every((v,i)=>rg[i]===v),409,'NGS_FILE_SYNC_CONTENT_MISMATCH');
- }else if(p==='project.json'){
-  const u8=await data();
-  let json;try{json=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(u8));}catch{}
-  need(json&&typeof json==='object'&&!Array.isArray(json)&&file.size===u8.byteLength,409,'NGS_FILE_SYNC_CONTENT_MISMATCH');
+const headerBound=path=>path==='project.json'?64*1024:path==='icon.png'?2*chunkSize:r2ObjectMaximum;
+function headerCheck(path,first){
+ if(path==='icon.png'&&![137,80,78,71,13,10,26,10].every((v,i)=>first[i]===v))content();
+ if(path==='project.json'){
+  let value;try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(first));}catch{content();}
+  if(!value||typeof value!=='object'||Array.isArray(value))content();
  }
 }
 
 export function createSpaceFileReplica({db,bucket,now=Date.now,uuid=()=>crypto.randomUUID(),fixedLengthStream=n=>new FixedLengthStream(n)}={}){
  const ready=()=>need(db&&bucket,503,'NGS_FILE_SYNC_UNAVAILABLE');
- const statement=(q,...values)=>db.prepare(q).bind(...values);
- const state=()=>db.prepare(`SELECT * FROM ${table} WHERE slot=1`).first();
- const edit=(sql,...values)=>statement(sql,...values).run();
- const count=result=>result?.meta?.changes??0;
- async function list(){
-  ready();let cursor,bytes=2;
-  const files=[];
-  do{
-   const page=await bucket.list({prefix:current,limit:1000,include:['customMetadata'],cursor});
-   for(const row of page.objects){
-    const path=row.key.slice(current.length);
-    need(row.key.startsWith(current)&&validPath(path)&&files.length<maxFiles,503,'NGS_FILE_SYNC_UNAVAILABLE');
-    const {customMetadata:{sha256}}=trustedObject(row);
-    if(absent(row))continue;
-    const item={path,sha256};bytes+=encoder.encode(JSON.stringify(item)).length+1;
-    need(bytes<=maxInventoryBytes,503,'NGS_FILE_SYNC_UNAVAILABLE');
-    files.push(item);
-   }
-   if(!page.truncated)break;
-   need(page.cursor&&cursor!==page.cursor,503,'NGS_FILE_SYNC_UNAVAILABLE');cursor=page.cursor;
-  }while(true);
-  return files;
+ const stmt=(sql,...args)=>db.prepare(sql).bind(...args);
+ const first=(sql,...args)=>stmt(sql,...args).first();
+ const all=async(sql,...args)=>(await stmt(sql,...args).all()).results;
+ const run=async(sql,...args)=>(await stmt(sql,...args).run()).meta.changes;
+ const current=path=>first(`SELECT * FROM ${entries} WHERE path=? ORDER BY version DESC LIMIT 1`,path);
+ const generation=(id,path)=>first(`SELECT generation FROM ${resets} WHERE sync_id=? AND path=?`,id,path);
+ const transfer=(id,path)=>first(`SELECT * FROM ${receives} WHERE sync_id=? AND path=?`,id,path);
+ const makeId=()=>{const id=uuid();if(!uuidOK(id))unavailable();return id;};
+ const loadSession=async id=>{
+  const row=await first(`SELECT * FROM ${passes} WHERE sync_id=? AND expiry>?`,id,now());
+  need(row,409,'NGS_FILE_SYNC_INVALID_SESSION');return row;
+ };
+ function expectedObject(o,v){
+  if(!o||v&&(o.customMetadata?.sha256!==v.sha256||o.size!==v.size)){
+   if(v)unavailable();
+   return null;
+  }
+  return verifiedMeta(o);
  }
- function objectPath(path){need(validPath(path));return sourceKey(path);}
- async function rawHead(path){ready();return trustedObject(await bucket.head(objectPath(path)));}
- async function head(path){const item=await rawHead(path);return absent(item)?null:item;}
- async function get(path,options){ready();const item=trustedObject(await bucket.get(objectPath(path),options));
-  if(absent(item)){void item.body?.cancel().catch(()=>{});return null;}
-  if(item)need(item.body,409,'NGS_FILE_SYNC_REPLICA_CHANGED');
+ async function resolve(path){
+  ready();need(pathOK(path));
+  const version=await current(path);
+  if(version)return {version,ref:version.object_key};
+  return {version:null,ref:legacy+path};
+ }
+ async function head(path){
+  const {version,ref}=await resolve(path);if(!ref)return null;
+  const item=expectedObject(await bucket.head(ref),version);
+  return item?.customMetadata?.removed==='1'?null:item;
+ }
+ async function get(path,options){
+  const {version,ref}=await resolve(path);if(!ref)return null;
+  const item=expectedObject(await bucket.get(ref,options),version);
+  if(item?.customMetadata?.removed==='1'){void item.body?.cancel().catch(()=>{});return null;}
+  if(item&&!item.body)stale();
   return item;
  }
- async function clearUpload(id,f){
-  if(!f||f.same||f.size<=spaceFileChunkSize)return;
-  const keys=Array.from({length:Math.max(1,Math.ceil(f.size/spaceFileChunkSize))},(_,i)=>stagedKey(id,f,i*spaceFileChunkSize));
-  await bucket.delete(keys);
- }
- async function save(row,upload,last,written,fileCount=row.file_count){
-  const r=await edit(`UPDATE ${table} SET upload=?,last=?,written=?,file_count=?,expiry=? WHERE slot=1 AND sync_id=? AND lock_id=?`,
-   upload?JSON.stringify(upload):null,last?JSON.stringify(last):null,written,fileCount,now()+ttl,row.sync_id,row.lock_id);
-  need(count(r)===1,409,'NGS_FILE_SYNC_INVALID_SESSION');
- }
- async function ackFile(row,f,bytes,receipt){
-  let changed=0;
-  const live=await rawHead(f.path);
-  if(absent(live)||live?.customMetadata.sha256!==f.sha256){
-   if((live?.etag??null)!==f.prior)stale();
-   need(!f.newEntry||row.file_count<maxFiles,503,'NGS_FILE_SYNC_UNAVAILABLE');
-   const length=Math.max(1,Math.ceil(f.size/spaceFileChunkSize));
-   const onlyIf=f.prior?{etagMatches:f.prior}:new Headers({'If-None-Match':'*'});
-   await verifyHeader(f.path,f,async()=>{
-    if(length===1)return bytes;
-    const first=await bucket.get(stagedKey(row.sync_id,f,0));
-    need(first?.body,409,'NGS_FILE_SYNC_INCOMPLETE');return new Uint8Array(await first.arrayBuffer());
-   });
-   const options={onlyIf,sha256:f.sha256,customMetadata:{sha256:f.sha256,syncId:row.sync_id}};
-   let saved;
-   try{
-    if(length===1)saved=await bucket.put(sourceKey(f.path),bytes,options);
-    else{
-     let next=0;
-     const parts=new ReadableStream({async pull(controller){
-      try{
-       if(next>=length){controller.close();return;}
-       const part=await bucket.get(stagedKey(row.sync_id,f,next*spaceFileChunkSize));
-       const expected=Math.min(spaceFileChunkSize,f.size-next*spaceFileChunkSize);
-       if(!part?.body||part.size!==expected)throw Error('NGS_FILE_SYNC_INCOMPLETE');
-       controller.enqueue(new Uint8Array(await part.arrayBuffer()));next++;
-      }catch(e){controller.error(e);}
-     }});
-     const fixed=fixedLengthStream(f.size);
-     const [put]=await Promise.all([bucket.put(sourceKey(f.path),fixed.readable,options),parts.pipeTo(fixed.writable)]);
-     saved=put;
-    }
-   }catch(e){
-    // R2's checksum check is atomic for the live key. A transport failure is
-    // ambiguous: keep the staged upload so a retry can confirm by live SHA.
-    const found=await head(f.path);
-    if(found?.customMetadata.sha256!==f.sha256)throw e;
-    saved=found;
+ async function list(){
+  ready();let cursor;
+  const files=new Map();
+  do{
+   const page=await bucket.list({prefix:legacy,limit:1000,include:['customMetadata'],cursor});
+   for(const item of page.objects){
+    const path=item.key.slice(legacy.length);
+    if(!item.key.startsWith(legacy)||!pathOK(path))unavailable();
+    verifiedMeta(item);
+    if(item.customMetadata.removed!=='1')files.set(path,item.customMetadata.sha256);
    }
-   if(!saved)stale();
-   changed=1;
-  }else {
-   if(live.size!==f.size)stale();
-   if(!f.same&&live.customMetadata.syncId===row.sync_id)changed=1;
+   if(!page.truncated)break;
+   if(!page.cursor||cursor===page.cursor)unavailable();cursor=page.cursor;
+  }while(true);
+  const published=await all(`SELECT v.path,v.sha256,v.object_key FROM ${entries} v
+   JOIN (SELECT path,MAX(version) AS newest FROM ${entries} GROUP BY path) x ON v.version=x.newest
+   LIMIT ${maxPaths+1}`);
+  if(published.length>maxPaths)unavailable();
+  for(const row of published){
+   if(!pathOK(row.path)||!hash(row.sha256))unavailable();
+   if(row.object_key)files.set(row.path,row.sha256);else files.delete(row.path);
   }
-  await save(row,null,{...receipt,nextOffset:null},row.written+changed,row.file_count+(changed&&f.newEntry?1:0));
-  // Failure of cleanup must never turn an already confirmed publish into an error.
-  await clearUpload(row.sync_id,f).catch(()=>{});
-  return {nextOffset:null};
+  let bytes=2;
+  if(files.size>maxPaths)unavailable();
+  return [...files].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([path,sha256])=>{
+   const item={path,sha256};bytes+=encoder.encode(JSON.stringify(item)).length+1;
+   if(bytes>maxInventoryBytes)unavailable();return item;
+  });
  }
- async function send(args,row){
-  need(exact(args,'syncId','path','sha256','size','offset','dataBase64')&&validPath(args.path)&&hash(args.sha256)&&
-   integerRange(args.size,0,byteLength(args.path))&&integerRange(args.offset,0,args.size)&&args.offset%spaceFileChunkSize===0);
-  const bytes=decoded(args.dataBase64);
-  const {path,sha256,size,offset}=args;
-  need(bytes.length===Math.min(spaceFileChunkSize,size-offset)&&(size===0||offset<size));
-  const receipt={path,sha256,size,offset,chunkSha:await shaBytes(bytes)};
-  const last=row.last&&JSON.parse(row.last);
-  if(last&&Object.keys(receipt).every(k=>receipt[k]===last[k]))return {nextOffset:last.nextOffset};
-  let f=row.upload&&JSON.parse(row.upload);
-  if(!f){
-   need(offset===0,409,'NGS_FILE_SYNC_OFFSET_INVALID');
-   const existing=await rawHead(path),visible=existing&&!absent(existing);
-   f={path,sha256,size,offset:0,key:uuid(),prior:existing?.etag??null,newEntry:!visible,
-    same:!!visible&&existing.customMetadata.sha256===sha256&&existing.size===size};
-  }
-  need(f.path===path&&f.sha256===sha256&&f.size===size&&f.offset===offset,409,'NGS_FILE_SYNC_OFFSET_INVALID');
-  // Persist the descriptor before writing any parts; retries reuse its key.
-  if(!row.upload)await save(row,f,last,row.written);
-  if(!f.same&&size>spaceFileChunkSize)await bucket.put(stagedKey(row.sync_id,f,offset),bytes,{sha256:receipt.chunkSha});
-  const nextOffset=offset+bytes.length;
-  if(nextOffset===size)return await ackFile(row,f,bytes,receipt);
-  f.offset=nextOffset;
-  await save(row,f,{...receipt,nextOffset},row.written);
-  return {nextOffset};
+ async function activePrior(path,session){
+  const version=await current(path),prior=version?.version??0;
+  if(prior>session.baseline)stale();
+  if(version)return {prior,sha256:version.object_key?version.sha256:null,size:version.size,version};
+  const item=verifiedMeta(await bucket.head(legacy+path));
+  return {prior,sha256:item?.customMetadata.removed==='1'?null:item?.customMetadata.sha256,size:item?.size,version};
  }
- async function removeFile(args,row){
-  need(exact(args,'syncId','path','sha256')&&validPath(args.path)&&hash(args.sha256));
-  if(row.upload)stale();
-  const {path,sha256}=args;
-  const live=await rawHead(path);
-  if(!live||live.customMetadata.sha256!==sha256)stale();
-  if(absent(live)){
-   if(live.customMetadata.syncId!==row.sync_id)stale();
-   return {removed:false};
+ async function collectExpired(){
+  const expired=await all(`SELECT sync_id FROM ${passes} WHERE expiry<=? ORDER BY expiry LIMIT 2`,now());
+  for(const {sync_id} of expired){
+   const fenced=await run(`DELETE FROM ${passes} WHERE sync_id=? AND expiry<=?`,sync_id,now());
+   if(fenced)await clearPassTransfers(sync_id);
   }
-  if(live.customMetadata.syncId===row.sync_id)stale();
-  const archiveKey=recovery+sha256;
-  let old=await bucket.head(archiveKey);
-  if(!old){
-   const source=await bucket.get(sourceKey(path),{onlyIf:{etagMatches:live.etag}});
-   if(!source?.body)stale();
-   // Archive exact bytes before publishing a tombstone. Never expose archives as files.
-   const options={onlyIf:new Headers({'If-None-Match':'*'}),sha256,customMetadata:{sha256}};
-   if(live.size===0){
-    await source.body.cancel();old=await bucket.put(archiveKey,new Uint8Array(),options);
-   }else{
-    const fixed=fixedLengthStream(live.size);
-    [old]=await Promise.all([bucket.put(archiveKey,fixed.readable,options),source.body.pipeTo(fixed.writable)]);
-   }
-   if(!old)old=await bucket.head(archiveKey);
-  }
-  if(!old||old.size!==live.size||old.customMetadata?.sha256!==sha256)stale();
-  const hidden=await bucket.put(sourceKey(path),new Uint8Array(),{onlyIf:{etagMatches:live.etag},
-   customMetadata:{sha256,removed:'1',syncId:row.sync_id}});
-  if(!hidden)stale();
-  await save(row,null,null,row.written,Math.max(0,row.file_count-1));
-  return {removed:true};
  }
  async function start(args){
   need(exact(args,'scope')&&args.scope===project,403,'NGS_FILE_SYNC_SCOPE_DENIED');
-  const nowMs=now(),id='ngs.sync.'+uuid(),old=await state();
-  need(validSync(id)&&Number.isSafeInteger(nowMs)&&nowMs>=0,503,'NGS_FILE_SYNC_UNAVAILABLE');
-  const received=await edit(`INSERT INTO ${table}(slot,sync_id,expiry,lock_id,written,file_count,upload,last)
-   VALUES(1,?,?,?,0,0,NULL,NULL) ON CONFLICT(slot) DO UPDATE SET sync_id=excluded.sync_id,
-   expiry=excluded.expiry,lock_id=excluded.lock_id,written=0,file_count=0,upload=NULL,last=NULL WHERE expiry<=?`,
-   id,nowMs+ttl,id,nowMs);
-  need(count(received)===1,409,'NGS_FILE_SYNC_BUSY');
+  const syncId='ngs.sync.'+makeId(),inventoryAt=now();
+  await run(`INSERT INTO ${passes}(sync_id,baseline,expiry) VALUES(?,(SELECT COALESCE(MAX(version),0) FROM ${entries}),?)`,syncId,inventoryAt+inactivity);
+  try{await collectExpired();return {syncId,scope:project,inventoryAt,files:await list()};}
+  catch(e){await run(`DELETE FROM ${passes} WHERE sync_id=?`,syncId);throw e;}
+ }
+ async function createTransfer(session,path,sha256,size,epoch){
+  const {prior,sha256:previous,size:previousSize}=await activePrior(path,session);
+  const same=previous===sha256&&size===previousSize,attempt=makeId();
+  const multipart=!same&&size>chunkSize?await bucket.createMultipartUpload(objectKey(attempt),{customMetadata:{sha256}}):null;
+  let changed;
   try{
-   if(old?.upload)await clearUpload(old.sync_id,JSON.parse(old.upload));
-   const files=await list();
-   await edit(`UPDATE ${table} SET file_count=?,lock_id=NULL WHERE slot=1 AND sync_id=? AND lock_id=?`,files.length,id,id);
-   return {syncId:id,scope:project,inventoryAt:nowMs,files};
-  }catch(e){await edit(`DELETE FROM ${table} WHERE slot=1 AND sync_id=? AND lock_id=?`,id,id);throw e;}
+   changed=await run(`INSERT INTO ${receives}(sync_id,path,attempt,sha256,size,prior,generation,upload_id,received,parts,last_sha,same)
+    SELECT ?,?,?,?,?,?,?,?,0,'[]',NULL,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
+    AND COALESCE((SELECT generation FROM ${resets} WHERE sync_id=? AND path=?),0)=?
+    ON CONFLICT(sync_id,path) DO NOTHING`,session.sync_id,path,attempt,sha256,size,prior,epoch,multipart?.uploadId??null,same?1:0,
+    session.sync_id,now(),session.sync_id,path,epoch);
+  }finally{if(!changed&&multipart)await multipart.abort().catch(()=>{});}
+  const row=await transfer(session.sync_id,path);if(!row)stale();return row;
+ }
+ async function putStage(f,offset,data,sha256){
+  const key=stageKey(f.attempt,offset);
+  const o=await bucket.put(key,data,{sha256,onlyIf:noOverwrite(),customMetadata:{sha256}});
+  if(!o){
+   const old=await bucket.head(key);
+   if(old?.customMetadata?.sha256!==sha256||old.size!==data.byteLength)content();
+  }
+ }
+ async function uploadPart(f,start,end,partNumber){
+  const fixed=fixedLengthStream(end-start);
+  let offset=start;
+  const source=new ReadableStream({async pull(controller){
+   try{
+    if(offset===end){controller.close();return;}
+    const item=await bucket.get(stageKey(f.attempt,offset));
+    const length=Math.min(chunkSize,end-offset);
+    if(!item?.body||item.size!==length)throw Error('NGS_FILE_SYNC_INCOMPLETE');
+    const data=new Uint8Array(await item.arrayBuffer());
+    if(data.byteLength!==length)throw Error('NGS_FILE_SYNC_INCOMPLETE');
+    controller.enqueue(data);offset+=length;
+   }catch(e){controller.error(e);}
+  }});
+  const multipart=bucket.resumeMultipartUpload(objectKey(f.attempt),f.upload_id);
+  const [part]=await Promise.all([multipart.uploadPart(partNumber,fixed.readable),source.pipeTo(fixed.writable)]);
+  return part;
+ }
+ async function stageCleanup(f){
+  if(!f?.upload_id)return;
+  let cursor;
+  do{
+   const batch=await bucket.list({prefix:stage+f.attempt+'/',limit:1000,cursor});
+   if(batch.objects.length)await bucket.delete(batch.objects.map(o=>o.key));
+   if(!batch.truncated)return;
+   if(!batch.cursor||batch.cursor===cursor)unavailable();cursor=batch.cursor;
+  }while(true);
+ }
+ async function releaseTemp(f){
+  if(!f||f.same)return;
+  if(f.upload_id)await bucket.resumeMultipartUpload(objectKey(f.attempt),f.upload_id).abort().catch(()=>{});
+  await stageCleanup(f).catch(()=>{});
+  // Never delete a candidate selected by the durable pointer, even after an uncertain response.
+  const published=await first(`SELECT 1 AS visible FROM ${entries} WHERE object_key=? LIMIT 1`,objectKey(f.attempt));
+  if(!published)await bucket.delete(objectKey(f.attempt));
+ }
+ async function verifyLarge(f,parts){
+  const key=objectKey(f.attempt),multipart=bucket.resumeMultipartUpload(key,f.upload_id);
+  let item=await bucket.head(key);
+  if(!item){
+   try{item=await multipart.complete(parts);}catch(e){item=await bucket.head(key);if(!item)throw e;}
+  }
+  if(item.size!==f.size||item.customMetadata?.sha256!==f.sha256)content();
+  const body=await bucket.get(key,{onlyIf:{etagMatches:item.etag}});
+  if(!body?.body)content();
+  const hasher=createHash('sha256');let length=0,initial;
+  for await(const bytes of body.body){
+   if(!initial)initial=bytes.subarray(0,Math.min(16,bytes.length));
+   length+=bytes.length;if(length>f.size)content();hasher.update(bytes);
+  }
+  if(length!==f.size||hasher.digest('hex')!==f.sha256)content();
+  if(f.path==='icon.png')headerCheck(f.path,initial??new Uint8Array());
+ }
+ async function publish(f,session){
+  if(!f.same){
+   const changed=await run(`INSERT INTO ${entries}(path,sha256,object_key,size,sync_id,last_sha)
+    SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
+    AND EXISTS(SELECT 1 FROM ${receives} WHERE sync_id=? AND path=? AND attempt=? AND received=size)
+    AND COALESCE((SELECT MAX(version) FROM ${entries} WHERE path=?),0)=?`,f.path,f.sha256,objectKey(f.attempt),f.size,session.sync_id,f.last_sha,
+    session.sync_id,now(),session.sync_id,f.path,f.attempt,f.path,f.prior);
+   if(!changed){
+    const live=await current(f.path);
+    if(live?.object_key!==objectKey(f.attempt))stale();
+   }
+   await run(`DELETE FROM ${receives} WHERE sync_id=? AND path=? AND attempt=?`,session.sync_id,f.path,f.attempt);
+  }else{
+   const live=await current(f.path);
+   if((live?.version??0)!==f.prior)stale();
+  }
+  return {nextOffset:null};
+ }
+ async function send(args,session){
+  need(exact(args,'syncId','path','sha256','size','offset','dataBase64')&&pathOK(args.path)&&hash(args.sha256)&&
+   safeInt(args.size,0,headerBound(args.path))&&safeInt(args.offset,0,args.size)&&args.offset%chunkSize===0);
+  const {path,sha256,size,offset}=args,data=decoded(args.dataBase64),chunkHash=digest(data);
+  need(data.byteLength===Math.min(chunkSize,size-offset)&&(size===0||offset<size));
+  const next=offset+data.byteLength,final=next===size;
+  const epoch=(await generation(session.sync_id,path))?.generation??0;
+  let f=await transfer(session.sync_id,path);
+  if(!f){
+   if(final){
+    const live=await current(path);
+    if(live?.object_key&&live.sync_id===session.sync_id&&live.sha256===sha256&&live.size===size&&live.last_sha===chunkHash)
+     return {nextOffset:null};
+   }
+   if(offset!==0)badOffset();f=await createTransfer(session,path,sha256,size,epoch);
+  }
+  if(f.generation!==epoch||f.sha256!==sha256||f.size!==size)badOffset();
+  if(f.received!==offset){
+   if(f.received!==next||f.last_sha!==chunkHash)badOffset();
+   if(!final)return {nextOffset:next};
+   const live=await current(path);
+   if(!f.same&&live?.object_key===objectKey(f.attempt))return {nextOffset:null};
+  }else{
+   let parts=JSON.parse(f.parts);
+   if(!f.same){
+    if(!f.upload_id){
+     if(chunkHash!==sha256)content();
+     headerCheck(path,data);
+     const key=objectKey(f.attempt),item=await bucket.put(key,data,{sha256,onlyIf:noOverwrite(),customMetadata:{sha256}});
+     if(!item&&(await bucket.head(key))?.customMetadata?.sha256!==sha256)content();
+    }else{
+     await putStage(f,offset,data,chunkHash);
+     const width=partSize(size);
+     if(final||next%width===0){
+      const first=Math.floor(offset/width)*width;
+      const part=await uploadPart(f,first,next,Math.floor(offset/width)+1);
+      parts=[...parts,part];
+     }
+    }
+   }
+   const changed=await run(`UPDATE ${receives} SET received=?,parts=?,last_sha=?
+    WHERE sync_id=? AND path=? AND attempt=? AND received=?`,
+    next,JSON.stringify(parts),chunkHash,session.sync_id,path,f.attempt,offset);
+   const nextRow=await transfer(session.sync_id,path);
+   if(!nextRow||nextRow.attempt!==f.attempt||nextRow.received!==next||nextRow.last_sha!==chunkHash){
+    const live=final&&!f.same&&await current(path);
+    if(live?.object_key===objectKey(f.attempt))return {nextOffset:null};
+    stale();
+   }
+   f=nextRow;
+   if(changed&&f.upload_id&&(final||next%partSize(size)===0)){
+    const width=partSize(size),first=Math.floor(offset/width)*width;
+    const keys=Array.from({length:Math.ceil((next-first)/chunkSize)},(_,i)=>stageKey(f.attempt,first+i*chunkSize));
+    // R2 delete accepts at most 1000 keys. These are private uploaded chunks only.
+    for(let i=0;i<keys.length;i+=1000)await bucket.delete(keys.slice(i,i+1000)).catch(()=>{});
+   }
+  }
+  if(!final)return {nextOffset:next};
+  if(f.upload_id)await verifyLarge(f,JSON.parse(f.parts));
+  return await publish(f,session);
+ }
+ async function resetFile(args,session){
+  need(exact(args,'syncId','path')&&pathOK(args.path));
+  const id=session.sync_id,path=args.path;
+  // This short SQL transaction also fences requests that observed the old
+  // generation but have not yet installed their temporary transfer row.
+  const [old]=await db.batch([
+   stmt(`SELECT * FROM ${receives} WHERE sync_id=? AND path=?`,id,path),
+   stmt(`INSERT INTO ${resets}(sync_id,path,generation) VALUES(?,?,1) ON CONFLICT(sync_id,path)
+    DO UPDATE SET generation=generation+1`,id,path),
+   stmt(`DELETE FROM ${receives} WHERE sync_id=? AND path=?`,id,path),
+  ]);
+  await releaseTemp(old.results[0]).catch(()=>{});
+  return {ok:true};
+ }
+ async function removeFile(args,session){
+  need(exact(args,'syncId','path','sha256')&&pathOK(args.path)&&hash(args.sha256));
+  const existing=await current(args.path);
+  if(existing?.sync_id===session.sync_id&&!existing.object_key&&existing.sha256===args.sha256)return {removed:false};
+  const {prior,sha256,size}=await activePrior(args.path,session);
+  if(sha256!==args.sha256)stale();
+  const changed=await run(`INSERT INTO ${entries}(path,sha256,object_key,size,sync_id)
+   SELECT ?,?,NULL,?,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
+   AND COALESCE((SELECT MAX(version) FROM ${entries} WHERE path=?),0)=?`,
+   args.path,sha256,size,session.sync_id,session.sync_id,now(),args.path,prior);
+  if(!changed)stale();
+  return {removed:true};
+ }
+ async function clearPassTransfers(id){
+  const pending=await all(`SELECT * FROM ${receives} WHERE sync_id=?`,id);
+  await run(`DELETE FROM ${receives} WHERE sync_id=?`,id);
+  await run(`DELETE FROM ${resets} WHERE sync_id=?`,id);
+  for(const f of pending)await releaseTemp(f).catch(()=>{});
+ }
+ async function close(name,id){
+  // End the pass before cleanup; other passes and readers remain available.
+  await run(`DELETE FROM ${passes} WHERE sync_id=?`,id);
+  await clearPassTransfers(id);
+  if(name===abort)return {ok:true};
+  const answer=await first(`SELECT COUNT(*) AS written FROM ${entries} WHERE sync_id=? AND object_key IS NOT NULL`,id);
+  return {ok:true,written:answer.written};
  }
  async function call(name,args){
   ready();need(names.has(name),404,'NGS_FILE_SYNC_TOOL_UNKNOWN');
   if(name===begin)return await start(args);
-  need(validSync(args?.syncId));
-  const stamp=uuid(),nowMs=now();
-  const lock=await edit(`UPDATE ${table} SET lock_id=?,expiry=? WHERE slot=1 AND sync_id=? AND expiry>? AND lock_id IS NULL`,
-   stamp,nowMs+ttl,args.syncId,nowMs);
-  need(count(lock)===1,409,'NGS_FILE_SYNC_INVALID_SESSION');
-  const row=await state();
-  need(row?.sync_id===args.syncId&&row.lock_id===stamp,409,'NGS_FILE_SYNC_INVALID_SESSION');
-  try{
-   if(name===chunk)return await send(args,row);
-   if(name===remove)return await removeFile(args,row);
-   need(exact(args,'syncId'));
-   if(name===finish)need(!row.upload,409,'NGS_FILE_SYNC_INCOMPLETE');
-   if(name===abort&&row.upload)await clearUpload(row.sync_id,JSON.parse(row.upload));
-   await edit(`DELETE FROM ${table} WHERE slot=1 AND sync_id=? AND lock_id=?`,row.sync_id,stamp);
-   return name===finish?{ok:true,written:row.written}:{ok:true};
-  }finally{await edit(`UPDATE ${table} SET lock_id=NULL WHERE slot=1 AND sync_id=? AND lock_id=?`,row.sync_id,stamp);}
+  need(syncOK(args?.syncId));
+  const session=await loadSession(args.syncId);
+  await run(`UPDATE ${passes} SET expiry=? WHERE sync_id=? AND expiry>?`,now()+inactivity,args.syncId,now());
+  if(name===chunk)return await send(args,session);
+  if(name===reset)return await resetFile(args,session);
+  if(name===remove)return await removeFile(args,session);
+  need(exact(args,'syncId'));
+  return await close(name,args.syncId);
  }
  return {call,list,head,get};
 }
