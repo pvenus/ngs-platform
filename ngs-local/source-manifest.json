@@ -68,7 +68,7 @@
     "sites/npcgen/tests/local-miniflare-runtime.mjs": "b3cc539c13763840a968fd8a3bc3ef5ab7edc0d2b1da4f116a5536cee9c44888",
     "sites/npcgen/tests/local-object-replica-runtime.mjs": "fc36e2e39cf3d35a2c11a296144331a65ab034a5633a7b4e8c81f36421180b0b",
     "sites/npcgen/tests/local-project-folders.mjs": "fce57e2bac1803338a568ecaec0b1976555b9f2edb031b8601ba6389d9f53427",
-    "sites/npcgen/tests/local-project-page.mjs": "7bed2cd14e9f0a6de5dc9d5c294084fc9b2c2dbb44de987eeab1f5dcaebef8e6",
+    "sites/npcgen/tests/local-project-page.mjs": "59de13cab95c3ce1502626a6d9454414c55e8fb9f6d4d8d63101449b4b5389f4",
     "sites/npcgen/tests/local-push-replica-page.mjs": "1880d5d1214e35eb1a635a390da76e5a87a7c732aae9d05a25199f5450685fc9",
     "sites/npcgen/tests/local-recursive-folders.mjs": "b9eb702fb72033f6bc3769ef63db29009e4385df36d2851edd00f54bc133543d",
     "sites/npcgen/tests/local-replica-file-receiver.mjs": "1aeb35da1e91bee7e14db944213081b5a2df8a8861383adeed173de65497deef",
