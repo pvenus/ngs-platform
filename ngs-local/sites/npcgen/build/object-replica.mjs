@@ -4,6 +4,10 @@ const project='binari',defaultNamespace='ngs-replica/v1/binari/';
 const passes='ngs_replica_pass_v2',receives='ngs_replica_receive_v2',entries='ngs_replica_version_v2',resets='ngs_replica_reset_v2';
 const inactivity=60*60_000,maxPaths=32768,maxInventoryBytes=16*1024*1024;
 export const objectReplicaChunkSize=1024*1024;
+export const objectReplicaBatchTool='ngs_file_sync_file_batch';
+export const objectReplicaBatchFiles=32;
+export const objectReplicaBatchRawBytes=2*objectReplicaChunkSize;
+export const objectReplicaBatchRpcBytes=4*Math.ceil(objectReplicaBatchRawBytes/3)+96*1024;
 const chunkSize=objectReplicaChunkSize,minPart=5*chunkSize,maxParts=10000;
 // Shared wire tolerates the full supported R2 object range, not a product size cap.
 const nativeObjectMaximum=5*1024**4-5*1024**3;
@@ -25,12 +29,23 @@ const begin='ngs_file_sync_begin',chunk='ngs_file_sync_file_chunk',reset='ngs_fi
 export const objectReplicaSyncTools=Object.freeze([
  tool(begin,'Open a Binari replica sync pass and read the digest inventory.',{scope:{const:project}}),
  tool(chunk,'Write one bounded piece to a private, per-file replica transfer.',{syncId:string,path:string,sha256:string,size:integer,offset:integer,dataBase64:string}),
+ tool(objectReplicaBatchTool,'Submit up to 32 complete small files and receive one status per file (2 MiB total).',{
+  syncId:string,files:{type:'array',minItems:1,maxItems:objectReplicaBatchFiles,items:{
+   type:'object',additionalProperties:false,required:['path','sha256','size','dataBase64'],
+   properties:{path:string,sha256:string,size:{...integer,maximum:objectReplicaChunkSize},dataBase64:string},
+  }},
+ }),
  tool(reset,'Discard one incomplete file transfer. Its live replica is not altered.',{syncId:string,path:string}),
  tool(remove,'Hide one digest-matched replica file without deleting its earlier bytes.',{syncId:string,path:string,sha256:string}),
  tool(finish,'Close a replica sync pass; report files committed by it.',{syncId:string}),
  tool(abort,'Cancel unfinished replica transfers without altering live files.',{syncId:string}),
 ]);
 const names=new Set(objectReplicaSyncTools.map(t=>t.name));
+const batchErrors=new Map([
+ ['NGS_FILE_SYNC_CONTENT_MISMATCH',409],['NGS_FILE_SYNC_REPLICA_CHANGED',409],
+ ['NGS_FILE_SYNC_OFFSET_INVALID',409],['NGS_FILE_SYNC_INCOMPLETE',409],
+ ['NGS_FILE_SYNC_UNAVAILABLE',503],
+]);
 const decoded=b64=>{
  need(typeof b64==='string'&&b64.length<=4*Math.ceil(chunkSize/3)&&/^[A-Za-z0-9+/]*={0,2}$/u.test(b64));
  let data;try{data=atob(b64);}catch{need(false);}
@@ -258,10 +273,10 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   }
   return {nextOffset:null};
  }
- async function send(args,session){
+ async function send(args,session,verifiedBytes){
   need(exact(args,'syncId','path','sha256','size','offset','dataBase64')&&pathOK(args.path)&&hash(args.sha256)&&
    safeInt(args.size,0,headerBound(args.path))&&safeInt(args.offset,0,args.size)&&args.offset%chunkSize===0);
-  const {path,sha256,size,offset}=args,data=decoded(args.dataBase64),chunkHash=digest(data);
+  const {path,sha256,size,offset}=args,data=verifiedBytes??decoded(args.dataBase64),chunkHash=verifiedBytes?sha256:digest(data);
   need(data.byteLength===Math.min(chunkSize,size-offset)&&(size===0||offset<size));
   const next=offset+data.byteLength,final=next===size;
   const epoch=(await generation(session.sync_id,path))?.generation??0;
@@ -319,6 +334,41 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   if(f.upload_id)await verifyLarge(f,JSON.parse(f.parts));
   return await publish(f,session);
  }
+ function batchPreflight(args){
+  need(exact(args,'syncId','files')&&Array.isArray(args.files)&&
+   args.files.length>=1&&args.files.length<=objectReplicaBatchFiles);
+  const paths=new Set();
+  let rawBytes=0;
+  return args.files.map(row=>{
+   need(exact(row,'path','sha256','size','dataBase64')&&pathOK(row.path)&&hash(row.sha256)&&
+    safeInt(row.size,0,Math.min(chunkSize,headerBound(row.path)))&&!paths.has(row.path));
+   paths.add(row.path);
+   const bytes=decoded(row.dataBase64);
+   rawBytes+=bytes.length;
+   need(bytes.length===row.size&&rawBytes<=objectReplicaBatchRawBytes);
+   return {row,bytes};
+  });
+ }
+ async function sendBatch(files,session){
+  const results=[];
+  // The envelope is already structurally checked in full. The existing
+  // per-file commit and progress rules still apply, in input order.
+  for(const {row,bytes} of files){
+   const {path,sha256}=row;
+   try{
+    // Also validate when the replica already held these bytes, where send()
+    // can otherwise accept an idempotent same-object acknowledgement.
+    if(digest(bytes)!==sha256)content();
+    const result=await send({syncId:session.sync_id,...row,offset:0},session,bytes);
+    if(result.nextOffset!==null)unavailable();
+    results.push({path,sha256,status:'accepted'});
+   }catch(e){
+    const code=batchErrors.get(e?.message)===e?.status&&typeof e?.status==='number'?e.message:'NGS_FILE_SYNC_UNAVAILABLE';
+    results.push({path,sha256,status:'failed',code});
+   }
+  }
+  return {results};
+ }
  async function resetFile(args,session){
   need(exact(args,'syncId','path')&&pathOK(args.path));
   const id=session.sync_id,path=args.path;
@@ -364,9 +414,11 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   ready();need(names.has(name),404,'NGS_FILE_SYNC_TOOL_UNKNOWN');
   if(name===begin)return await start(args);
   need(syncOK(args?.syncId));
+  const batch=name===objectReplicaBatchTool?batchPreflight(args):null;
   const session=await loadSession(args.syncId);
   await run(`UPDATE ${passes} SET expiry=? WHERE sync_id=? AND expiry>?`,now()+inactivity,args.syncId,now());
   if(name===chunk)return await send(args,session);
+  if(batch)return await sendBatch(batch,session);
   if(name===reset)return await resetFile(args,session);
   if(name===remove)return await removeFile(args,session);
   need(exact(args,'syncId'));

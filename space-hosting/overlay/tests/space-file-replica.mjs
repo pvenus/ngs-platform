@@ -11,13 +11,20 @@ const sourcePath='ngs-local/sites/npcgen/build/object-replica.mjs';
 const base=existsSync(here('../'+sourcePath))?'../':'../../../';
 const core=readFileSync(here(base+sourcePath),'utf8');
 const schema=readFileSync(here(base+'ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
+const module=(path,relative)=>({type:'ESModule',path,contents:readFileSync(here(relative),'utf8')});
+const localBuild='ngs-local/sites/npcgen/build/';
+const token='a'.repeat(64); // fixture only, no external access
+
 const root='ngs-replica/v1/binari/',other='legacy/untouched';
 const mini=new Miniflare({
  d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  modules:[{type:'ESModule',path:'test.mjs',contents:`
- import {createSpaceFileReplica} from './build/space-file-replica.mjs';
+ import {createSpaceFileReplica,spaceFileSyncTools} from './build/space-file-replica.mjs';
+ import {machineResponse} from './build/space-machine-routes.mjs';
  export default {async fetch(request,env){
   const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
+  if(new URL(request.url).pathname==='/api/space-machine-mcp')
+   return machineResponse(request,{secret:'a'.repeat(64),fileReplica:replica,fileTools:spaceFileSyncTools});
   const {method,args}=await request.json();
   try {
    if(method==='read'){
@@ -29,7 +36,11 @@ const mini=new Miniflare({
   }catch(e){return Response.json({message:e.message},{status:e.status??500});}
  }};
  `},{type:'ESModule',path:'build/space-file-replica.mjs',contents:receiver},
- {type:'ESModule',path:sourcePath,contents:core}],
+ {type:'ESModule',path:sourcePath,contents:core},
+ module('build/space-machine-routes.mjs','../build/space-machine-routes.mjs'),
+ module('build/space-request-queue.mjs','../build/space-request-queue.mjs'),
+ ...['local-concept-category-contract.mjs','local-npc-planning-ui.mjs','local-concept-category-ui.mjs',
+     'local-request-queue-browser.mjs','local-audio-workspace.mjs'].map(f=>module(localBuild+f,base+localBuild+f)),],
 });
 const send=(method,args)=>mini.dispatchFetch('http://receiver.invalid',{method:'POST',body:JSON.stringify({method,args})});
 const rpc=async (method,args,status=200)=>{
@@ -37,6 +48,10 @@ const rpc=async (method,args,status=200)=>{
  assert.equal(result.status,status,JSON.stringify(body));return body;
 };
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+const machine=(name,args,headers={})=>mini.dispatchFetch('http://receiver.invalid/api/space-machine-mcp',{
+ method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:7,method:'tools/call',params:{name,arguments:args}}),
+ headers:{'Content-Type':'application/json','X-NGS-Machine-Token':token,...headers},
+});
 const part=1024*1024;
 const envelope=(session,path,data,offset=0,sha=digest(data))=>({
  syncId:session.syncId,path,sha256:sha,size:data.length,offset,dataBase64:data.subarray(offset,offset+part).toString('base64'),
@@ -135,5 +150,37 @@ try{
  assert.deepEqual(await rpc('finish',{syncId:big.syncId}),{ok:true,written:1});
  assert.equal(await (await bucket.get(other)).text(),'untouched');
  assert.deepEqual((await bucket.list({prefix:root+'v2/stage/'})).objects,[]);
+ const {syncId}=await rpc('begin',{scope:'binari'});
+ const tool='ngs_file_sync_file_batch',small=Buffer.from('small file'),badDigest='a'.repeat(64);
+ const item=(path,data,sha256=digest(data))=>({path,sha256,size:data.length,dataBase64:data.toString('base64')});
+ const firstItem=item('batch/first.bin',small),badItem=item('batch/fail.bin',small,badDigest);
+ const empty=item('batch/empty.bin',Buffer.alloc(0));
+ const args={syncId,files:[firstItem,badItem,empty]};
+ assert.equal((await machine(tool,args,{Origin:'http://receiver.invalid'})).status,403);
+ assert.equal((await machine(tool,args,{'X-NGS-Machine-Token':'b'.repeat(64)})).status,403);
+ const doubled=await machine(tool,{syncId,files:[firstItem,firstItem]});
+ assert.equal((await doubled.json()).result.structuredContent.status,400);
+ assert.equal((await send('read',{path:firstItem.path})).status,404);
+ const reply=await (await machine(tool,args)).json();
+ assert.equal(reply.result.isError,false);
+ assert.deepEqual(reply.result.structuredContent,{results:[
+  {path:firstItem.path,sha256:firstItem.sha256,status:'accepted'},
+  {path:badItem.path,sha256:badDigest,status:'failed',code:'NGS_FILE_SYNC_CONTENT_MISMATCH'},
+  {path:empty.path,sha256:empty.sha256,status:'accepted'},
+ ]});
+ assert.equal((await send('read',{path:badItem.path})).status,404);
+ assert.deepEqual(Buffer.from(await (await send('read',{path:firstItem.path})).arrayBuffer()),small);
+ const retry=item(badItem.path,small);
+ assert.equal((await (await machine(tool,{syncId,files:[retry]})).json()).result.structuredContent.results[0].status,'accepted');
+ const firstLarge=item('batch/one.bin',Buffer.alloc(part,33)),secondLarge=item('batch/two.bin',Buffer.alloc(part,34));
+ const started=performance.now(),largeBatch=[firstLarge,secondLarge,...Array.from({length:30},(_,i)=>item('batch/zero-'+i,Buffer.alloc(0)))];
+ const full=await machine(tool,{syncId,files:largeBatch});
+ assert.equal(full.status,200);
+ const fullResults=(await full.json()).result.structuredContent.results;
+ assert.equal(fullResults.length,32);assert.ok(fullResults.every(row=>row.status==='accepted'));
+ console.log('Space exact 32-file and 2-MiB-raw batch accepted in isolated workerd; request ms='+Math.round(performance.now()-started));
+ assert.equal((await machine('space_requests_pending',{padding:'x'.repeat(33000)})).status,413);
+ assert.equal((await machine('ngs_file_sync_file_chunk',{syncId,...firstLarge,offset:0,dataBase64:'a'.repeat(1600000)})).status,413);
+ assert.deepEqual(await rpc('finish',{syncId}),{ok:true,written:35});
  console.log('Space file replica: real workerd D1/R2 integrity, scoped inventory, replay, range, recoverable deletion and no unrelated changes PASS');
 }finally{await mini.dispose();}
