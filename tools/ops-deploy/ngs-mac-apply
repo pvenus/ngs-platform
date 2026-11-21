@@ -158,6 +158,18 @@ def load_plan(sha, control, releases, scratch):
                 "ARCHIVE_TREE_DRIFT")
     require(tree_sha(selected) == spec["treeSha256"] and (selected / ENTRY).is_file()
             and (selected / "local-miniflare/package-lock.json").is_file(), "RELEASE_TREE_DRIFT")
+    locked = json.loads((selected / "local-miniflare/package-lock.json").read_bytes())["packages"]
+    require(all(name in locked for name in ("node_modules/miniflare", "node_modules/workerd")),
+            "MINIFLARE_DEPENDENCIES_NOT_LOCKED")
+    for name, entry in locked.items():
+        if not name:
+            continue
+        package = selected / "local-miniflare" / name / "package.json"
+        require(package.is_relative_to(deps) and package.resolve() == package, "MINIFLARE_LOCK_INVALID")
+        if not package.exists() and entry.get("optional") is True:
+            continue
+        require(package.is_file() and json.loads(package.read_bytes())["version"] == entry["version"],
+                "MINIFLARE_DEPENDENCIES_NOT_READY")
     return folder, spec, selected, workdir
 
 

@@ -1,9 +1,9 @@
 import importlib.machinery
+import fcntl
 import json
 import os
 from pathlib import Path
 import plistlib
-import shutil
 import tarfile
 import tempfile
 import unittest
@@ -42,6 +42,13 @@ class Host:
         deps = self.new / "local-miniflare/node_modules"
         deps.mkdir()
         (deps / "module.js").write_text("shared dependency")
+        locked = {}
+        for name in ("miniflare", "workerd"):
+            (deps / name).mkdir()
+            (deps / name / "package.json").write_text('{"version":"1.0.0"}')
+            locked["node_modules/" + name] = {"version": "1.0.0"}
+        for root in (self.old, self.new):
+            (root / "local-miniflare/package-lock.json").write_text(json.dumps({"packages": locked}))
 
     def read_plist(self):
         return self.raw
@@ -176,6 +183,24 @@ class Apply(unittest.TestCase):
     def test_user_selector_is_not_a_path_or_command(self):
         with self.assertRaisesRegex(m.Refused, "INVALID_RELEASE_SHA"):
             self.run_apply("../apply-space")
+        self.assertFalse(self.host.calls)
+
+    def test_global_lock_cannot_be_bypassed(self):
+        fd = os.open(self.control, os.O_RDONLY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaises(BlockingIOError):
+                self.run_apply()
+        finally:
+            os.close(fd)
+        self.assertFalse(self.host.calls)
+
+    def test_missing_locked_dependencies_never_bootout(self):
+        (self.host.new / "local-miniflare/node_modules/miniflare/package.json").unlink()
+        self.spec["treeSha256"] = m.tree_sha(self.host.new)
+        self.publish()
+        with self.assertRaisesRegex(m.Refused, "DEPENDENCIES_NOT_READY"):
+            self.run_apply()
         self.assertFalse(self.host.calls)
 
     def test_existing_schema_migration_is_outside_scope(self):
