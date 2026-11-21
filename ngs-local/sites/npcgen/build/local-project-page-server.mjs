@@ -13,7 +13,8 @@ import {createFolderMcpClient} from './folder-mcp-client.mjs';
 import {DEFAULT_PROJECT_FOLDER_MCP_URL,loopbackFolderMCP} from './folder-mcp-loopback.mjs';
 import {localProjectWorkspace} from './local-project-workspace.mjs';
 import {isOptionalNpcMediaScope,localNpcWorkspace} from './local-npc-workspace.mjs';
-import {createLocalRequestSubmission,parseRequestSubmission} from './local-request-submission.mjs';
+import {parseRequestSubmission} from './local-request-submission.mjs';
+import {openLocalRequestQueue} from './local-request-queue.mjs';
 import {conceptCategoryRequestType,validConceptCategoryRequest} from './local-concept-category-contract.mjs';
 import {npcPlanningAddType,npcPlanningRequestType,validNpcPlanningAdd,validNpcPlanningUpdate} from './local-npc-planning-ui.mjs';
 import {audioResponseRange,localAudioResults} from './local-audio-results.mjs';
@@ -31,8 +32,10 @@ const assets=new Map([
  ['/local-concept-category-contract.mjs', ['text/javascript; charset=utf-8', new URL('./local-concept-category-contract.mjs',import.meta.url)]],
  ['/local-npc-planning-ui.mjs', ['text/javascript; charset=utf-8', new URL('./local-npc-planning-ui.mjs',import.meta.url)]],
  ['/local-audio-workspace.mjs', ['text/javascript; charset=utf-8', new URL('./local-audio-workspace.mjs',import.meta.url)]],
+ ['/local-request-queue-browser.mjs', ['text/javascript; charset=utf-8', new URL('./local-request-queue-browser.mjs',import.meta.url)]],
 ]);
 const failure=(code,status)=>Object.assign(Error(code),{status});
+const queueId=/^ngs\.local\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 
 // Branding is optional, external to the source tree. Public clones still boot.
 const transparentMark=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=','base64');
@@ -81,11 +84,11 @@ export function configuration(env=process.env){
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,mcpUrl:env.NGS_PROJECT_OPS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,
-  requestMcpUrl:env.NGS_REQUEST_SERVICE_MCP_URL??'http://127.0.0.1:8770/mcp',ngsId:env.NGS_ID??'local',
+  requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
 }
 
-export function createLocalProjectPageServer({root,mcpUrl,requestMcpUrl='http://127.0.0.1:8770/mcp',ngsId='local',audioWorkspaceEnabled=false,brandMarkPath}){
+export function createLocalProjectPageServer({root,mcpUrl,requestQueueDb,requestQueue,audioWorkspaceEnabled=false,brandMarkPath}){
  const pds=createFolderMcpClient({call:loopbackFolderMCP(mcpUrl)});
  const projects=approvedProjectReads();
  prepareFreshParent(root);
@@ -94,7 +97,8 @@ export function createLocalProjectPageServer({root,mcpUrl,requestMcpUrl='http://
   readableProjects:projects.map(project=>project.id)});
  const catalog={...projectCatalog,compare:recursive.compareTop,refresh:recursive.applyTop,list:recursive.list,refreshes:recursive.refreshes};
  const auth=createLoopbackAuth({loadReadProjects:()=>projects});
- const submitRequest=createLocalRequestSubmission({url:requestMcpUrl,sourceId:ngsId});
+ const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
+ const queue=requestQueue??ownedQueue;
  function allowedCombat(preset){
   if(preset==='walk'||preset==='run')return false;
   const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',item:preset});
@@ -126,10 +130,18 @@ export function createLocalProjectPageServer({root,mcpUrl,requestMcpUrl='http://
    if(!req.url?.startsWith('/'))throw failure('NOT_FOUND',404);
    const url=new URL(req.url,origin);
    if(url.origin!==origin)throw failure('NOT_FOUND',404);
-   if(url.pathname==='/api/requests'&&!url.search){
-    if(req.method!=='POST')throw failure('METHOD_NOT_ALLOWED',405);
+   if(url.pathname==='/api/requests'){
     const session=auth.read(req);
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
+    if(req.method==='GET'){
+     const keys=[...url.searchParams.keys()],id=url.searchParams.get('queueId')??'';
+     if(keys.length!==1||keys[0]!=='queueId'||!queueId.test(id))throw failure('NGS_QUEUE_ID_INVALID',400);
+     if(!queue)throw failure('NGS_REQUEST_QUEUE_UNAVAILABLE',503);
+     const info=queue.read(id);
+     if(!info)throw failure('NGS_QUEUE_RECEIPT_NOT_FOUND',404);
+     return json(info.status==='registered'?200:202,info);
+    }
+    if(req.method!=='POST'||url.search)throw failure('METHOD_NOT_ALLOWED',405);
     auth.csrf(req,session);
     if(req.headers['x-npcgen-frontend-context']!==session.contextId)throw failure('FRONTEND_SESSION_CONTEXT_CHANGED',409);
     if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']??''))throw failure('JSON_REQUIRED',415);
@@ -173,7 +185,8 @@ export function createLocalProjectPageServer({root,mcpUrl,requestMcpUrl='http://
       }
      }
     }
-    return json(201,await submitRequest(command));
+    if(!queue)throw failure('NGS_REQUEST_QUEUE_UNAVAILABLE',503);
+    return json(202,queue.enqueue(command));
    }
    const asset=sourceAssets.get(url.pathname);
    if(asset&&req.method==='GET'){
@@ -269,7 +282,7 @@ export function createLocalProjectPageServer({root,mcpUrl,requestMcpUrl='http://
    if(!res.writableEnded)json(error.status??(error.message==='FOLDER_SYNC_COMPARE_REQUIRED'?409:503),{error:/^[A-Z0-9_]+$/.test(error.message)?error.message:'LOCAL_PROJECT_PAGE_UNAVAILABLE'});
   }
  });
- server.once('close',()=>auth.close());
+ server.once('close',()=>{auth.close();ownedQueue?.close();});
  return server;
 }
 

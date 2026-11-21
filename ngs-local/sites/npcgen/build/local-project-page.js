@@ -1,6 +1,7 @@
 import {conceptDetailOperations,conceptMarkdown,createConceptCategoryActions,syncConceptDetail} from './local-concept-category-ui.mjs';
 import {followAcceptedAudioResult,followDeletedAudioResults,mountAudioWorkspace,readAudioSoundConcepts,refreshAudioResults,showAudioResults} from './local-audio-workspace.mjs';
 import {loadNpcFolder} from './local-npc-workspace-ui.mjs';
+import {submitQueuedRequest} from './local-request-queue-browser.mjs';
 
 /* Project-list lifecycle only: local cards first, one stale comparison, separate applies. */
 const cards=new Map(),states=new Map(),progress=new Map(),cardNodes=new Map();
@@ -433,9 +434,9 @@ async function loadWorkspace(search){
    'Content-Type':'application/json','X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId,
   },body:JSON.stringify(body)});
   const post=(name,body)=>request('/api/folders/'+name,jsonPost(body));
+  const submit=command=>submitQueuedRequest(command,{jsonPost,signal});
   if(tab==='audio'){
    let visible=null;
-   const submit=command=>fetch('/api/requests',{...jsonPost(command),signal,cache:'no-store'});
    const display=rows=>{visible=rows;showAudioResults(library,rows,signal,{
     submitDelete:submit,onDeleteAccepted:ids=>{void followDeletedAudioResults({ids,post,request,signal,display});}});};
    const library=mountAudioWorkspace({items,detail,loadConcepts:()=>readAudioSoundConcepts({post,request,signal}),signal,submit,
@@ -448,12 +449,10 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='npcs'){
-   const submitOneStop=command=>fetch('/api/requests',{...jsonPost(command),signal,cache:'no-store'});
-   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop,submitPlanning:submitOneStop,note,items,detail,workspace});
+   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace});
    return;
   }
   if(tab==='concept'&&projectId==='binari'){
-   const submit=command=>fetch('/api/requests',{...jsonPost(command),signal,cache:'no-store'});
    conceptActions=createConceptCategoryActions({modalOwner:workspace,projectId,signal,submit});
    if(item){
     note('파일 비교 중');

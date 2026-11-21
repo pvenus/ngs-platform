@@ -31,3 +31,31 @@ directly, call RS, or upload a project snapshot.
 The current clean hosted release must enable this exact owner-only command
 pair before readiness can succeed. Do not widen Site access or install a
 replacement credential when the existing owner transport is unavailable.
+
+### Local NGS queue consumer (staged)
+
+`node ngs-local/sites/npcgen/build/rs-mcp.mjs --watch` consumes only the separate
+local NGS queue MCP at `127.0.0.1:5275/mcp` and existing Request Service MCP at
+`127.0.0.1:8770/mcp`. `--once` performs one bounded batch and can submit actual
+rows; it is not a dry run. No consumer runs through the browser port. The
+queue and consumer use the existing OS-loopback trust boundary, not a
+per-process credential. A full page advances an opaque seek cursor before
+the next one-second tick; rejected or unresolved early rows do not block
+unrelated later requests.
+
+Each NGS row supplies one unguessable `ngs.local.<UUIDv4>` used unchanged as the
+RS idempotency key. The consumer checks the exact returned official ID and
+registered status before sending an ACK. NGS then retains a bounded receipt
+and removes only the verified row's payload. A negative RS response or a
+transport error does not remove the row. If NGS ACK fails after a valid RS
+reply, the running consumer retries only ACK using that already verified proof.
+
+An uncertain submit is safe to repeat with the same key. The existing RS
+returns the existing receipt while its state is registered, but throws
+idempotency conflict if it already advanced; summary/list does not prove its
+immutable payload. In that case the consumer backs off, counts the row as
+unresolved and retains it. Do not mint a second key, infer acceptance from a
+derived ID, drop the draft, or inspect an RS database to reconcile it. Resolution
+after process restart may require an approved future exact receipt lookup
+('same source, original key, request type and payload digest'); none is added.
+Routine idle delay is one second, independent of any file sync schedule.

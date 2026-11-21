@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {createServer} from 'node:http';
+import {createHash} from 'node:crypto';
+import {openLocalRequestQueue} from '../build/local-request-queue.mjs';
 import {mkdirSync,mkdtempSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join} from 'node:path';
@@ -230,9 +231,10 @@ async function listen(t,server){
  return 'http://127.0.0.1:'+server.address().port;
 }
 
-test('opt-in fixture uses authenticated same-origin BFF and existing request_submit; default denies before transport',async t=>{
- const temp=mkdtempSync(join(realpathSync(tmpdir()),'ngs-audio-fixture-')),root=join(temp,'catalog'),calls=[];
- t.after(()=>rmSync(temp,{recursive:true,force:true}));
+test('audio forms queue behind authenticated BFF; only acknowledged exact receipt counts',async t=>{
+ const temp=mkdtempSync(join(realpathSync(tmpdir()),'ngs-audio-fixture-')),root=join(temp,'catalog');
+ const queue=openLocalRequestQueue(join(temp,'queue.sqlite'));
+ t.after(()=>{queue.close();rmSync(temp,{recursive:true,force:true});});
  const write=(path,data)=>{
   const file=join(root,'binari/concept',path);
   mkdirSync(dirname(file),{recursive:true,mode:0o700});writeFileSync(file,JSON.stringify(data),{mode:0o600});
@@ -240,31 +242,20 @@ test('opt-in fixture uses authenticated same-origin BFF and existing request_sub
  write('metadata.json',{sectionIds:[concept.id,'other','archived'],document:{hierarchy:{schemaVersion:'npc-concept-groups.v1',
   groups:[{...groups[0],categoryIds:[concept.id]},{id:'group.planning',title:'기획',categoryIds:['other']}],archivedCategoryIds:['archived']}}});
  for(const [id,title] of [[concept.id,concept.label],['other','기획'],['archived','보관']])write('sections/'+id+'/metadata.json',{id,title});
- const mcp=await listen(t,createServer(async(req,res)=>{
-  assert.equal(req.url,'/mcp');assert.equal(req.headers.origin,undefined);
-  let body='';for await(const chunk of req)body+=chunk;
-  const x=JSON.parse(body);
-  if(x.method==='notifications/initialized')return res.writeHead(202).end();
-  let result={protocolVersion:'2025-06-18',capabilities:{tools:{}}};
-  if(x.method!=='initialize'){
-   assert.equal(x.method,'tools/call');assert.equal(x.params.name,'request_submit');
-   calls.push(x.params.arguments);result={structuredContent:receipt};
-  }
-  res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({jsonrpc:'2.0',id:x.id,result}));
- }));
  async function fixtures(audioWorkspaceEnabled){
-  const origin=await listen(t,createLocalProjectPageServer({root,requestMcpUrl:mcp+'/mcp',audioWorkspaceEnabled}));
+  const origin=await listen(t,createLocalProjectPageServer({root,requestQueue:queue,audioWorkspaceEnabled}));
   const session=await fetch(origin+'/__npcgen_session'),context=await session.json(),cookie=session.headers.get('set-cookie').split(';')[0];
   const headers={cookie,origin,'content-type':'application/json','x-npcgen-csrf':context.csrfToken,'x-npcgen-frontend-context':context.contextId};
   return {origin,headers,post:(payload,auth=headers,requestType='audio.generate')=>fetch(origin+'/api/requests',{method:'POST',headers:auth,
-   body:JSON.stringify({requestType,idempotencyKey:'audio-fixture',payload})})};
+   body:JSON.stringify({requestType,idempotencyKey:'audio-fixture-'+requestType,payload})}),
+   read:(id,auth=headers)=>fetch(origin+'/api/requests?'+new URLSearchParams({queueId:id}),{headers:auth})};
  }
  assert.equal(configuration({}).audioWorkspaceEnabled,false);
  assert.equal(configuration({NGS_AUDIO_WORKSPACE_ENABLED:'1'}).audioWorkspaceEnabled,true);
  const off=await fixtures(undefined);
  assert.doesNotMatch(await (await fetch(off.origin)).text(),/data-audio-workspace/);
  assert.equal((await off.post(payload)).status,404);
- assert.equal(calls.length,0);
+ assert.equal(queue.list().requests.length,0);
  const on=await fixtures(true);
  assert.match(await (await fetch(on.origin)).text(),/data-audio-workspace="enabled"/);
  const conceptIndex=await fetch(on.origin+'/api/project-workspace?projectId=binari&tab=concept',{headers:{cookie:on.headers.cookie}});
@@ -272,17 +263,28 @@ test('opt-in fixture uses authenticated same-origin BFF and existing request_sub
  assert.equal((await on.post(payload,{...on.headers,cookie:''})).status,401);
  assert.equal((await on.post({...payload,durationSeconds:0})).status,400);
  assert.equal((await on.post({...payload,projectId:'other'})).status,403);
- assert.equal(calls.length,0);
+ assert.equal(queue.list().requests.length,0);
  const accepted=await on.post(payload);
- assert.equal(accepted.status,201);assert.deepEqual(await accepted.json(),receipt);
- assert.deepEqual(calls,[{sourceId:'local',requestType:'audio.generate',idempotencyKey:'audio-fixture',payload}]);
+ assert.equal(accepted.status,202);
+ const first=await accepted.json(),q=queue.list().requests[0];
+ assert.equal(first.status,'queued');
+ assert.deepEqual(q,{queueId:first.queueId,requestType:'audio.generate',idempotencyKey:first.queueId,payload});
+ assert.equal((await on.read(q.queueId,{...on.headers,cookie:''})).status,401);
+ assert.equal((await on.read(q.queueId)).status,202);
+ const finalId='request.official.'+createHash('sha256').update(JSON.stringify(['request.official.v1','local','binari',q.queueId])).digest('hex');
+ queue.ack(q.queueId,{officialRequestId:finalId,status:'registered'});
+ const confirmed=await on.read(q.queueId);
+ assert.equal(confirmed.status,200);
+ assert.deepEqual(await confirmed.json(),{queueId:q.queueId,status:'registered',receipt:{officialRequestId:finalId,status:'registered'}});
+ assert.equal(queue.list().requests.length,0);
+
  const deletion={schemaVersion:'ngs.audio-delete.v1',projectId:'binari',officialRequestId:'request.official.'+'c'.repeat(64)};
  assert.equal((await off.post(deletion,off.headers,'audio.delete')).status,404);
  assert.equal((await on.post({...deletion,targets:['x','y']},on.headers,'audio.delete')).status,400);
  assert.equal((await on.post({...deletion,officialRequestId:'../unsafe'},on.headers,'audio.delete')).status,400);
- assert.equal(calls.length,1);
- assert.equal((await on.post(deletion,on.headers,'audio.delete')).status,201);
- assert.deepEqual(calls[1],{sourceId:'local',requestType:'audio.delete',idempotencyKey:'audio-fixture',payload:deletion});
+ assert.equal(queue.list().requests.length,0);
+ assert.equal((await on.post(deletion,on.headers,'audio.delete')).status,202);
+ assert.deepEqual(queue.list().requests.map(x=>x.payload),[deletion]);
 
 });
 
