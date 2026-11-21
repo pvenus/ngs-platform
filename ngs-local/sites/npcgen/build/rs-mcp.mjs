@@ -2,15 +2,18 @@
 import {startOpsHealthReport} from './local-ops-health-report.mjs';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
+import {setTimeout as pause} from 'node:timers/promises';
 import {loopbackJsonMCP} from './folder-mcp-loopback.mjs';
+import {createSpaceMachineMcp,spaceMachineConfiguration} from './space-machine-mcp.mjs';
 
-const listTool='ngs_request_queue_list',ackTool='ngs_request_queue_ack';
-const rsTool='request_submit';
-const projectId='binari',sourceId='local',limit=16;
+const rsTool='request_submit',spaceRsTool='request_submit_space';
+const projectId='binari',limit=16;
+const storedStatuses=new Set(['registered','planned','completed','failed','cancelled']);
 const kinds=new Set(['npc.workflow','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete']);
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
-const queueId=v=>typeof v==='string'&&v.length===46&&/^ngs\.local\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v);
-const officialIdFor=key=>'request.official.'+createHash('sha256').update(JSON.stringify(['request.official.v1',sourceId,projectId,key])).digest('hex');
+const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const queueId=(v,source)=>typeof v==='string'&&v.length===46&&v.startsWith('ngs.'+source+'.')&&uuid.test(v.slice(10));
+const officialIdFor=(key,sourceId)=>'request.official.'+createHash('sha256').update(JSON.stringify(['request.official.v1',sourceId,projectId,key])).digest('hex');
 const falseReceipt=()=>Error('NGS_RS_RECEIPT_UNCONFIRMED');
 const localUnavailable=()=>Error('NGS_RS_MCP_UNAVAILABLE');
 const invalid=()=>Error('NGS_REQUEST_QUEUE_RESPONSE_INVALID');
@@ -23,13 +26,18 @@ const definitive=new Map([
  ['OFFICIAL_AUDIO_DELETE_ALREADY_REGISTERED',409],
 ]);
 
-function verifyReceipt(r,idempotencyKey){
- if(!exact(r,['officialRequestId','status'])||r.officialRequestId!==officialIdFor(idempotencyKey)||r.status!=='registered')
-  throw falseReceipt();
+function verifyReceipt(r,idempotencyKey,source){
+ const local=source==='local';
+ if(!(local?exact(r,['officialRequestId','status'])&&r.status==='registered':
+    exact(r,['officialRequestId','status','registeredAt'])&&storedStatuses.has(r.status)&&
+    Number.isSafeInteger(r.registeredAt)&&r.registeredAt>=0)||
+  r.officialRequestId!==officialIdFor(idempotencyKey,source))throw falseReceipt();
+ // Forward the exact durable receipt to the private Site queue; its
+ // browser-facing state distinguishes acceptance from generation.
  return r;
 }
 const validCursor=v=>typeof v==='string'&&/^q1\.[1-9][0-9]{0,15}$/.test(v)&&!/[\r\n]/.test(v)&&Number.isSafeInteger(Number(v.slice(3)));
-function parseBatch(batch,previous){
+function parseBatch(batch,previous,source){
  if(!exact(batch,['requests'])&&!exact(batch,['requests','nextCursor'])||!Array.isArray(batch.requests)||
   batch.requests.length>limit||Object.hasOwn(batch,'nextCursor')!==(batch.requests.length===limit))
   throw invalid();
@@ -37,14 +45,17 @@ function parseBatch(batch,previous){
   previous&&Number(batch.nextCursor.slice(3))<=Number(previous.slice(3))))throw invalid();
  const ids=new Set(),usedKeys=new Set();
  for(const r of batch.requests){
-  if(!exact(r,['queueId','requestType','idempotencyKey','payload'])||!queueId(r.queueId)||r.queueId!==r.idempotencyKey||
+  if(!exact(r,['queueId','requestType','idempotencyKey','payload'])||!queueId(r.queueId,source)||r.queueId!==r.idempotencyKey||
      ids.has(r.queueId)||usedKeys.has(r.idempotencyKey))throw invalid();
   ids.add(r.queueId);usedKeys.add(r.idempotencyKey);
  }
  return {rows:batch.requests,next:batch.nextCursor??null};
 }
 
-export function createRSQueueConsumer({callNGS,callRS,now=Date.now}){
+function createConsumer({callNGS,callRS,now=Date.now},sourceId){
+ const local=sourceId==='local';
+ const listTool=local?'ngs_request_queue_list':'space_requests_pending';
+ const ackTool=local?'ngs_request_queue_ack':'space_requests_ack';
  if(typeof callNGS!=='function'||typeof callRS!=='function')throw invalid();
  const memo=new Map();
  let cursor=null;
@@ -56,7 +67,7 @@ export function createRSQueueConsumer({callNGS,callRS,now=Date.now}){
  }
  async function work(){
   const listArgs=cursor?{limit,cursor}:{limit};
-  const {rows,next}=parseBatch(await callNGS(listTool,listArgs,{limit:4*1024*1024}),cursor);
+  const {rows,next}=parseBatch(await callNGS(listTool,listArgs,{limit:4*1024*1024}),cursor,sourceId);
   // NGS returns an opaque cursor independent of ACK/removal. A full page
   // advances even if its deliveries were all rejected or remain unresolved.
   cursor=next;
@@ -70,9 +81,12 @@ export function createRSQueueConsumer({callNGS,callRS,now=Date.now}){
    if(entry?.until>now()){result[entry.error]++;continue;}
    entry??={stamp,receipt:null};
    try{
-    if(!entry.receipt){const value=await callRS(rsTool,{sourceId,requestType:row.requestType,
-     idempotencyKey:row.idempotencyKey,payload:row.payload},{limit:8192});
-     entry.receipt=verifyReceipt(value,row.idempotencyKey);
+    if(!entry.receipt){
+     // For Site origin the worker may supply only a ticket. RS re-fetches
+     // that ticket via the configured trusted machine MCP connector.
+     const value=await callRS(local?rsTool:spaceRsTool,local?{sourceId,requestType:row.requestType,
+      idempotencyKey:row.idempotencyKey,payload:row.payload}:{queueId:row.queueId},{limit:8192});
+     entry.receipt=verifyReceipt(value,row.idempotencyKey,sourceId);
     }
     const ack=await callNGS(ackTool,{queueId:row.queueId,receipt:entry.receipt},{limit:8192});
     if(!exact(ack,['queueId','status'])||ack.queueId!==row.queueId||ack.status!=='acknowledged')throw falseReceipt();
@@ -96,6 +110,18 @@ export function createRSQueueConsumer({callNGS,callRS,now=Date.now}){
  }};
 }
 
+export const createRSQueueConsumer=options=>createConsumer(options,'local');
+export const createSpaceRSQueueConsumer=options=>createConsumer(options,'space');
+export function watchSpaceRSQueue({pump,signal,onResult=()=>{},onError=()=>{},sleep=pause}){
+ return (async()=>{
+  while(!signal?.aborted){
+   try{onResult(await pump.pollOnce());}
+   catch(error){if(!signal?.aborted)onError(error);}
+   try{await sleep(1000,undefined,{signal});}
+   catch(error){if(!signal?.aborted)throw error;}
+  }
+ })();
+}
 export const ngsQueueMcpUrl='http://127.0.0.1:5275/mcp';
 export const rsRequestMcpUrl='http://127.0.0.1:8770/mcp';
 export function sameMacRSQueue({ngsUrl=ngsQueueMcpUrl,rsUrl=rsRequestMcpUrl,signal}={}){
@@ -120,6 +146,28 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   let timer,wake,last='';
   const stop=()=>{health?.stop();controller.abort();clearTimeout(timer);wake?.();};
   for(const action of ['SIGTERM','SIGINT'])process.once(action,stop);
+  let space;
+  if(mode==='--watch'&&process.env.NGS_SPACE_REQUEST_RELAY_ENABLED==='1'){
+   try{
+    const callNGS=createSpaceMachineMcp({...spaceMachineConfiguration(),signal:controller.signal});
+    const callRS=loopbackJsonMCP(rsRequestMcpUrl,{clientName:'ngs-rs-mcp-consumer-space',
+     signal:controller.signal,timeoutMs:30_000,transportError:localUnavailable,decodeToolError(name,result){
+      const e=result.structuredContent;
+      return name===spaceRsTool&&exact(e,['error','status'])&&definitive.get(e.error)===e.status
+       ?Object.assign(Error(e.error),{rsCode:e.error}):null;
+     }});
+    let spaceLast='';
+    space=watchSpaceRSQueue({pump:createSpaceRSQueueConsumer({callNGS,callRS}),signal:controller.signal,
+     onResult:status=>{
+      const safe=JSON.stringify(status);
+      if(status.acknowledged||status.seen&&safe!==spaceLast)console.log('NGS_RS_MCP_SPACE_POLL',safe);
+      spaceLast=safe;
+     },onError:()=>{
+      if(spaceLast!=='unavailable')console.error('NGS_RS_MCP_SPACE_UNAVAILABLE');
+      spaceLast='unavailable';
+     }}).catch(()=>console.error('NGS_RS_MCP_SPACE_UNAVAILABLE'));
+   }catch{console.error('NGS_RS_MCP_SPACE_CONFIGURATION_REQUIRED');}
+  }
   do{
    try{
     const status=await pump.pollOnce();
@@ -132,5 +180,6 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
    }
    if(mode==='--watch'&&!controller.signal.aborted)await new Promise(resolve=>{wake=resolve;timer=setTimeout(resolve,1000);});
   }while(mode==='--watch'&&!controller.signal.aborted);
+  await space;
  }
 }

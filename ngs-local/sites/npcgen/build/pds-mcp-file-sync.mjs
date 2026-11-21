@@ -6,6 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {createFolderMcpClient} from './folder-mcp-client.mjs';
 import {DEFAULT_PROJECT_FOLDER_MCP_URL,loopbackJsonMCP} from './folder-mcp-loopback.mjs';
 import {validFolderPath} from './local-recursive-folders.mjs';
+import {createSpaceMachineMcp,spaceMachineConfiguration,fileTools} from './space-machine-mcp.mjs';
 
 const maxFile=64*1024*1024,maxChunk=1024*1024,maxEntries=32768;
 const hash=/^[a-f0-9]{64}$/;
@@ -136,18 +137,39 @@ export async function watchPdsMcpFileSync({
  }
 }
 
+export function createSpaceFileSyncDestination(options){
+ const call=createSpaceMachineMcp(options);
+ return (name,args,settings)=>{
+  if(!fileTools.includes(name))throw invalid();
+  return call(name,args,settings);
+ };
+}
+function reportFileLoop(destination){
+ return {
+  onResult:(scope,{written})=>console.log(JSON.stringify({event:'pds_ngs_file_sync_complete',...(destination==='space'?{destination}:{}),scope,written})),
+  onError:(scope,error)=>console.error(JSON.stringify({
+   event:'pds_ngs_file_sync_failed',...(destination==='space'?{destination}:{}),scope,
+   error:/^[A-Z][A-Z0-9_]{1,80}$/.test(error?.message??'')?error.message:'PDS_NGS_FILE_SYNC_UNAVAILABLE',
+  })),
+ };
+}
+
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==3||process.argv[2]!=='--watch')throw Error('Usage: pds-mcp-file-sync.mjs --watch');
  const {PDS_MCP_URL,NGS_FILE_SYNC_MCP_URL,NGS_FILE_SYNC_PROJECTS}=process.env;
  const controller=new AbortController(),health=startOpsHealthReport({serverName:'pds-mcp'});
- for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>controller.abort());
- try{await watchPdsMcpFileSync({
-  pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
-  signal:controller.signal,
-  onResult:(scope,{written})=>console.log(JSON.stringify({event:'pds_ngs_file_sync_complete',scope,written})),
-  onError:(scope,error)=>console.error(JSON.stringify({
-   event:'pds_ngs_file_sync_failed',scope,
-   error:/^[A-Z][A-Z0-9_]{1,80}$/.test(error?.message??'')?error.message:'PDS_NGS_FILE_SYNC_UNAVAILABLE',
-  })),
- });}finally{health.stop();}
+ const signal=controller.signal;
+ for(const action of ['SIGTERM','SIGINT'])process.once(action,()=>controller.abort());
+ let space;
+ if(process.env.NGS_SPACE_FILE_SYNC_ENABLED==='1'){
+  try{
+   const ngs=createSpaceFileSyncDestination({...spaceMachineConfiguration(),signal});
+   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],ngs,signal,
+    ...reportFileLoop('space')}).catch(()=>reportFileLoop('space').onError(null));
+  }catch{reportFileLoop('space').onError(null,Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED'));}
+ }
+ try{
+  await watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
+   signal,...reportFileLoop('local')});
+ }finally{controller.abort();await space;health.stop();}
 }
