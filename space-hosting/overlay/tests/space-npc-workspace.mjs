@@ -30,7 +30,7 @@ const request=(q,allowed=true)=>mini.dispatchFetch('http://fixture.test/api/npc-
  {headers:{'oai-authenticated-user-id':allowed?'fake-authorized':'fake-not-authorized','oai-authenticated-user-email':'fixture@example.invalid'}});
 try{
  const db=await mini.getD1Database('DB'),bucket=await mini.getR2Bucket('BUCKET');
- const migration=readFileSync(here('../drizzle/0014_space_file_replica_versions.sql'),'utf8');
+ const migration=readFileSync(here('../ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
  for(const sql of migration.split('--> statement-breakpoint'))await db.prepare(sql).run();
  const put=async (relative,body)=>{
   const bytes=Buffer.isBuffer(body)?body:Buffer.from(JSON.stringify(body));

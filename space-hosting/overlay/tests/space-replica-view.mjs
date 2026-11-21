@@ -33,7 +33,7 @@ const meta=(id,generatedAt,t=title)=>({schemaVersion:'workflow.audio-result.v1',
  sampleRate:8000,frames:800,durationSeconds:0.1}});
 try{
  const db=await mini.getD1Database('DB');
- const schema=readFileSync(here('../drizzle/0014_space_file_replica_versions.sql'),'utf8');
+ const schema=readFileSync(here('../ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
  for(const sql of schema.split('--> statement-breakpoint'))await db.prepare(sql).run();
  const bucket=await mini.getR2Bucket('BUCKET');
  async function publish(path,body,extra={}){

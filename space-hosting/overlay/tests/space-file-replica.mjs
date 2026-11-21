@@ -1,15 +1,16 @@
 /** Sterile Miniflare integration test; no credentials or live bindings. */
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {readFileSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 
 const here=base=>new URL(base,import.meta.url);
 const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../../../sites/npcgen/package.json'))('miniflare');
 const receiver=readFileSync(here('../build/space-file-replica.mjs'),'utf8');
 const sourcePath='ngs-local/sites/npcgen/build/object-replica.mjs';
-const core=readFileSync(here('../../../'+sourcePath),'utf8');
-const schema=readFileSync(here('../drizzle/0014_space_file_replica_versions.sql'),'utf8');
+const base=existsSync(here('../'+sourcePath))?'../':'../../../';
+const core=readFileSync(here(base+sourcePath),'utf8');
+const schema=readFileSync(here(base+'ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
 const root='ngs-replica/v1/binari/',other='legacy/untouched';
 const mini=new Miniflare({
  d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],

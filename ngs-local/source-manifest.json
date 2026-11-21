@@ -1,6 +1,7 @@
 {
   "sourceCommit": null,
   "files": {
+    "dev/0014_space_file_replica_versions.sql": "ece870d0e6aae03efb748bc8823ace35b6465b1b7ed47907a9dfdb3473fe4117",
     "dev/catalog-read-policy.json": "88e89fad0bdde053c4e459eedce20d5ffaaaaf1f5ccb834590d8acd2ded53f7c",
     "sites/npcgen/build/auth-core.mjs": "141f2adbf48f80966e7735261ac2f29e58335441fdebb94cd59a07178fe8d3a9",
     "sites/npcgen/build/folder-mcp-client.mjs": "80c618d2973d25637163b14ca82e97480b25b88d1e79b25116d59142cd3906b7",
@@ -31,6 +32,7 @@
     "sites/npcgen/build/npc-workspace.mjs": "936b7d5e84ba7e122423563f24b5dcaaf485d701830b9967dcc6113e2b40b9e6",
     "sites/npcgen/build/pds-mcp-file-sync.mjs": "977b02a2260ad636f64477fd6bb3b370d58b4da52f7f5b8c192643b5be3002fd",
     "sites/npcgen/build/project-workspace-view.mjs": "7f975bd1218b5470031de91b45e3e8910ead8e6606232acd2401433dbfdf9ade",
+    "sites/npcgen/build/replica-sqlite.mjs": "3738bec9a3233fe8c14b4379493d89c1c5b7ee5e3459b75e4e1b6aa95001d9a0",
     "sites/npcgen/build/rs-mcp.mjs": "6f688c5336ffd8558263e30659145eccfe0d07bdaa603e26cd8f3767224b41b2",
     "sites/npcgen/build/space-catalog-owner-mcp.mjs": "cc91e596f50f0b2368e069b52a5ba6a0bd8d52b3a395d0f16203b9e4fd60b25b",
     "sites/npcgen/build/space-catalog-worker.mjs": "84306defc2ec73a57cd19977138a65e0babdb4407f7ed0e0779e33955dccd132",
@@ -50,6 +52,7 @@
     "sites/npcgen/tests/local-request-submission.mjs": "f0bc4908c7b5177299dcd744644c694ed08076da5e833f532cffc2d66c8f6555",
     "sites/npcgen/tests/pds-mcp-file-sync.mjs": "8da77351fd9f57e4f2d9537a1f589c1390e5a2aaac5cbeb4fc3f13b319b1f408",
     "sites/npcgen/tests/pds-ngs-push-e2e.mjs": "50a5cfc2a7b06b550279d428d9d1a59bd31ef3b131b6c1b0447968450f4a7434",
+    "sites/npcgen/tests/replica-sqlite.mjs": "e8e6b91d2b0b7d6c66628228b86105bcbe300f17b27b5916f3deebaef400ddf4",
     "sites/npcgen/tests/rs-mcp.mjs": "a7bb48c33406e7221fe48028bd30e978f9cee3dda589f6bbeba554c3dec909cd",
     "sites/npcgen/tests/shared-npc-workspace.mjs": "1ddf23f674640e23017322558bc74c2175b01b24dca0c3ab31fea5227ed45293",
     "sites/npcgen/tests/space-catalog-worker.mjs": "05cc4838c39ac921b35bba947a91af24f1940f9a732de61ad901cbae1ed3c417",
