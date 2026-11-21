@@ -1,12 +1,7 @@
 {
   "sourceCommit": null,
   "files": {
-    "README.md": "bff6516f3867b43cb7dd9076334c86fd6867534427418d813eb64450f10249c1",
     "dev/catalog-read-policy.json": "88e89fad0bdde053c4e459eedce20d5ffaaaaf1f5ccb834590d8acd2ded53f7c",
-    "docs/instance-mcp-flow.md": "c1b6e4e6755151a29793f2c3e0c2e82cc5aac996320af9ab567b4e0a8745eb6e",
-    "docs/local-request-queue.md": "298a6ae9791cb091a52cbac84eef3f0dac70fb23dabb2ad8d79db964af6618fc",
-    "docs/space-machine-mac.md": "1a8ed91b4fb4d25c56005ac299fe49fc9e79c3a5ec7d60370d4cc5d577d388d3",
-    "package.json": "aef5ab54420e5eeda60b0ecf66d0b6528ddb541d0a49d9687afc7aa9fd88dd2a",
     "sites/npcgen/build/auth-core.mjs": "141f2adbf48f80966e7735261ac2f29e58335441fdebb94cd59a07178fe8d3a9",
     "sites/npcgen/build/folder-mcp-client.mjs": "80c618d2973d25637163b14ca82e97480b25b88d1e79b25116d59142cd3906b7",
     "sites/npcgen/build/folder-mcp-loopback.mjs": "6bc2dde13c3a27d7e5aecc2627ce566afbbeb16c97a3c9d0fe2004945c9c9f81",
@@ -24,7 +19,7 @@
     "sites/npcgen/build/local-project-page-server.mjs": "41fc00b74f7169f1c1f0e4957c207b4c74f18cfdbb5d4f9ee057dc81ef095844",
     "sites/npcgen/build/local-project-page.css": "f9c8e16ea8bd27b0e7991c839de85b90049c1f4a93b319a2372c4c2292204a4c",
     "sites/npcgen/build/local-project-page.html": "14c5015a74a7caf414edef73e05d8584a93c125bc18e115ae8a1a7fb6deeeb2c",
-    "sites/npcgen/build/local-project-page.js": "4280a9b8b3210524a6fcc248061b732f39676358309192a9e37c17905024d901",
+    "sites/npcgen/build/local-project-page.js": "8cf5810c9c53d8e098f30e971df111198258aac4dbf76024727b4048463877d2",
     "sites/npcgen/build/local-project-workspace.mjs": "00138c6f49eb244fc0480362596c1221704fadf621937b6cdbb20ec34996faf8",
     "sites/npcgen/build/local-recursive-folders.mjs": "58deb48f894323fbf45f45932db04b2d86e4b281eee5b136d215fbac8b306e29",
     "sites/npcgen/build/local-replica-file-receiver.mjs": "6bdde3fd04fffb4c979e2565411892e6d41a1db0f2173bb4b02492ca3337af0a",
@@ -54,7 +49,7 @@
     "sites/npcgen/tests/rs-mcp.mjs": "a7bb48c33406e7221fe48028bd30e978f9cee3dda589f6bbeba554c3dec909cd",
     "sites/npcgen/tests/space-catalog-worker.mjs": "05cc4838c39ac921b35bba947a91af24f1940f9a732de61ad901cbae1ed3c417",
     "sites/npcgen/tests/space-machine-mcp.mjs": "d75872a45a3228e88726b2bf428e7bab15fefa136f34cefbb151571ec0b3dce8",
-    "sites/npcgen/tests/space-project-catalog-browser.mjs": "e89d44902e941b769aa5af02bff66cddd7ea7a055029c626c794a0b7e574c12a"
+    "sites/npcgen/tests/space-project-catalog-browser.mjs": "7a9f48004fa0f550eb787e612337c54788fe2669e0c21d3bd383a61636377b91"
   },
   "upstreamLocalRevision": "4f983ac",
   "scope": "public source, runtime data and branding excluded"
