@@ -18,8 +18,9 @@ export function withProductionAudio(html){
 }
 
 export function createSharedNgsResponse(assets){
- return request=>{
+ return (request,{catalogRelay=false}={})=>{
   const url=new URL(request.url),path=url.pathname,method=request.method;
+  if(catalogRelay&&['/__npcgen_session','/api/space/project-catalog'].includes(path))return null;
   if(previousHostedBgm.has(path))return errors(404,'CLEAN_SITE_ROUTE_NOT_FOUND');
   const expected=unavailable.get(path);
   if(expected){

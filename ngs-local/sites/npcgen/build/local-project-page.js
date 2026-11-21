@@ -54,6 +54,47 @@ function render(){
  }
 }
 
+
+const spaceCatalogPath='/api/space/project-catalog';
+const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
+const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
+const spaceReadOnly=session=>exact(session,'backend,readOnly,state')&&session.state==='authenticated'&&session.backend==='space'&&session.readOnly===true;
+function waitForSpaceCatalog(signal){
+ return new Promise((resolve,reject)=>{
+  const stop=()=>{clearTimeout(timer);reject(signal.reason);};
+  if(signal.aborted){reject(signal.reason);return;}
+  const timer=setTimeout(()=>{signal.removeEventListener('abort',stop);resolve();},1250);
+  signal.addEventListener('abort',stop,{once:true});
+ });
+}
+async function readSpaceCatalog(signal,show){
+ const deadline=AbortSignal.timeout(52000),requestSignal=AbortSignal.any([signal,deadline]);
+ const options={cache:'no-store',credentials:'same-origin',redirect:'error',signal:requestSignal};
+ let requestId;
+ for(let attempt=0;attempt<40;attempt++){
+  const path=requestId?spaceCatalogPath+'?'+new URLSearchParams({requestId}):spaceCatalogPath;
+  const init=requestId?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'};
+  const response=await fetch(path,{...options,...init});
+  if(response.status===401||response.status===403)throw Error('SPACE_CATALOG_AUTH');
+  if(response.status===404&&requestId)throw Error('SPACE_CATALOG_EXPIRED');
+  if(response.status!==200&&response.status!==202)throw Error('SPACE_CATALOG_UNAVAILABLE');
+  const body=await response.json(),pending=response.status===202;
+  if(!exact(body,pending?'requestId,status':'projects,requestId,status')||typeof body.requestId!=='string'||
+     body.requestId.length!==50||!spaceTicket.test(body.requestId)||requestId&&body.requestId!==requestId||
+     body.status!==(pending?'pending':'ready'))throw Error('SPACE_CATALOG_UNAVAILABLE');
+  if(!pending){
+   if(!Array.isArray(body.projects)||body.projects.length>1||body.projects.some(row=>
+    !exact(row,'iconUrl,name,needsRefresh,projectId')||row.projectId!=='binari'||typeof row.name!=='string'||
+    !row.name.trim()||row.name.length>120||row.iconUrl!==null||row.needsRefresh!==false))throw Error('SPACE_CATALOG_UNAVAILABLE');
+   return body.projects;
+  }
+  requestId=body.requestId;
+  show('Space에서 프로젝트 원본 목록을 기다리고 있습니다.');
+  await waitForSpaceCatalog(requestSignal);
+ }
+ throw Error('SPACE_CATALOG_EXPIRED');
+}
+
 async function load(){
  run?.abort();
  run=new AbortController();
@@ -62,11 +103,24 @@ async function load(){
  status.textContent=cards.size?'':'프로젝트를 불러오고 있습니다.';
  const sameOrigin=async(url,options={})=>{
   const response=await fetch(url,{cache:'no-store',signal,...options});
-  if(!response.ok)throw Error('PROJECT_PAGE_READ_FAILED');
+  if(!response.ok){
+   if(url==='/__npcgen_session'&&response.status===503&&
+      (await response.json().catch(()=>null))?.error==='LIVE_NGS_BACKEND_NOT_CONNECTED')throw Error('SPACE_CATALOG_UNAVAILABLE');
+   throw Error('PROJECT_PAGE_READ_FAILED');
+  }
   return response.json();
  };
  try{
   const session=await sameOrigin('/__npcgen_session');
+  if(spaceReadOnly(session)){
+   cards.clear();render();
+   const rows=await readSpaceCatalog(signal,text=>{if(!signal.aborted)status.textContent=text;});
+   if(signal.aborted)return;
+   for(const row of rows)cards.set(row.projectId,row);
+   render();
+   status.textContent=rows.length?'':'원본에서 확인된 프로젝트가 없습니다.';
+   return; // Hosted read-through never invokes local compare/apply/discovery.
+  }
   const post=(path,body)=>sameOrigin('/api/project-folders/'+path,{method:'POST',headers:{
    'Content-Type':'application/json','X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId,
   },body:JSON.stringify(body)});
@@ -154,7 +208,14 @@ async function load(){
    if(!signal.aborted&&!cards.size)status.textContent='조회 가능한 프로젝트가 없습니다.';
   }finally{clearTimeout(timer);}
  }catch(error){
-  if(!signal.aborted)status.textContent=cards.size?'기존 목록을 유지합니다.':'프로젝트를 불러오지 못했습니다.';
+  if(!signal.aborted){
+   const hint={
+    SPACE_CATALOG_AUTH:'Space에서 프로젝트 조회 권한을 확인하지 못했습니다.',
+    SPACE_CATALOG_UNAVAILABLE:'Space에서 프로젝트 원본에 연결하지 못했습니다. 다시 조회해 주세요.',
+    SPACE_CATALOG_EXPIRED:'프로젝트 목록 응답이 아직 없습니다. 다시 조회해 주세요.',
+   }[error.message]??(error.name==='TimeoutError'?'프로젝트 목록 응답이 아직 없습니다. 다시 조회해 주세요.':null);
+   status.textContent=hint??(cards.size?'기존 목록을 유지합니다.':'프로젝트를 불러오지 못했습니다.');
+  }
  }
 }
 
@@ -360,6 +421,12 @@ async function loadWorkspace(search){
  try{
   note('항목을 읽고 있습니다.');
   const session=await request('/__npcgen_session');
+  if(spaceReadOnly(session)){
+   note('Space에서는 현재 프로젝트 목록만 연결되어 있습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.');
+   const home=nodeOf('a','','프로젝트 목록으로 돌아가기');home.href='/';
+   detail.replaceChildren(nodeOf('h3','',label),home);
+   return;
+  }
   // This is a local metadata read, not a project-root comparison.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
   const jsonPost=body=>({method:'POST',headers:{
