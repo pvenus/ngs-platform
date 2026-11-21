@@ -50,7 +50,13 @@ test('hosted bundling uses the single authored Local source tree, with no parall
  assert.deepEqual(paths,[
   'build/local-project-page.html','build/local-project-page.css','build/local-project-page.js','build/local-npc-workspace-ui.mjs',
   'build/local-npc-one-stop-ui.mjs','build/local-concept-category-ui.mjs','build/local-concept-category-contract.mjs',
-  'build/local-npc-planning-ui.mjs','build/local-audio-workspace.mjs',
+  'build/local-npc-planning-ui.mjs','build/local-audio-workspace.mjs','build/local-request-queue-browser.mjs',
  ]);
+ const exactAssets=new Set(paths);
+ for(const path of paths.filter(path=>/\.m?js$/.test(path))){
+  const source=readFileSync(new URL('../ngs-local/sites/npcgen/'+path,import.meta.url),'utf8');
+  for(const [,importName] of source.matchAll(/^import[^\n]+from ['"]\.\/([^'"]+)['"]/gm))
+   assert(exactAssets.has('build/'+importName),path+' references unserved '+importName);
+ }
  assert(!/shared-ngs-frontend|catalog\/bgm-workspace/.test(imports));
 });
