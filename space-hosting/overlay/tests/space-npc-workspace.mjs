@@ -12,29 +12,23 @@ const mini=new Miniflare({compatibilityDate:'2025-11-01',compatibilityFlags:['no
  d1Databases:['DB'],r2Buckets:['BUCKET'],modules:[
  {type:'ESModule',path:'test.mjs',contents:`
   import {createSpaceFileReplica} from './build/space-file-replica.mjs';
-  import {openSpaceWorkspaceProject} from './build/space-workspace-read-storage.mjs';
+  import {spaceWorkspaceReadResponse} from './build/space-workspace-read-response.mjs';
   import {npcWorkspaceRead} from './${shared}npc-workspace.mjs';
-  import {dispatchWorkspaceRead} from './${shared}workspace-read-registry.mjs';
   export default {async fetch(req,env) {
-   const {pathname,searchParams}=new URL(req.url);
    const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
-   try{
-    const result=await dispatchWorkspaceRead({pathname,query:searchParams,npcRead:npcWorkspaceRead,
-     openProject: id=>openSpaceWorkspaceProject(replica,id),
-     authorize: id=>{if(id!=='binari'||req.headers.get('test-project-grant')!=='yes')throw Object.assign(Error('denied'),{status:403});}});
-    return result?.bytes?new Response(result.bytes,{headers:{'Content-Type':result.mime}}):result?.json?
-     Response.json(result.json):new Response(null,{status:404});
-   }catch(e){return Response.json({error:e.message},{status:e.status??500});}
+   return await spaceWorkspaceReadResponse(req,replica,{npcRead:npcWorkspaceRead,
+    authorize:(user,id)=>user.userId==='fake-authorized'&&id==='binari'})??new Response(null,{status:404});
   }};
  `},
  source('build/space-file-replica.mjs','../build/space-file-replica.mjs'),
  source('build/space-workspace-read-storage.mjs','../build/space-workspace-read-storage.mjs'),
+ source('build/space-workspace-read-response.mjs','../build/space-workspace-read-response.mjs'),
  ...files.map(file=>source(shared+file,'../../../'+shared+file)),
  ]});
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const png=Buffer.from([137,80,78,71,13,10,26,10,20]),id='npc.synthetic',decoy='npc.not-listed',prefix='npcs/'+id+'/';
 const request=(q,allowed=true)=>mini.dispatchFetch('http://fixture.test/api/npc-workspace?'+q,
- {headers:allowed?{'test-project-grant':'yes'}:{}});
+ {headers:{'oai-authenticated-user-id':allowed?'fake-authorized':'fake-not-authorized','oai-authenticated-user-email':'fixture@example.invalid'}});
 try{
  const db=await mini.getD1Database('DB'),bucket=await mini.getR2Bucket('BUCKET');
  const migration=readFileSync(here('../drizzle/0014_space_file_replica_versions.sql'),'utf8');
