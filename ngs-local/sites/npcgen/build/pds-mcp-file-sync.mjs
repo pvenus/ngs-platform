@@ -1,4 +1,5 @@
 /** Push canonical file changes via MCP only, without exposing a Filex path. */
+import {startOpsHealthReport} from './local-ops-health-report.mjs';
 import {createHash} from 'node:crypto';
 import {setTimeout as pause} from 'node:timers/promises';
 import {pathToFileURL} from 'node:url';
@@ -138,9 +139,9 @@ export async function watchPdsMcpFileSync({
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==3||process.argv[2]!=='--watch')throw Error('Usage: pds-mcp-file-sync.mjs --watch');
  const {PDS_MCP_URL,NGS_FILE_SYNC_MCP_URL,NGS_FILE_SYNC_PROJECTS}=process.env;
- const controller=new AbortController();
+ const controller=new AbortController(),health=startOpsHealthReport({serverName:'pds-mcp'});
  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>controller.abort());
- await watchPdsMcpFileSync({
+ try{await watchPdsMcpFileSync({
   pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
   signal:controller.signal,
   onResult:(scope,{written})=>console.log(JSON.stringify({event:'pds_ngs_file_sync_complete',scope,written})),
@@ -148,5 +149,5 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
    event:'pds_ngs_file_sync_failed',scope,
    error:/^[A-Z][A-Z0-9_]{1,80}$/.test(error?.message??'')?error.message:'PDS_NGS_FILE_SYNC_UNAVAILABLE',
   })),
- });
+ });}finally{health.stop();}
 }

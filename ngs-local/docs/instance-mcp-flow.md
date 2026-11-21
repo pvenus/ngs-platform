@@ -2,7 +2,8 @@
 
 The original Request Service and Project Data Service are unchanged. The NGS
 browser uses its own NGS instance and does not connect to either one directly.
-On the Mac, 5274 is the NGS browser service, 5275 is the NGS local queue MCP,
+The independent rs-mcp and pds-mcp watch processes send their own heartbeat
+to OPS every 60 seconds. On the Mac, 5274 is the NGS browser service, 5275 is the NGS local queue MCP,
 and 8770 remains the existing RS MCP. These are loopback-only endpoints.
 
 ## Request handoff (implemented and verified on isolated local fixtures)

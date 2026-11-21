@@ -4,6 +4,7 @@ export const OPS_HEALTH_MCP_URL='http://127.0.0.1:8090/mcp';
 
 export function startOpsHealthReport({
  url=OPS_HEALTH_MCP_URL,
+ serverName='ngs-local',
  schedule=setInterval,
  unschedule=clearInterval,
 }={}){
@@ -14,7 +15,7 @@ export function startOpsHealthReport({
  async function tick(){
   if(stopped||running)return;
   running=true;
-  try{await call('ops_service_health_report',{serverName:'ngs-local'},{limit:8*1024});}
+  try{await call('ops_service_health_report',{serverName},{limit:8*1024});}
   catch{/* OPS reporting never prevents NGS from serving requests. Retry at the next interval. */}
   finally{running=false;}
  }

@@ -1,4 +1,5 @@
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
+import {startOpsHealthReport} from './local-ops-health-report.mjs';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {loopbackJsonMCP} from './folder-mcp-loopback.mjs';
@@ -115,8 +116,9 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   console.error('NGS_RS_MCP_EXPLICIT_MODE_REQUIRED');process.exitCode=2;
  }else{
   const controller=new AbortController(),pump=sameMacRSQueue({signal:controller.signal});
+  const health=mode==='--watch'?startOpsHealthReport({serverName:'rs-mcp'}):null;
   let timer,wake,last='';
-  const stop=()=>{controller.abort();clearTimeout(timer);wake?.();};
+  const stop=()=>{health?.stop();controller.abort();clearTimeout(timer);wake?.();};
   for(const action of ['SIGTERM','SIGINT'])process.once(action,stop);
   do{
    try{
