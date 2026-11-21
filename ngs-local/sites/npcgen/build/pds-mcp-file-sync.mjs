@@ -8,7 +8,7 @@ import {DEFAULT_PROJECT_FOLDER_MCP_URL,loopbackJsonMCP} from './folder-mcp-loopb
 import {validFolderPath} from './local-recursive-folders.mjs';
 import {createSpaceMachineMcp,spaceMachineConfiguration,fileTools} from './space-machine-mcp.mjs';
 
-const maxChunk=1024*1024,maxEntries=32768;
+const maxChunk=1024*1024,maxEntries=32768,maxObjectLanes=8;
 const hash=/^[a-f0-9]{64}$/;
 const id=/^ngs\.sync\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const project=/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -84,8 +84,27 @@ async function resetSpaceFile(ngs,syncId,path){
  }catch{return false;}
 }
 
-async function pushDestination({scope,pds,ngs,signal,space,onFileError=()=>{}}){
- if(typeof scope!=='string'||!project.test(scope))throw invalid();
+// Bound destination concurrency by paths, not chunks. The same file always
+// owns one lane, with ordered offset and whole-file retry from zero.
+async function fanOut(files,lanes,signal,run){
+ let cursor=0;
+ let fault=null;
+ const take=async()=>{
+  try{
+   while(!fault&&cursor<files.length){
+    signal?.throwIfAborted();
+    const row=files[cursor++];
+    await run(row);
+   }
+  }catch(e){fault??=e;throw e;}
+ };
+ const settled=await Promise.allSettled(Array.from({length:Math.min(files.length,lanes)},take));
+ const failed=settled.find(row=>row.status==='rejected');
+ if(failed)throw failed.reason;
+}
+
+async function pushDestination({scope,pds,ngs,signal,space,concurrency=1,onFileError=()=>{}}){
+ if(typeof scope!=='string'||!project.test(scope)||!Number.isInteger(concurrency)||concurrency<1||concurrency>maxObjectLanes)throw invalid();
  let syncId;
  try{
   const start=await ngs('ngs_file_sync_begin',{scope},{limit:48*1024*1024});
@@ -93,8 +112,7 @@ async function pushDestination({scope,pds,ngs,signal,space,onFileError=()=>{}}){
   const previous=inventory(start,scope);
   const {files,deleted}=changes(await pds.compare(scope,start.files,{includeDeleted:true}),scope,previous);
   let failed=0;
-  for(const row of files){
-   if(signal?.aborted)throw signal.reason;
+  await fanOut(files,concurrency,signal,async row=>{
    try{await pushFile({pds,ngs,scope,syncId,row});}
    catch(first){
     if(!space||signal?.aborted)throw first;
@@ -102,7 +120,7 @@ async function pushDestination({scope,pds,ngs,signal,space,onFileError=()=>{}}){
     if(await resetSpaceFile(ngs,syncId,row.path)){
      if(signal?.aborted)throw signal.reason;
      attempts++;
-     try{await pushFile({pds,ngs,scope,syncId,row});continue;}
+     try{await pushFile({pds,ngs,scope,syncId,row});return;}
      catch(second){
       if(signal?.aborted)throw second;
       reason=second;
@@ -112,7 +130,7 @@ async function pushDestination({scope,pds,ngs,signal,space,onFileError=()=>{}}){
     failed++;
     onFileError(scope,row,reason,attempts);
    }
-  }
+  });
   if(deleted.length){
    // Canonical source may have restored a file while changed files were being sent.
    const candidates=new Map(deleted.map(row=>[row.path,row.sha256]));
@@ -133,8 +151,31 @@ async function pushDestination({scope,pds,ngs,signal,space,onFileError=()=>{}}){
  }
 }
 
-export const pushProjectFiles=options=>pushDestination({...options,space:false});
-export const pushSpaceProjectFiles=options=>pushDestination({...options,space:true});
+export const pushProjectFiles=options=>pushDestination({...options,space:false,concurrency:1});
+export const pushObjectProjectFiles=options=>pushDestination({...options,space:true});
+export const pushSpaceProjectFiles=pushObjectProjectFiles;
+
+// PDS deliberately offers two in-flight fetch slots across *all* callers.
+// Share the two slots across both destination loops, without slowing unrelated
+// control RPCs or serializing target writes. The queue is bounded by our lanes.
+export function sharePdsChunkSlots(call){
+ let busy=0;
+ const waiting=[];
+ const acquire=async()=>{
+  if(busy<2){busy++;return;}
+  await new Promise(resolve=>waiting.push(resolve));
+ };
+ const release=()=>{
+  const next=waiting.shift();
+  if(next)next();else busy--;
+ };
+ return async(name,...args)=>{
+  if(name!=='npc_folder_file_chunk')return await call(name,...args);
+  await acquire();
+  try{return await call(name,...args);}
+  finally{release();}
+ };
+}
 
 // One canonical compare slot is shared by the two destinations. Only compare is queued:
 // a slow/disconnected destination must not hold the PDS slot during its uploads.
@@ -148,7 +189,7 @@ export function sharePdsCompareSlot(pds){
 }
 
 function senderPds(pdsUrl,signal){
- return createFolderMcpClient({call:loopbackJsonMCP(pdsUrl,{
+ return createFolderMcpClient({call:sharePdsChunkSlots(loopbackJsonMCP(pdsUrl,{
   clientName:'pds-canonical-reader',signal,decodeToolError(name,result){
    if(name!=='npc_folders_compare'||result?.content?.length!==1||result.content[0]?.type!=='text')return null;
    const text=result.content[0]?.text;
@@ -158,7 +199,7 @@ function senderPds(pdsUrl,signal){
     return exact(value,'error,status')&&value.error==='FOLDER_BUSY'&&value.status===503?Error('FOLDER_BUSY'):null;
    }catch{return null;}
   },
- })});
+ }))});
 }
 
 /** Repeat, using discovery only within the configured canonical project allowlist. */
@@ -220,18 +261,22 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const {PDS_MCP_URL,NGS_FILE_SYNC_MCP_URL,NGS_FILE_SYNC_PROJECTS}=process.env;
  const controller=new AbortController(),health=startOpsHealthReport({serverName:'pds-mcp'});
  const signal=controller.signal;
+ const lanes=Number(process.env.NGS_FILE_SYNC_OBJECT_LANES??'1');
+ if(!Number.isInteger(lanes)||lanes<1||lanes>maxObjectLanes)throw invalid();
+ const pushObject=options=>pushObjectProjectFiles({...options,concurrency:lanes});
+ const localObject=process.env.NGS_LOCAL_FILE_SYNC_OBJECT_MODE==='1';
  const pds=sharePdsCompareSlot(senderPds(PDS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,signal));
  for(const action of ['SIGTERM','SIGINT'])process.once(action,()=>controller.abort());
  let space;
  if(process.env.NGS_SPACE_FILE_SYNC_ENABLED==='1'){
   try{
    const ngs=createSpaceFileSyncDestination({...spaceMachineConfiguration(),signal});
-   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,push:pushSpaceProjectFiles,
+   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,push:pushObject,
     ...reportFileLoop('space')}).catch(()=>reportFileLoop('space').onError(null));
   }catch{reportFileLoop('space').onError(null,Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED'));}
  }
  try{
   await watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
-   pds,signal,...reportFileLoop('local')});
+   pds,signal,push:localObject?pushObject:pushProjectFiles,...reportFileLoop('local')});
  }finally{controller.abort();await space;health.stop();}
 }

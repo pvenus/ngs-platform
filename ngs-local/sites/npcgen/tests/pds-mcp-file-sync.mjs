@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {test} from 'node:test';
 import {createFolderMcpClient} from '../build/folder-mcp-client.mjs';
-import {pushProjectFiles,pushSpaceProjectFiles,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
+import {pushProjectFiles,pushSpaceProjectFiles,pushObjectProjectFiles,sharePdsChunkSlots,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
 
 const id='ngs.sync.6f56d34f-62ca-42a7-a173-14700d922865';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -191,4 +191,58 @@ test('Space failed middle chunk retries at zero, and repeat failure or uncertain
  assert.deepEqual(offsets.filter(([key])=>key==='recover'),[['recover',1,0],['recover',1,1024*1024],['recover',2,0],['recover',2,1024*1024]]);
  assert.deepEqual(failed,[['files/defer','SPACE_MACHINE_OPERATION_UNAVAILABLE',2],['files/no-reset','SPACE_MACHINE_OPERATION_UNAVAILABLE',1]]);
  assert.deepEqual(offsets.at(-1),['unrelated',1,0]);
+});
+
+test('independent object lanes begin siblings while one slow file waits; all files join before finish',async()=>{
+ const scope='binari',data=Buffer.from('payload'),rows=Array.from({length:9},(_,i)=>row('f'+i,data));
+ const gate=Promise.withResolvers(),started=[],completed=[],numbers=[];
+ let active=0;
+ const pds={
+  async compare(){return {scope,groups:[{folder:'',files:rows}],deleted:[]};},
+  file(){return {body:new ReadableStream({start(c){c.enqueue(data);c.close();}})};},
+ };
+ const ngs=async(name,args)=>{
+  if(name==='ngs_file_sync_begin')return receipt(scope);
+  if(name==='ngs_file_sync_finish'){
+   assert.equal(active,0);assert.equal(completed.length,9);return {ok:true,written:completed.length};
+  }
+  assert.equal(name,'ngs_file_sync_file_chunk');assert.equal(args.offset,0);
+  started.push(args.path);numbers.push(++active);
+  if(args.path==='f0')await gate.promise;
+  await new Promise(setImmediate);
+  --active;completed.push(args.path);
+  return {nextOffset:null};
+ };
+ const pass=pushObjectProjectFiles({scope,pds,ngs,concurrency:4});
+ await new Promise(setImmediate);
+ assert.deepEqual(started,['f0','f1','f2','f3']);
+ assert.equal(completed.length,0);
+ gate.resolve();
+ assert.deepEqual(await pass,{ok:true,written:9,failed:0});
+ assert.equal(new Set(started).size,9);
+ assert.equal(Math.max(...numbers),4);
+ assert.ok(completed.length===9);
+ await assert.rejects(pushObjectProjectFiles({scope,pds,ngs,concurrency:9}),/PDS_NGS_FILE_SYNC_INVALID/);
+});
+
+test('source chunk concurrency capped globally and unrelated compare is never queued behind chunks',async()=>{
+ const release=Promise.withResolvers(),seen=[],max=[];
+ let count=0;
+ const call=sharePdsChunkSlots(async(name,i)=>{
+  if(name==='npc_folders_compare'){seen.push(name);return;}
+  seen.push(i);max.push(++count);
+  try{
+   if(i===0)await release.promise;
+   if(i===1){await release.promise;throw Error('fixture source failure');}
+   await new Promise(setImmediate);
+  }finally{--count;}
+ });
+ const work=Promise.allSettled(Array.from({length:8},(_,i)=>call('npc_folder_file_chunk',i)));
+ await new Promise(setImmediate);
+ await call('npc_folders_compare');
+ assert.deepEqual(seen,[0,1,'npc_folders_compare']);
+ release.resolve();
+ assert.equal((await work).filter(x=>x.status==='fulfilled').length,7);
+ assert.equal(Math.max(...max),2);
+ assert.deepEqual(seen,[0,1,'npc_folders_compare',2,3,4,5,6,7]);
 });
