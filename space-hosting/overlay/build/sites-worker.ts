@@ -3,6 +3,7 @@ import { sharedNgsResponse } from "./shared-ngs-assets";
 import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catalog.mjs";
 import { appProject, siteAppMaster } from "../lib/app-master";
 import { masterPrincipal } from "../lib/master-concept-transport";
+import { createSpaceFileReplica, spaceFileSyncTools } from "./space-file-replica.mjs";
 import { browserQueueResponse, machineResponse } from "./space-machine-routes.mjs";
 import { rejectCleanSpaceRequest } from "./clean-space-guard.mjs";
 import { runWithConnectorBinding } from "../lib/connector-context";
@@ -17,7 +18,8 @@ export default {
       const grant = await appProject(db, siteAppMaster(user), "binari");
       return grant.project_id === "binari" && grant.revoked === 0;
     };
-    const machine = await machineResponse(request,{db,secret});
+    const fileReplica = db && env.BUCKET ? createSpaceFileReplica({db,bucket:env.BUCKET}) : undefined;
+    const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools});
     if (machine) return machine;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize});
     if (browserQueue) return browserQueue;
