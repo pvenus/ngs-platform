@@ -4,7 +4,7 @@ import {dirname,isAbsolute,resolve} from 'node:path';
 export const SPACE_SITE_MCP_URL='https://vinus-npcgen.park-venus0518.chatgpt.site/api/space-machine-mcp';
 const protocol='2026-07-28';
 export const queueTools=Object.freeze(['space_requests_pending','space_requests_ack','space_requests_get']);
-export const fileTools=Object.freeze(['ngs_file_sync_begin','ngs_file_sync_file_chunk','ngs_file_sync_file_reset','ngs_file_sync_file_batch','ngs_file_sync_remove','ngs_file_sync_finish','ngs_file_sync_abort']);
+export const fileTools=Object.freeze(['ngs_file_sync_begin','ngs_file_sync_file_chunk','ngs_file_sync_file_reset','ngs_file_sync_plan','ngs_file_sync_file_failed','ngs_file_sync_remove','ngs_file_sync_finish','ngs_file_sync_abort']);
 const tools=new Set([...queueTools,...fileTools]);
 const fileErrors=new Map([
  ['NGS_FILE_SYNC_INVALID',400],['NGS_FILE_SYNC_SCOPE_DENIED',403],['NGS_FILE_SYNC_TOOL_UNKNOWN',404],
@@ -12,8 +12,7 @@ const fileErrors=new Map([
  ['NGS_FILE_SYNC_CONTENT_MISMATCH',409],['NGS_FILE_SYNC_OFFSET_INVALID',409],['NGS_FILE_SYNC_INCOMPLETE',409],
  ['SPACE_MACHINE_OPERATION_UNAVAILABLE',503],
 ]);
-const maxBody=4*Math.ceil(1024*1024/3)+32*1024,
- maxBatchBody=4*Math.ceil((2*1024*1024)/3)+96*1024,maxReply=48*1024*1024;
+const maxBody=4*Math.ceil(1024*1024/3)+32*1024,maxReply=48*1024*1024;
 const configError=()=>Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED');
 const unavailable=()=>Error('NGS_SPACE_MACHINE_MCP_UNAVAILABLE');
 const denied=()=>Error('NGS_SPACE_MACHINE_MCP_DENIED');
@@ -79,7 +78,7 @@ export function createSpaceMachineMcp({
  return async function call(name,args,{limit=128*1024}={}){
   if(!tools.has(name)||!object(args)||!Number.isSafeInteger(limit)||limit<1||limit>maxReply)throw denied();
   const id=++seq,body=JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}});
-  if(Buffer.byteLength(body)>(name==='ngs_file_sync_file_chunk'?maxBody:name==='ngs_file_sync_file_batch'?maxBatchBody:96*1024))throw denied();
+  if(Buffer.byteLength(body)>(name==='ngs_file_sync_file_chunk'?maxBody:96*1024))throw denied();
   const deadline=AbortSignal.timeout(timeoutMs);
   let response;
   try{

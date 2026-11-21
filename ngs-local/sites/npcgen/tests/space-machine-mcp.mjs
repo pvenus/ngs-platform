@@ -289,19 +289,16 @@ test('Space file transport exposes only an exact allowed error, not arbitrary re
  }
 });
 
-test('larger transport allowance is confined to protected batch tool',async()=>{
+test('wire accepts progress controls but no obsolete batching or oversized non-file call',async()=>{
  const sends=[];
  const call=createSpaceMachineMcp({token:key,platformToken:platform,send:async(_url,init)=>{
-  const req=JSON.parse(init.body);
-  sends.push(req.params.name);
-  return Response.json({jsonrpc:'2.0',id:req.id,result:{isError:false,structuredContent:{}}});
+  const req=JSON.parse(init.body);sends.push(req.params.name);
+  return Response.json({jsonrpc:'2.0',id:req.id,result:{isError:false,structuredContent:{ok:true}}});
  }});
- const chunk=Buffer.alloc(1024*1024,83).toString('base64');
- const item={path:'fixture',sha256:'b'.repeat(64),size:1024*1024,dataBase64:chunk};
- const args={syncId:'fixture',files:[item,{...item,path:'fixture-2'}]};
- assert.deepEqual(await call('ngs_file_sync_file_batch',args),{});
- await assert.rejects(call('ngs_file_sync_file_chunk',args),{message:'NGS_SPACE_MACHINE_MCP_DENIED'});
- await assert.rejects(call('ngs_file_sync_remove',args),{message:'NGS_SPACE_MACHINE_MCP_DENIED'});
- await assert.rejects(call('ngs_file_sync_file_batch',{...args,files:[...args.files,{...item,path:'fixture-3'}]}),{message:'NGS_SPACE_MACHINE_MCP_DENIED'});
- assert.deepEqual(sends,['ngs_file_sync_file_batch']);
+ const syncId='ngs.sync.6f56d34f-62ca-42a7-a173-14700d922865';
+ await call('ngs_file_sync_plan',{syncId,totalFiles:1});
+ await call('ngs_file_sync_file_failed',{syncId,path:'fixture'});
+ await assert.rejects(call('ngs_file_sync_file_batch',{syncId,files:[]}),/NGS_SPACE_MACHINE_MCP_DENIED/);
+ await assert.rejects(call('ngs_file_sync_plan',{syncId,totalFiles:1,payload:'x'.repeat(96*1024)}),/NGS_SPACE_MACHINE_MCP_DENIED/);
+ assert.deepEqual(sends,['ngs_file_sync_plan','ngs_file_sync_file_failed']);
 });

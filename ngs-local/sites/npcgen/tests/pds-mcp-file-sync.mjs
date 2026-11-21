@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {test} from 'node:test';
 import {createFolderMcpClient} from '../build/folder-mcp-client.mjs';
-import {fileSyncDestinationOptions,pushProjectFiles,pushSpaceProjectFiles,pushObjectProjectFiles,sharePdsChunkSlots,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
+import {pushProjectFiles,pushSpaceProjectFiles,pushObjectProjectFiles,shareFileTransferSlot,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
 
 const id='ngs.sync.6f56d34f-62ca-42a7-a173-14700d922865';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -155,9 +155,9 @@ test('two destinations share only the one PDS compare slot and recover after a r
  assert.deepEqual(await second,{ok:true,written:0});
 });
 
-test('Space failed middle chunk retries at zero, and repeat failure or uncertain reset never blocks unrelated file',async()=>{
+test('Space failed final chunk retries at zero, and repeat failure or uncertain reset never blocks unrelated file',async()=>{
  const scope='binari',two=Buffer.alloc(1024*1024+1,65),names=['recover','defer','no-reset','unrelated'];
- const selections=names.map(x=>row('files/'+x,x==='unrelated'?Buffer.from('ok'):two)),started=new Map(),offsets=[],failed=[],reset=[];
+ const selections=names.map(x=>row('files/'+x,x==='unrelated'?Buffer.from('ok'):two)),started=new Map(),offsets=[],failed=[],reset=[],marked=[];
  const pds={
   compare:async()=>({scope,groups:[{folder:'files',files:selections}],deleted:[]}),
   file(_scope,path){
@@ -169,6 +169,8 @@ test('Space failed middle chunk retries at zero, and repeat failure or uncertain
  const ngs=async(name,args)=>{
   if(name==='ngs_file_sync_begin')return receipt(scope);
   if(name==='ngs_file_sync_finish')return {ok:true,written:2};
+  if(name==='ngs_file_sync_plan'){assert.deepEqual(args,{syncId:id,totalFiles:4});return {ok:true};}
+  if(name==='ngs_file_sync_file_failed'){marked.push(args.path);return {ok:true};}
   assert.equal(args.syncId,id);
   const key=args.path.split('/').at(-1);
   if(name==='ngs_file_sync_file_reset'){
@@ -180,189 +182,80 @@ test('Space failed middle chunk retries at zero, and repeat failure or uncertain
   assert.equal(name,'ngs_file_sync_file_chunk');
   offsets.push([key,started.get(key),args.offset]);
   if(args.offset>0&&key!=='unrelated'&&(key!=='recover'||started.get(key)===1))
-   throw Error('SPACE_MACHINE_OPERATION_UNAVAILABLE');
+   throw Error('NGS_FILE_SYNC_CONTENT_MISMATCH');
   const end=args.offset+Buffer.from(args.dataBase64,'base64').byteLength;
   return {nextOffset:end===args.size?null:end};
  };
  const result=await pushSpaceProjectFiles({scope,pds,ngs,onFileError:(_scope,r,e,n)=>failed.push([r.path,e.message,n])});
  assert.deepEqual(result,{ok:true,written:2,failed:2});
  assert.deepEqual([...started],[['recover',2],['defer',2],['no-reset',1],['unrelated',1]]);
- assert.deepEqual(reset,['recover','defer','defer','no-reset']);
+ assert.deepEqual(reset,['recover','defer','no-reset']);
  assert.deepEqual(offsets.filter(([key])=>key==='recover'),[['recover',1,0],['recover',1,1024*1024],['recover',2,0],['recover',2,1024*1024]]);
- assert.deepEqual(failed,[['files/defer','SPACE_MACHINE_OPERATION_UNAVAILABLE',2],['files/no-reset','SPACE_MACHINE_OPERATION_UNAVAILABLE',1]]);
+ assert.deepEqual(failed,[['files/defer','NGS_FILE_SYNC_CONTENT_MISMATCH',2],['files/no-reset','NGS_FILE_SYNC_CONTENT_MISMATCH',1]]);
+ assert.deepEqual(marked,['files/defer','files/no-reset']);
  assert.deepEqual(offsets.at(-1),['unrelated',1,0]);
 });
 
-test('independent object lanes begin siblings while one slow file waits; all files join before finish',async()=>{
- const scope='binari',data=Buffer.from('payload'),rows=Array.from({length:9},(_,i)=>row('f'+i,data));
- const gate=Promise.withResolvers(),started=[],completed=[],numbers=[];
- let active=0;
+test('actual Local/Space users of the same FIFO slot alternate complete files and never overlap chunks',async()=>{
+ const scope='binari',fileSlot=shareFileTransferSlot(),bytes=Buffer.alloc(1024*1024+1,5),events=[];
+ const first=Promise.withResolvers(),wait=Promise.withResolvers(),spacePlanned=Promise.withResolvers();
  const pds={
-  async compare(){return {scope,groups:[{folder:'',files:rows}],deleted:[]};},
-  file(){return {body:new ReadableStream({start(c){c.enqueue(data);c.close();}})};},
+  compare:async()=>({scope,groups:[{folder:'',files:['one','two'].map(path=>row(path,bytes))}],deleted:[]}),
+  file(_scope,path){events.push(['open',path]);return {body:new ReadableStream({start(c){c.enqueue(bytes.subarray(0,1024*1024));c.enqueue(bytes.subarray(1024*1024));c.close();}})};},
  };
- const ngs=async(name,args)=>{
+ const endpoint=label=>async(name,args)=>{
   if(name==='ngs_file_sync_begin')return receipt(scope);
-  if(name==='ngs_file_sync_finish'){
-   assert.equal(active,0);assert.equal(completed.length,9);return {ok:true,written:completed.length};
+  if(name==='ngs_file_sync_plan'){
+   assert.deepEqual(args,{syncId:id,totalFiles:2});
+   if(label==='space')spacePlanned.resolve();
+   return {ok:true};
   }
-  assert.equal(name,'ngs_file_sync_file_chunk');assert.equal(args.offset,0);
-  started.push(args.path);numbers.push(++active);
-  if(args.path==='f0')await gate.promise;
-  await new Promise(setImmediate);
-  --active;completed.push(args.path);
-  return {nextOffset:null};
- };
- const pass=pushObjectProjectFiles({scope,pds,ngs,concurrency:4});
- await new Promise(setImmediate);
- assert.deepEqual(started,['f0','f1','f2','f3']);
- assert.equal(completed.length,0);
- gate.resolve();
- assert.deepEqual(await pass,{ok:true,written:9,failed:0});
- assert.equal(new Set(started).size,9);
- assert.equal(Math.max(...numbers),4);
- assert.ok(completed.length===9);
- await assert.rejects(pushObjectProjectFiles({scope,pds,ngs,concurrency:9}),/PDS_NGS_FILE_SYNC_INVALID/);
-});
-
-test('source chunk concurrency capped globally and unrelated compare is never queued behind chunks',async()=>{
- const release=Promise.withResolvers(),seen=[],max=[];
- let count=0;
- const call=sharePdsChunkSlots(async(name,i)=>{
-  if(name==='npc_folders_compare'){seen.push(name);return;}
-  seen.push(i);max.push(++count);
-  try{
-   if(i===0)await release.promise;
-   if(i===1){await release.promise;throw Error('fixture source failure');}
-   await new Promise(setImmediate);
-  }finally{--count;}
- });
- const work=Promise.allSettled(Array.from({length:8},(_,i)=>call('npc_folder_file_chunk',i)));
- await new Promise(setImmediate);
- await call('npc_folders_compare');
- assert.deepEqual(seen,[0,1,'npc_folders_compare']);
- release.resolve();
- assert.equal((await work).filter(x=>x.status==='fulfilled').length,7);
- assert.equal(Math.max(...max),2);
- assert.deepEqual(seen,[0,1,'npc_folders_compare',2,3,4,5,6,7]);
-});
-
-test('batch count and byte bounds retain order, with larger files on their original stream',async()=>{
- const scope='binari',big=Buffer.alloc(1024*1024+1,42),mid=Buffer.alloc(260*1024,45),tiny=Buffer.from('1');
- const files=new Map([
-  ...Array.from({length:34},(_,i)=>['f'+i,tiny]),['mid1',mid],['mid2',mid],
-  ['large',big],['tail1',mid],['tail2',mid],
- ]);
- const rows=[...files].map(([name,bytes])=>row(name,bytes)),passes=[],reads=[];
- const pds={
-  async compare(){return {scope,groups:[{folder:'',files:rows}],deleted:[]};},
-  file(_scope,path){
-   reads.push(path);const data=files.get(path);
-   return {body:new ReadableStream({start(c){c.enqueue(data.subarray(0,1024*1024));
-    if(data.length>1024*1024)c.enqueue(data.subarray(1024*1024));c.close();}})};
-  },
- };
- const ngs=async(name,args)=>{
-  if(name==='ngs_file_sync_begin')return receipt(scope);
-  if(name==='ngs_file_sync_finish')return {ok:true,written:files.size};
-  assert.equal(args.syncId,id);
-  if(name==='ngs_file_sync_file_batch'){
-   assert.ok(args.files.length<=32);
-   assert.ok(args.files.reduce((n,f)=>n+f.size,0)<=512*1024);
-   for(const f of args.files)assert.deepEqual(Buffer.from(f.dataBase64,'base64'),files.get(f.path));
-   passes.push(args.files.map(f=>f.path));
-   return {results:args.files.map(f=>({path:f.path,sha256:f.sha256,status:'accepted'}))};
-  }
-  assert.equal(name,'ngs_file_sync_file_chunk');assert.equal(args.path,'large');
-  passes.push([args.path,args.offset]);
+  if(name==='ngs_file_sync_finish')return {ok:true,written:2};
+  assert.equal(name,'ngs_file_sync_file_chunk');
+  events.push([label,args.path,args.offset]);
+  if(label==='local'&&args.path==='one'&&args.offset===0){first.resolve();await wait.promise;}
   return {nextOffset:args.offset===0?1024*1024:null};
  };
- assert.deepEqual(await pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true,batchFileLimit:32,batchByteLimit:512*1024}),
-  {ok:true,written:files.size,failed:0});
- assert.deepEqual(passes,[
-  Array.from({length:32},(_,i)=>'f'+i),['f32','f33','mid1'],['mid2'],['large',0],['large',1024*1024],['tail1'],['tail2'],
+ const local=pushObjectProjectFiles({scope,pds,ngs:endpoint('local'),fileSlot});
+ await first.promise;
+ const space=pushSpaceProjectFiles({scope,pds,ngs:endpoint('space'),fileSlot});
+ await spacePlanned.promise;
+ await new Promise(setImmediate);
+ assert.deepEqual(events,[['open','one'],['local','one',0]]);
+ wait.resolve();
+ assert.deepEqual(await Promise.all([local,space]),Array(2).fill({ok:true,written:2,failed:0}));
+ assert.deepEqual(events.filter(x=>x[0]!=='open'),[
+  ['local','one',0],['local','one',1024*1024],['space','one',0],['space','one',1024*1024],
+  ['local','two',0],['local','two',1024*1024],['space','two',0],['space','two',1024*1024],
  ]);
- assert.deepEqual(reads,[...files.keys()]);
- await assert.rejects(pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true,batchFileLimit:33}),/PDS_NGS_FILE_SYNC_INVALID/);
- await assert.rejects(pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true,batchByteLimit:2*1024*1024+1}),/PDS_NGS_FILE_SYNC_INVALID/);
 });
 
-test('definite batch rejection retries only failed member at offset zero and retains accepted receipts',async()=>{
- const scope='binari',body=Buffer.from('content'),files=['good','retry','also-good'].map(path=>row(path,body)),events=[];
+test('unknown final ACK retries from zero, then aborts without failed marker, tombstones, or finish if unresolved',async()=>{
+ const scope='binari',bytes=Buffer.alloc(1024*1024+1,4),stale={path:'old',sha256:sha('old')};
  const pds={
-  async compare(){return {scope,groups:[{folder:'',files}],deleted:[]};},
-  file(){return {body:new ReadableStream({start(c){c.enqueue(body);c.close();}})};},
+  compare:async()=>({scope,groups:[{folder:'',files:[row('new',bytes)]}],deleted:[stale]}),
+  file:()=>({body:new ReadableStream({start(c){c.enqueue(bytes.subarray(0,1024*1024));c.enqueue(bytes.subarray(1024*1024));c.close();}})}),
  };
- const ngs=async(name,args)=>{
-  events.push([name,args.path,args.offset]);
-  if(name==='ngs_file_sync_begin')return receipt(scope);
-  if(name==='ngs_file_sync_file_batch')return {results:args.files.map(({path,sha256})=>path==='retry'?
-   {path,sha256,status:'failed',code:'NGS_FILE_SYNC_UNAVAILABLE'}:{path,sha256,status:'accepted'})};
-  if(name==='ngs_file_sync_file_reset')return {ok:true};
-  if(name==='ngs_file_sync_file_chunk')return {nextOffset:null};
-  if(name==='ngs_file_sync_finish')return {ok:true,written:files.length};
-  assert.fail(name);
- };
- assert.deepEqual(await pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true}),{ok:true,written:3,failed:0});
- assert.deepEqual(events,[
-  ['ngs_file_sync_begin',undefined,undefined],['ngs_file_sync_file_batch',undefined,undefined],
-  ['ngs_file_sync_file_reset','retry',undefined],['ngs_file_sync_file_chunk','retry',0],['ngs_file_sync_finish',undefined,undefined],
- ]);
-});
-
-test('lost or malformed batch ACK reconciles exact same-pass writes; unresolved ACK skips finish/tombstones',async()=>{
- const scope='binari',body=Buffer.from('content'),files=['a','b'].map(path=>row(path,body));
- const obsolete={path:'deleted',sha256:sha('old')};
- let comparisons;
- for(const resolved of [true,false]){
-  const calls=[];
-  comparisons=0;
-  const pds={
-   async compare(){return ++comparisons===1?{scope,groups:[{folder:'',files}],deleted:[obsolete]}:{scope,groups:[],deleted:[obsolete]};},
-   file(){return {body:new ReadableStream({start(c){c.enqueue(body);c.close();}})};},
-  };
+ for(const lost of [1,2]){
+  const calls=[];let final=0;
   const ngs=async(name,args)=>{
-   calls.push([name,args.path,args.offset]);
-   if(name==='ngs_file_sync_begin')return receipt(scope,[obsolete]);
-   assert.equal(args.syncId,id);
-   if(name==='ngs_file_sync_file_batch'){
-    if(resolved)throw Error('NETWORK_ACK_LOST');
-    return {results:[{path:'a',sha256:files[0].sha256,status:'accepted'}]};
-   }
+   calls.push([name,args?.offset]);
+   if(name==='ngs_file_sync_begin')return receipt(scope,[stale]);
    if(name==='ngs_file_sync_file_chunk'){
-    assert.equal(args.offset,0);
-    assert.equal(args.sha256,files[0].sha256);
-    if(!resolved&&args.path==='b')throw Error('NETWORK_ACK_LOST');
+    if(args.offset===0)return {nextOffset:1024*1024};
+    if(++final<=lost)throw Error('NGS_SPACE_MACHINE_MCP_UNAVAILABLE');
     return {nextOffset:null};
    }
+   if(name==='ngs_file_sync_finish')return {ok:true,written:1};
    if(name==='ngs_file_sync_remove')return {removed:true};
-   if(name==='ngs_file_sync_finish')return {ok:true,written:2};
-   if(name==='ngs_file_sync_abort')return {ok:true};
-   assert.fail(name);
+   return {ok:true};
   };
-  const work=pushObjectProjectFiles({scope,pds,ngs,batchSmallFiles:true});
-  if(resolved)assert.deepEqual(await work,{ok:true,written:2,failed:0});
-  else await assert.rejects(work,/NGS_FILE_SYNC_BATCH_ACK_UNRESOLVED/);
-  assert.deepEqual(calls.map(row=>row[0]),[
-   'ngs_file_sync_begin','ngs_file_sync_file_batch','ngs_file_sync_file_chunk','ngs_file_sync_file_chunk',
-   ...(resolved?['ngs_file_sync_remove','ngs_file_sync_finish']:['ngs_file_sync_abort']),
-  ]);
-  assert.equal(comparisons,resolved?2:1);
+  const work=pushSpaceProjectFiles({scope,pds,ngs});
+  if(lost===1)assert.deepEqual(await work,{ok:true,written:1,failed:0});
+  else await assert.rejects(work,/NGS_FILE_SYNC_FILE_ACK_UNRESOLVED/);
+  assert.deepEqual(calls.filter(x=>x[0].endsWith('file_chunk')).map(x=>x[1]),[0,1024*1024,0,1024*1024]);
+  assert.equal(calls.filter(x=>x[0].endsWith('file_failed')).length,0);
+  assert.equal(calls.filter(x=>x[0].endsWith('remove')).length,lost===1?1:0);
+  assert.equal(calls.at(-1)[0],lost===1?'ngs_file_sync_finish':'ngs_file_sync_abort');
  }
-});
-
-test('strict per-destination settings select the measured shape without coupling Local and Space',()=>{
- const env={
-  NGS_LOCAL_FILE_SYNC_BATCH_ENABLED:'1',NGS_LOCAL_FILE_SYNC_BATCH_FILES:'32',
-  NGS_LOCAL_FILE_SYNC_BATCH_RAW_BYTES:'1048576',NGS_LOCAL_FILE_SYNC_LANES:'4',
-  NGS_SPACE_FILE_SYNC_BATCH_ENABLED:'1',NGS_SPACE_FILE_SYNC_LANES:'2',
- };
- assert.deepEqual(fileSyncDestinationOptions(env,'local'),{concurrency:4,batchSmallFiles:true,batchFileLimit:32,batchByteLimit:1048576});
- assert.deepEqual(fileSyncDestinationOptions(env,'space'),{concurrency:2,batchSmallFiles:true,batchFileLimit:32,batchByteLimit:1048576});
- assert.deepEqual(fileSyncDestinationOptions({},'space'),{concurrency:1,batchSmallFiles:false,batchFileLimit:32,batchByteLimit:1048576});
- env.NGS_SPACE_FILE_SYNC_BATCH_FILES='33';
- assert.equal(fileSyncDestinationOptions(env,'local').batchFileLimit,32);
- assert.throws(()=>fileSyncDestinationOptions(env,'space'),/PDS_NGS_FILE_SYNC_INVALID/);
- assert.throws(()=>fileSyncDestinationOptions({...env,NGS_LOCAL_FILE_SYNC_LANES:'4.0'},'local'),/PDS_NGS_FILE_SYNC_INVALID/);
- assert.throws(()=>fileSyncDestinationOptions({...env,NGS_LOCAL_FILE_SYNC_BATCH_RAW_BYTES:'2097153'},'local'),/PDS_NGS_FILE_SYNC_INVALID/);
 });

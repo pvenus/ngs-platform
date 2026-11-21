@@ -8,12 +8,12 @@ import {DEFAULT_PROJECT_FOLDER_MCP_URL,loopbackJsonMCP} from './folder-mcp-loopb
 import {validFolderPath} from './local-recursive-folders.mjs';
 import {createSpaceMachineMcp,spaceMachineConfiguration,fileTools} from './space-machine-mcp.mjs';
 
-const maxChunk=1024*1024,maxEntries=32768,maxObjectLanes=8;
-const maxBatchFiles=32,maxBatchBytes=2*maxChunk;
-const batchFailureCodes=new Set([
- 'NGS_FILE_SYNC_CONTENT_MISMATCH','NGS_FILE_SYNC_REPLICA_CHANGED',
- 'NGS_FILE_SYNC_OFFSET_INVALID','NGS_FILE_SYNC_INCOMPLETE','NGS_FILE_SYNC_UNAVAILABLE',
+const maxChunk=1024*1024,maxEntries=32768;
+const definiteChunkFailures=new Set([
+ 'NGS_FILE_SYNC_INVALID','NGS_FILE_SYNC_CONTENT_MISMATCH','NGS_FILE_SYNC_REPLICA_CHANGED',
+ 'NGS_FILE_SYNC_OFFSET_INVALID','NGS_FILE_SYNC_INCOMPLETE',
 ]);
+const direct=run=>run();
 const hash=/^[a-f0-9]{64}$/;
 const id=/^ngs\.sync\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const project=/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
@@ -59,16 +59,24 @@ function changes(value,scope,previous){
  return {files,deleted};
 }
 
-async function pushFile({pds,ngs,scope,syncId,row}){
+async function pushFile({pds,ngs,scope,syncId,row,signal,unknownFinal=()=>{}}){
  const reader=pds.file(scope,row.path,row.sha256,row.size).body.getReader();
  const hash=createHash('sha256');let offset=0;
  const send=async bytes=>{
-  const reply=await ngs('ngs_file_sync_file_chunk',{syncId,...row,offset,dataBase64:Buffer.from(bytes).toString('base64')});
-  offset+=bytes.byteLength;
-  if(!exact(reply,'nextOffset')||reply.nextOffset!==(offset===row.size?null:offset))throw invalid();
+  signal?.throwIfAborted();
+  const end=offset+bytes.byteLength;
+  try{
+   const reply=await ngs('ngs_file_sync_file_chunk',{syncId,...row,offset,dataBase64:Buffer.from(bytes).toString('base64')});
+   if(!exact(reply,'nextOffset')||reply.nextOffset!==(end===row.size?null:end))throw invalid();
+  }catch(error){
+   if(end===row.size&&!definiteChunkFailures.has(error?.message))unknownFinal();
+   throw error;
+  }
+  offset=end;
  };
  try{
   for(;;){
+   signal?.throwIfAborted();
    const {done,value}=await reader.read();
    if(done)break;
    if(!(value instanceof Uint8Array)||!value.byteLength||value.byteLength>maxChunk||value.byteLength>row.size-offset)throw invalid();
@@ -82,164 +90,47 @@ async function pushFile({pds,ngs,scope,syncId,row}){
  }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 
-async function resetSpaceFile(ngs,syncId,path){
- try{
-  const v=await ngs('ngs_file_sync_file_reset',{syncId,path});
-  return exact(v,'ok')&&v.ok===true;
- }catch{return false;}
+async function control(ngs,name,args){
+ const reply=await ngs('ngs_file_sync_'+name,args);
+ if(!exact(reply,'ok')||reply.ok!==true)throw invalid();
 }
 
-// Only adjacent single-chunk files are batched so the original priority order
-// is preserved. Buffers are materialized one bounded batch at a time.
-function batchUnits(files,fileLimit,byteLimit){
- const units=[];
- let group=[],bytes=0;
- const flush=()=>{if(group.length)units.push({group});group=[];bytes=0;};
- for(const row of files){
-  if(row.size>Math.min(maxChunk,byteLimit)){flush();units.push({row});continue;}
-  if(group.length===fileLimit||bytes+row.size>byteLimit)flush();
-  group.push(row);bytes+=row.size;
- }
- flush();
- return units;
-}
-
-async function prepareSmall(pds,scope,row,signal){
- const reader=pds.file(scope,row.path,row.sha256,row.size).body.getReader();
- const bytes=Buffer.alloc(row.size);
- let at=0;
- try{
-  for(;;){
-   signal?.throwIfAborted();
-   const {done,value}=await reader.read();
-   if(done)break;
-   if(!(value instanceof Uint8Array)||!value.byteLength||value.byteLength>row.size-at)throw invalid();
-   bytes.set(value,at);at+=value.byteLength;
-  }
-  if(at!==row.size||createHash('sha256').update(bytes).digest('hex')!==row.sha256)throw invalid();
-  return {...row,dataBase64:bytes.toString('base64')};
- }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
-}
-
-function batchAck(value,files){
- if(!exact(value,'results')||!Array.isArray(value.results)||value.results.length!==files.length)return null;
- for(let i=0;i<files.length;i++){
-  const result=value.results[i],row=files[i];
-  if(result?.path!==row.path||result.sha256!==row.sha256)return null;
-  if(result.status==='accepted'&&exact(result,'path,sha256,status'))continue;
-  if(result.status==='failed'&&exact(result,'code,path,sha256,status')&&batchFailureCodes.has(result.code))continue;
-  return null;
- }
- return value.results;
-}
-
-async function sendPreparedAtZero(ngs,syncId,file){
- const r=await ngs('ngs_file_sync_file_chunk',{syncId,...file,offset:0});
- if(!exact(r,'nextOffset')||r.nextOffset!==null)throw Error('NGS_FILE_SYNC_BATCH_ACK_UNRESOLVED');
-}
-
-async function reconcileBatch(ngs,syncId,files,signal){
- // Reply loss is different from a definite rejection. Never reset a possible
- // publication: the existing same-pass receipt path recognizes exact final
- // bytes at offset zero, or completes that same immutable single-file write.
- let unclear=false;
- for(const file of files){
-  signal?.throwIfAborted();
-  try{await sendPreparedAtZero(ngs,syncId,file);}
-  catch{unclear=true;}
- }
- if(unclear)throw Error('NGS_FILE_SYNC_BATCH_ACK_UNRESOLVED');
-}
-
-// Bound destination concurrency by paths, not chunks. The same file always
-// owns one lane, with ordered offset and whole-file retry from zero.
-async function fanOut(files,lanes,signal,run){
- let cursor=0;
- let fault=null;
- const take=async()=>{
-  try{
-   while(!fault&&cursor<files.length){
-    signal?.throwIfAborted();
-    const row=files[cursor++];
-    await run(row);
-   }
-  }catch(e){fault??=e;throw e;}
- };
- const settled=await Promise.allSettled(Array.from({length:Math.min(files.length,lanes)},take));
- const failed=settled.find(row=>row.status==='rejected');
- if(failed)throw failed.reason;
-}
-
-async function pushDestination({scope,pds,ngs,signal,space,concurrency=1,batchSmallFiles=false,
- batchFileLimit=maxBatchFiles,batchByteLimit=maxBatchBytes,onFileError=()=>{}}){
- if(typeof scope!=='string'||!project.test(scope)||!Number.isInteger(concurrency)||concurrency<1||concurrency>maxObjectLanes||
-  batchSmallFiles&&(!Number.isInteger(batchFileLimit)||batchFileLimit<1||batchFileLimit>maxBatchFiles||
-   !Number.isInteger(batchByteLimit)||batchByteLimit<1||batchByteLimit>maxBatchBytes))throw invalid();
+async function pushDestination({scope,pds,ngs,signal,object=false,fileSlot=direct,onFileError=()=>{}}){
+ if(typeof scope!=='string'||!project.test(scope)||typeof fileSlot!=='function')throw invalid();
  let syncId;
  try{
   const start=await ngs('ngs_file_sync_begin',{scope},{limit:48*1024*1024});
   if(id.test(start?.syncId??''))syncId=start.syncId;
   const previous=inventory(start,scope);
   const {files,deleted}=changes(await pds.compare(scope,start.files,{includeDeleted:true}),scope,previous);
+  if(object)await control(ngs,'plan',{syncId,totalFiles:files.length});
   let failed=0;
-  const sendFile=async row=>{
-   try{await pushFile({pds,ngs,scope,syncId,row});}
-   catch(first){
-    if(!space||signal?.aborted)throw first;
-    let reason=first,attempts=1;
-    if(await resetSpaceFile(ngs,syncId,row.path)){
-     if(signal?.aborted)throw signal.reason;
-     attempts++;
-     try{await pushFile({pds,ngs,scope,syncId,row});return;}
-     catch(second){
-      if(signal?.aborted)throw second;
-      reason=second;
-      await resetSpaceFile(ngs,syncId,row.path);
-     }
+  for(const row of files){
+   await fileSlot(async()=>{
+    signal?.throwIfAborted();
+    let uncertain=false,reason,attempts=1;
+    const fileArgs={pds,ngs,scope,syncId,row,signal,unknownFinal:()=>{uncertain=true;}};
+    try{await pushFile(fileArgs);return;}
+    catch(error){if(!object||signal?.aborted)throw error;reason=error;}
+    try{await control(ngs,'file_reset',{syncId,path:row.path});attempts++;}
+    catch{
+     signal?.throwIfAborted();
+     if(uncertain)throw Error('NGS_FILE_SYNC_FILE_ACK_UNRESOLVED');
     }
+    if(attempts===2){
+     try{await pushFile(fileArgs);return;}
+     catch(error){signal?.throwIfAborted();reason=error;}
+    }
+    // An ambiguous final chunk might already be published. A full retry with
+    // the exact same bytes resolves it; otherwise don't invent failure or finish.
+    if(uncertain)throw Error('NGS_FILE_SYNC_FILE_ACK_UNRESOLVED');
+    // file_failed settles the path (and fences any private partial upload) only
+    // after a definite failure, so subsequent paths can proceed independently.
+    await control(ngs,'file_failed',{syncId,path:row.path});
     failed++;
     onFileError(scope,row,reason,attempts);
-   }
-  };
-  if(batchSmallFiles&&space){
-   await fanOut(batchUnits(files,batchFileLimit,batchByteLimit),concurrency,signal,async unit=>{
-    if(unit.row)return await sendFile(unit.row);
-    const prepared=[];
-    for(const row of unit.group){
-     try{prepared.push(await prepareSmall(pds,scope,row,signal));}
-     catch{
-      signal?.throwIfAborted();
-      // Failed before network publication: one new read from offset zero, no reset needed.
-      try{prepared.push(await prepareSmall(pds,scope,row,signal));}
-      catch(second){signal?.throwIfAborted();failed++;onFileError(scope,row,second,2);}
-     }
-    }
-    if(!prepared.length)return;
-    signal?.throwIfAborted();
-    let acknowledged;
-    try{acknowledged=batchAck(await ngs('ngs_file_sync_file_batch',{syncId,files:prepared}),prepared);}
-    catch{acknowledged=null;}
-    if(!acknowledged)return await reconcileBatch(ngs,syncId,prepared,signal);
-    for(let i=0;i<acknowledged.length;i++){
-     const result=acknowledged[i];
-     if(result.status==='accepted')continue;
-     const row=prepared[i];
-     signal?.throwIfAborted();
-     if(!await resetSpaceFile(ngs,syncId,row.path)){
-      failed++;onFileError(scope,row,Error(result.code),1);continue;
-     }
-     signal?.throwIfAborted();
-     try{await sendPreparedAtZero(ngs,syncId,row);}
-     catch(error){
-      signal?.throwIfAborted();
-      // Treat only a closed list of fixed receiver rejections as definite.
-      // Transport loss after the retry must reconcile before deletions/finish.
-      if(!batchFailureCodes.has(error?.message))await reconcileBatch(ngs,syncId,[row],signal);
-      else{failed++;onFileError(scope,row,error,2);}
-     }
-    }
    });
-  }else await fanOut(files,concurrency,signal,sendFile);
+  }
   if(deleted.length){
    // Canonical source may have restored a file while changed files were being sent.
    const candidates=new Map(deleted.map(row=>[row.path,row.sha256]));
@@ -253,36 +144,25 @@ async function pushDestination({scope,pds,ngs,signal,space,concurrency=1,batchSm
   const result=await ngs('ngs_file_sync_finish',{syncId});
   if(!exact(result,'ok,written')||result.ok!==true||!Number.isSafeInteger(result.written)||result.written<0||result.written>files.length)
    throw invalid();
-  return space?{...result,failed}:result;
+  return object?{...result,failed}:result;
  }catch(error){
   if(syncId)try{await ngs('ngs_file_sync_abort',{syncId});}catch{}
   throw error;
  }
 }
 
-export const pushProjectFiles=options=>pushDestination({...options,space:false,concurrency:1,batchSmallFiles:false});
-export const pushObjectProjectFiles=options=>pushDestination({...options,space:true});
+export const pushProjectFiles=options=>pushDestination(options);
+export const pushObjectProjectFiles=options=>pushDestination({...options,object:true});
 export const pushSpaceProjectFiles=pushObjectProjectFiles;
 
-// PDS deliberately offers two in-flight fetch slots across *all* callers.
-// Share the two slots across both destination loops, without slowing unrelated
-// control RPCs or serializing target writes. The queue is bounded by our lanes.
-export function sharePdsChunkSlots(call){
- let busy=0;
- const waiting=[];
- const acquire=async()=>{
-  if(busy<2){busy++;return;}
-  await new Promise(resolve=>waiting.push(resolve));
- };
- const release=()=>{
-  const next=waiting.shift();
-  if(next)next();else busy--;
- };
- return async(name,...args)=>{
-  if(name!=='npc_folder_file_chunk')return await call(name,...args);
-  await acquire();
-  try{return await call(name,...args);}
-  finally{release();}
+// A file, including its recovery, holds the shared slot until it settles.
+// Local and Space keep independent passes and can alternate at file boundaries.
+export function shareFileTransferSlot(){
+ let tail=Promise.resolve();
+ return run=>{
+  const next=tail.then(run);
+  tail=next.then(()=>{},()=>{});
+  return next;
  };
 }
 
@@ -298,7 +178,7 @@ export function sharePdsCompareSlot(pds){
 }
 
 function senderPds(pdsUrl,signal){
- return createFolderMcpClient({call:sharePdsChunkSlots(loopbackJsonMCP(pdsUrl,{
+ return createFolderMcpClient({call:loopbackJsonMCP(pdsUrl,{
   clientName:'pds-canonical-reader',signal,decodeToolError(name,result){
    if(name!=='npc_folders_compare'||result?.content?.length!==1||result.content[0]?.type!=='text')return null;
    const text=result.content[0]?.text;
@@ -308,15 +188,21 @@ function senderPds(pdsUrl,signal){
     return exact(value,'error,status')&&value.error==='FOLDER_BUSY'&&value.status===503?Error('FOLDER_BUSY'):null;
    }catch{return null;}
   },
- }))});
+ })});
 }
 
 /** Repeat, using discovery only within the configured canonical project allowlist. */
 export async function watchPdsMcpFileSync({
  projects,pdsUrl=DEFAULT_PROJECT_FOLDER_MCP_URL,ngsUrl,
- now=()=>performance.now(),sleep=pause,signal,onResult=()=>{},onError=()=>{},onFileError,push=pushProjectFiles,
+ now=()=>performance.now(),sleep=pause,signal,fileSlot,onResult=()=>{},onError=()=>{},onFileError,push=pushProjectFiles,
  pds=senderPds(pdsUrl,signal),
- ngs=loopbackJsonMCP(ngsUrl,{clientName:'pds-ngs-file-sender',signal}),
+ ngs=loopbackJsonMCP(ngsUrl,{clientName:'pds-ngs-file-sender',signal,decodeToolError(name,result){
+  if(name!=='ngs_file_sync_file_chunk')return null;
+  const failure=result?.structuredContent;
+  const status=failure?.error==='NGS_FILE_SYNC_INVALID'?400:409;
+  return exact(failure,'error,status')&&failure.status===status&&definiteChunkFailures.has(failure.error)
+   ?Error(failure.error):null;
+ }}),
 }={}){
  if(!Array.isArray(projects)||!projects.length||projects.length>maxEntries||
   projects.some(item=>typeof item!=='string'||!project.test(item))||new Set(projects).size!==projects.length)throw invalid();
@@ -337,7 +223,7 @@ export async function watchPdsMcpFileSync({
    for(const scope of projects){
     if(signal?.aborted)return;
     if(!discovered.has(scope))continue;
-    try{onResult(scope,await push({scope,pds,ngs,signal,onFileError}));}
+    try{onResult(scope,await push({scope,pds,ngs,signal,fileSlot,onFileError}));}
     catch(error){if(!signal?.aborted)onError(scope,error);}
    }
   }catch(error){if(!signal?.aborted)onError(null,error);}
@@ -365,46 +251,25 @@ function reportFileLoop(destination){
  };
 }
 
-// Each destination may turn on batching and lanes independently. The default
-// batch shape is the exact measured 32-file / 1 MiB raw shape; legacy remains
-// serial, and configuring a disabled Space destination cannot affect Local.
-export function fileSyncDestinationOptions(env,destination){
- const prefix=destination==='local'?'NGS_LOCAL_FILE_SYNC_':destination==='space'?'NGS_SPACE_FILE_SYNC_':null;
- if(!prefix)throw invalid();
- const bounded=(value,fallback,max)=>{
-  if(value===undefined)return fallback;
-  if(typeof value!=='string'||!/^[1-9][0-9]{0,7}$/.test(value)||Number(value)>max)throw invalid();
-  return Number(value);
- };
- return {
-  concurrency:bounded(env[prefix+'LANES']??env.NGS_FILE_SYNC_OBJECT_LANES,1,maxObjectLanes),
-  batchSmallFiles:env[prefix+'BATCH_ENABLED']==='1',
-  batchFileLimit:bounded(env[prefix+'BATCH_FILES'],32,maxBatchFiles),
-  batchByteLimit:bounded(env[prefix+'BATCH_RAW_BYTES'],maxChunk,maxBatchBytes),
- };
-}
-
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==3||process.argv[2]!=='--watch')throw Error('Usage: pds-mcp-file-sync.mjs --watch');
  const {PDS_MCP_URL,NGS_FILE_SYNC_MCP_URL,NGS_FILE_SYNC_PROJECTS}=process.env;
  const controller=new AbortController(),health=startOpsHealthReport({serverName:'pds-mcp'});
  const signal=controller.signal;
  const localObject=process.env.NGS_LOCAL_FILE_SYNC_OBJECT_MODE==='1';
- const localOptions=localObject?fileSyncDestinationOptions(process.env,'local'):null;
- const forDestination=limits=>options=>pushObjectProjectFiles({...options,...limits});
+ const fileSlot=shareFileTransferSlot();
  const pds=sharePdsCompareSlot(senderPds(PDS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,signal));
  for(const action of ['SIGTERM','SIGINT'])process.once(action,()=>controller.abort());
  let space;
  if(process.env.NGS_SPACE_FILE_SYNC_ENABLED==='1'){
   try{
-   const limits=fileSyncDestinationOptions(process.env,'space');
    const ngs=createSpaceFileSyncDestination({...spaceMachineConfiguration(),signal});
-   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,push:forDestination(limits),
+   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,fileSlot,push:pushSpaceProjectFiles,
     ...reportFileLoop('space')}).catch(()=>reportFileLoop('space').onError(null));
   }catch{reportFileLoop('space').onError(null,Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED'));}
  }
  try{
   await watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
-   pds,signal,push:localOptions?forDestination(localOptions):pushProjectFiles,...reportFileLoop('local')});
+   pds,signal,fileSlot,push:localObject?pushObjectProjectFiles:pushProjectFiles,...reportFileLoop('local')});
  }finally{controller.abort();await space;health.stop();}
 }
