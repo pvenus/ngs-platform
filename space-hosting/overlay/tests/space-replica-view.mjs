@@ -8,14 +8,15 @@ const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../..
 const mod=(path,filename)=>({type:'ESModule',path,contents:readFileSync(here(filename),'utf8')});
 const mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  modules:[{type:'ESModule',path:'test.mjs',contents:`
- import {createSpaceFileReplica} from './storage.mjs';
+ import {createSpaceFileReplica} from './build/space-file-replica.mjs';
  import {spaceReplicaView} from './view.mjs';
  export default {fetch(request,env){
   const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
   return spaceReplicaView(request,replica,{authorize:async (user,project)=>user.userId==='owner-fixture'&&project==='binari'})
    .then(response=>response??new Response(null,{status:404}));
  }};
- `},mod('storage.mjs','../build/space-file-replica.mjs'),mod('view.mjs','../build/space-replica-view.mjs')],
+ `},mod('build/space-file-replica.mjs','../build/space-file-replica.mjs'),
+ mod('ngs-local/sites/npcgen/build/object-replica.mjs','../../../ngs-local/sites/npcgen/build/object-replica.mjs'),mod('view.mjs','../build/space-replica-view.mjs')],
 });
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const auth={'oai-authenticated-user-id':'owner-fixture','oai-authenticated-user-email':'owner@example.invalid'};

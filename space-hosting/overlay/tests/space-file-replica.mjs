@@ -6,13 +6,15 @@ import {createRequire} from 'node:module';
 
 const here=base=>new URL(base,import.meta.url);
 const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../../../sites/npcgen/package.json'))('miniflare');
-const core=readFileSync(here('../build/space-file-replica.mjs'),'utf8');
+const receiver=readFileSync(here('../build/space-file-replica.mjs'),'utf8');
+const sourcePath='ngs-local/sites/npcgen/build/object-replica.mjs';
+const core=readFileSync(here('../../../'+sourcePath),'utf8');
 const schema=readFileSync(here('../drizzle/0014_space_file_replica_versions.sql'),'utf8');
 const root='ngs-replica/v1/binari/',other='legacy/untouched';
 const mini=new Miniflare({
  d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  modules:[{type:'ESModule',path:'test.mjs',contents:`
- import {createSpaceFileReplica} from './core.mjs';
+ import {createSpaceFileReplica} from './build/space-file-replica.mjs';
  export default {async fetch(request,env){
   const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
   const {method,args}=await request.json();
@@ -25,7 +27,8 @@ const mini=new Miniflare({
    return Response.json(result);
   }catch(e){return Response.json({message:e.message},{status:e.status??500});}
  }};
- `},{type:'ESModule',path:'core.mjs',contents:core}],
+ `},{type:'ESModule',path:'build/space-file-replica.mjs',contents:receiver},
+ {type:'ESModule',path:sourcePath,contents:core}],
 });
 const send=(method,args)=>mini.dispatchFetch('http://receiver.invalid',{method:'POST',body:JSON.stringify({method,args})});
 const rpc=async (method,args,status=200)=>{

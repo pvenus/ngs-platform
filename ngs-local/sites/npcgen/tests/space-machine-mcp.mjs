@@ -207,7 +207,7 @@ test('genuine PDS MCP → pinned machine HTTP envelope → actual hosted D1/R2 r
  const {loopbackFolderMCP}=await import('../build/folder-mcp-loopback.mjs');
  const root=mkdtempSync(join(realpathSync(tmpdir()),'ngs-space-real-file-')),canonical=join(root,'canonical-files');
  const scope='binari',target='assets/result.bin',physical=join(canonical,scope,target);
- const original=Buffer.alloc(1024*1024+13,37),published='ngs-replica/v1/binari/files/'+target;
+ const original=Buffer.alloc(1024*1024+13,37);
  mkdirSync(join(canonical,scope,'assets'),{recursive:true,mode:0o700});
  writeFileSync(join(canonical,scope,'project.json'),'{"name":"fixture"}',{mode:0o600});
  writeFileSync(physical,original,{mode:0o600});
@@ -233,20 +233,24 @@ with ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
  symlinkSync(fileURLToPath(new URL('../../../',import.meta.url)),join(root,'ngs-local'),'dir');
  const {machineResponse}=await import(pathToFileURL(join(root,'build','space-machine-routes.mjs')).href);
  const source=readFileSync(join(fileOverlay,'build','space-file-replica.mjs'),'utf8');
- const {spaceFileSyncTools}=await import(pathToFileURL(join(fileOverlay,'build','space-file-replica.mjs')).href);
+ const core=readFileSync(new URL('../build/object-replica.mjs',import.meta.url),'utf8');
+ const {objectReplicaSyncTools:spaceFileSyncTools}=await import('../build/object-replica.mjs');
+ const {pushSpaceProjectFiles}=await import('../build/pds-mcp-file-sync.mjs');
  const {Miniflare}=createRequire(process.env.NGS_SPACE_TEST_PACKAGE_JSON)('miniflare');
- mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',
+ mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
   modules:[{type:'ESModule',path:'test.mjs',contents:`
-   import {createSpaceFileReplica} from './replica.mjs';
+   import {createSpaceFileReplica} from './build/space-file-replica.mjs';
    export default {async fetch(req,env){
     const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
     const {name,args}=await req.json();
     try{return Response.json(await replica.call(name,args));}
     catch(error){return Response.json({code:error.message},{status:error.status??500});}
    }};
-  `},{type:'ESModule',path:'replica.mjs',contents:source}]});
+  `},{type:'ESModule',path:'build/space-file-replica.mjs',contents:source},
+     {type:'ESModule',path:'ngs-local/sites/npcgen/build/object-replica.mjs',contents:core}]});
  const db=await mini.getD1Database('DB'),bucket=await mini.getR2Bucket('BUCKET');
- await db.prepare(readFileSync(join(fileOverlay,'drizzle','0012_space_file_replica_sync.sql'),'utf8')).run();
+ const migration=readFileSync(join(fileOverlay,'drizzle','0014_space_file_replica_versions.sql'),'utf8');
+ for(const sql of migration.split('--> statement-breakpoint'))await db.prepare(sql).run();
  await bucket.put('legacy/untouched','older untouched bytes');
  const fileReplica={async call(name,args){
   const r=await mini.dispatchFetch('http://fixture.invalid',{method:'POST',body:JSON.stringify({name,args})});
@@ -256,14 +260,15 @@ with ThreadingHTTPServer(('127.0.0.1',0),Handler) as server:
  }};
  const ngs=createSpaceFileSyncDestination({token:key,platformToken:platform,send:(url,req)=>machineResponse(new Request(url,req),
   {secret:key,fileReplica,fileTools:spaceFileSyncTools})});
- assert.deepEqual(await pushProjectFiles({scope,pds,ngs}),{ok:true,written:2});
- const current=await bucket.get(published);
+ assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs}),{ok:true,written:2,failed:0});
+ const currentVersion=()=>db.prepare('SELECT object_key FROM ngs_replica_version_v2 WHERE path=? ORDER BY version DESC LIMIT 1').bind(target).first();
+ const published=(await currentVersion()).object_key,current=await bucket.get(published);
  assert.deepEqual(Buffer.from(await current.arrayBuffer()),original);
- assert.deepEqual(await pushProjectFiles({scope,pds,ngs}),{ok:true,written:0});
+ assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs}),{ok:true,written:0,failed:0});
  rmSync(physical); // Only the disposable fixture defines this authoritative removal.
- assert.deepEqual(await pushProjectFiles({scope,pds,ngs}),{ok:true,written:0});
- assert.equal((await bucket.head(published)).customMetadata.removed,'1');
- const previous=await bucket.get('ngs-replica/v1/binari/recovery/'+sha(original));
+ assert.deepEqual(await pushSpaceProjectFiles({scope,pds,ngs}),{ok:true,written:0,failed:0});
+ assert.equal((await currentVersion()).object_key,null);
+ const previous=await bucket.get(published);
  assert.deepEqual(Buffer.from(await previous.arrayBuffer()),original);
  assert.equal(await (await bucket.get('legacy/untouched')).text(),'older untouched bytes');
 });

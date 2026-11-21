@@ -8,7 +8,7 @@ const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../..
 const source=(path,relative)=>({type:'ESModule',path,contents:readFileSync(here(relative),'utf8')});
 const shared='ngs-local/sites/npcgen/build/';
 const sharedRoot=existsSync(here('../'+shared+'npc-workspace.mjs'))?'../':'../../../';
-const files=['npc-workspace.mjs','project-workspace-view.mjs','workspace-read-storage.mjs','workspace-read-registry.mjs','local-concept-category-contract.mjs'];
+const files=['object-replica.mjs','npc-workspace.mjs','project-workspace-view.mjs','workspace-read-storage.mjs','workspace-read-registry.mjs','local-concept-category-contract.mjs'];
 const mini=new Miniflare({compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  d1Databases:['DB'],r2Buckets:['BUCKET'],modules:[
  {type:'ESModule',path:'test.mjs',contents:`
