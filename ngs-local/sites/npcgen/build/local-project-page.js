@@ -103,11 +103,11 @@ const spaceSession=session=>session?.state==='authenticated'&&session.backend===
   exact(session,'backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state')&&session.queueEnabled===true&&
   typeof session.readOnly==='boolean'&&typeof session.requestWritable==='boolean'&&/^space\.[a-f0-9]{64}$/.test(session.contextId)&&/^[a-f0-9]{64}$/.test(session.csrfToken));
 const spaceReadOnly=session=>spaceSession(session)&&session.readOnly;
-function waitForSpaceCatalog(signal){
+function waitForSpaceCatalog(signal,delay=1250){
  return new Promise((resolve,reject)=>{
   const stop=()=>{clearTimeout(timer);reject(signal.reason);};
   if(signal.aborted){reject(signal.reason);return;}
-  const timer=setTimeout(()=>{signal.removeEventListener('abort',stop);resolve();},1250);
+  const timer=setTimeout(()=>{signal.removeEventListener('abort',stop);resolve();},delay);
   signal.addEventListener('abort',stop,{once:true});
  });
 }
@@ -150,7 +150,7 @@ async function load(){
   if(!response.ok){
    if(url==='/__npcgen_session'&&response.status===503&&
       (await response.json().catch(()=>null))?.error==='LIVE_NGS_BACKEND_NOT_CONNECTED')throw Error('SPACE_CATALOG_UNAVAILABLE');
-   throw Error('PROJECT_PAGE_READ_FAILED');
+   throw Object.assign(Error('PROJECT_PAGE_READ_FAILED'),{accessDenied:[401,403].includes(response.status)});
   }
   return response.json();
  };
@@ -160,13 +160,32 @@ async function load(){
    if(session.queueEnabled===true)enableQueue(signal);
    cards.clear();render();
    const replica=!session.readOnly;
-   const rows=replica?(await sameOrigin('/api/project-folders')).projects:
+   let rows=replica?(await sameOrigin('/api/project-folders')).projects:
     await readSpaceCatalog(signal,text=>{if(!signal.aborted)status.textContent=text;});
    if(signal.aborted)return;
    if(!Array.isArray(rows))throw Error('SPACE_CATALOG_UNAVAILABLE');
+   if(replica&&!rows.length){
+    status.textContent='Space에서 프로젝트 파일을 기다리는 중입니다.';
+    // The initial publication may finish after this page was opened. Only
+    // check the authenticated existing view; never request a sync from here.
+    for(let check=0;check<12&&!rows.length;check++){
+     await waitForSpaceCatalog(signal,5000);
+     if(signal.aborted)return;
+     try{
+      const result=await sameOrigin('/api/project-folders');
+      if(!Array.isArray(result.projects))throw Error('SPACE_CATALOG_UNAVAILABLE');
+      rows=result.projects;
+     }catch(error){
+      if(signal.aborted)return;
+      if(error?.accessDenied)throw error;
+      // A transient read failure during replica startup is not a project.
+     }
+    }
+   }
+   if(signal.aborted)return;
    for(const row of rows)cards.set(row.projectId,replica?{...row,spaceReplica:true}:row);
    render();
-   status.textContent=rows.length?'':replica?'Space에서 프로젝트 파일을 기다리는 중입니다.':'원본에서 확인된 프로젝트가 없습니다.';
+   status.textContent=rows.length?'':replica?'프로젝트 파일이 아직 도착하지 않았습니다. 다시 조회할 수 있어요.':'원본에서 확인된 프로젝트가 없습니다.';
    return; // No hosted comparison or file transport from the browser.
   }
   if(session.state==='authenticated')enableQueue(signal);

@@ -119,3 +119,38 @@ test('Space replica reads its own project and BGM lists without legacy compare o
  await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=npcs'));
  assert.match(app.node('#workspace-status').textContent,/아직 Space에 연결되지 않았습니다/);
 });
+
+test('Space initial empty replica retries only authorized reads and stops when the project card arrives',async()=>{
+ const session={state:'authenticated',backend:'space',readOnly:false,queueEnabled:true,requestWritable:false,
+  contextId:'space.'+'a'.repeat(64),csrfToken:'b'.repeat(64)};
+ const app=browser((url,opts,n,node)=>{
+  if(n===1)return Response.json(session);
+  assert.equal(url,'/api/project-folders');
+  assert.equal(opts.method,undefined);
+  assert.equal(opts.body,undefined);
+  if(n===2)return Response.json({projects:[]});
+  assert.match(node('#status').textContent,/파일을 기다리는 중/);
+  if(n===3)return new Response(null,{status:503});
+  return Response.json({projects:[project]});
+ });
+ await app.context.load();
+ assert.deepEqual(app.calls.map(([url,method])=>[url,method]),[
+  ['/__npcgen_session','GET'],['/api/project-folders','GET'],['/api/project-folders','GET'],['/api/project-folders','GET'],
+ ]);
+ assert.equal(app.node('#projects').children[0].children[0].attrs.href,'/?projectId=binari&catalogArea=audio');
+ assert.equal(app.node('#status').textContent,'');
+});
+
+test('Space initial empty refresh is bounded and immediately stops after authorization is revoked',async()=>{
+ const session={state:'authenticated',backend:'space',readOnly:false,queueEnabled:true,requestWritable:false,
+  contextId:'space.'+'a'.repeat(64),csrfToken:'b'.repeat(64)};
+ const empty=()=>Response.json({projects:[]});
+ const waiting=browser((url,opts,n)=>n===1?Response.json(session):empty());
+ await waiting.context.load();
+ assert.equal(waiting.calls.length,14); // session, initial read, at most 12 repeat reads.
+ assert.match(waiting.node('#status').textContent,/아직 도착하지 않았습니다/);
+ const revoked=browser((url,opts,n)=>n===1?Response.json(session):n===2?empty():new Response(null,{status:403}));
+ await revoked.context.load();
+ assert.equal(revoked.calls.length,3);
+ assert.deepEqual(revoked.node('#projects').children,[]);
+});

@@ -19,7 +19,7 @@
     "sites/npcgen/build/local-project-page-server.mjs": "41fc00b74f7169f1c1f0e4957c207b4c74f18cfdbb5d4f9ee057dc81ef095844",
     "sites/npcgen/build/local-project-page.css": "f9c8e16ea8bd27b0e7991c839de85b90049c1f4a93b319a2372c4c2292204a4c",
     "sites/npcgen/build/local-project-page.html": "14c5015a74a7caf414edef73e05d8584a93c125bc18e115ae8a1a7fb6deeeb2c",
-    "sites/npcgen/build/local-project-page.js": "8cf5810c9c53d8e098f30e971df111198258aac4dbf76024727b4048463877d2",
+    "sites/npcgen/build/local-project-page.js": "8a38520ce689826663c6aae9101b778bb1ef6a06156a8ac89c852711da5e40d7",
     "sites/npcgen/build/local-project-workspace.mjs": "00138c6f49eb244fc0480362596c1221704fadf621937b6cdbb20ec34996faf8",
     "sites/npcgen/build/local-recursive-folders.mjs": "58deb48f894323fbf45f45932db04b2d86e4b281eee5b136d215fbac8b306e29",
     "sites/npcgen/build/local-replica-file-receiver.mjs": "6bdde3fd04fffb4c979e2565411892e6d41a1db0f2173bb4b02492ca3337af0a",
@@ -49,7 +49,7 @@
     "sites/npcgen/tests/rs-mcp.mjs": "a7bb48c33406e7221fe48028bd30e978f9cee3dda589f6bbeba554c3dec909cd",
     "sites/npcgen/tests/space-catalog-worker.mjs": "05cc4838c39ac921b35bba947a91af24f1940f9a732de61ad901cbae1ed3c417",
     "sites/npcgen/tests/space-machine-mcp.mjs": "d75872a45a3228e88726b2bf428e7bab15fefa136f34cefbb151571ec0b3dce8",
-    "sites/npcgen/tests/space-project-catalog-browser.mjs": "7a9f48004fa0f550eb787e612337c54788fe2669e0c21d3bd383a61636377b91"
+    "sites/npcgen/tests/space-project-catalog-browser.mjs": "fcac8b21a8a45afbf677e9178d010cd7391bd94174113fb93b3083bc5cb334d3"
   },
   "upstreamLocalRevision": "4f983ac",
   "scope": "public source, runtime data and branding excluded"
