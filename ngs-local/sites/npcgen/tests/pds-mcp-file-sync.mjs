@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {test} from 'node:test';
 import {createFolderMcpClient} from '../build/folder-mcp-client.mjs';
-import {pushProjectFiles,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
+import {pushProjectFiles,sharePdsCompareSlot,watchPdsMcpFileSync} from '../build/pds-mcp-file-sync.mjs';
 
 const id='ngs.sync.6f56d34f-62ca-42a7-a173-14700d922865';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -112,4 +112,45 @@ test('restored or forged tombstones abort before any remove RPC',async()=>{
   await assert.rejects(pushProjectFiles({scope,pds,ngs}),/PDS_NGS_FILE_SYNC_(TOMBSTONE_CHANGED|INVALID)/);
   assert.deepEqual(calls,['ngs_file_sync_begin','ngs_file_sync_abort']);
  }
+});
+
+
+test('two destinations share only the one PDS compare slot and recover after a rejected compare',async()=>{
+ const events=[];
+ const remoteBegin=Promise.withResolvers(),localCompare=Promise.withResolvers(),remoteFinish=Promise.withResolvers();
+ const pds=sharePdsCompareSlot({
+  async compare(scope,rows){
+   events.push(['entered',rows.length]);
+   if(rows.length===0){
+    await localCompare.promise;
+    throw Error('FOLDER_BUSY');
+   }
+   return {scope,groups:[],deleted:[]};
+  },
+ });
+ const existing=[{path:'audio/x.wav',sha256:sha('same')}];
+ const names=[];
+ const first=pushProjectFiles({scope:'binari',pds,ngs:async name=>{
+  if(name==='ngs_file_sync_begin')return receipt('binari');
+  names.push(name);return {ok:true};
+ }});
+ const firstResult=assert.rejects(first,/FOLDER_BUSY/);
+ const second=pushProjectFiles({scope:'binari',pds,ngs:async name=>{
+  if(name==='ngs_file_sync_begin'){
+   remoteBegin.resolve();return receipt('binari',existing);
+  }
+  assert.equal(name,'ngs_file_sync_finish');
+  await remoteFinish.promise;return {ok:true,written:0};
+ }});
+ await remoteBegin.promise;
+ await new Promise(setImmediate);
+ assert.deepEqual(events,[['entered',0]]);
+ localCompare.resolve();
+ await firstResult;
+ assert.deepEqual(names,['ngs_file_sync_abort']);
+ // Space is still waiting on its own upload finish, but a local compare can proceed.
+ assert.deepEqual(await pds.compare('binari',existing),{scope:'binari',groups:[],deleted:[]});
+ assert.deepEqual(events,[['entered',0],['entered',1],['entered',1]]);
+ remoteFinish.resolve();
+ assert.deepEqual(await second,{ok:true,written:0});
 });

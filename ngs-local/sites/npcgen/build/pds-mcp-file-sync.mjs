@@ -104,11 +104,36 @@ export async function pushProjectFiles({scope,pds,ngs}){
  }
 }
 
+// One canonical compare slot is shared by the two destinations. Only compare is queued:
+// a slow/disconnected destination must not hold the PDS slot during its uploads.
+export function sharePdsCompareSlot(pds){
+ let tail=Promise.resolve();
+ return {...pds,compare(...args){
+  const next=tail.then(()=>pds.compare(...args));
+  tail=next.then(()=>{},()=>{});
+  return next;
+ }};
+}
+
+function senderPds(pdsUrl,signal){
+ return createFolderMcpClient({call:loopbackJsonMCP(pdsUrl,{
+  clientName:'pds-canonical-reader',signal,decodeToolError(name,result){
+   if(name!=='npc_folders_compare'||result?.content?.length!==1||result.content[0]?.type!=='text')return null;
+   const text=result.content[0]?.text;
+   if(typeof text!=='string'||text.length>100)return null;
+   try{
+    const value=JSON.parse(text);
+    return exact(value,'error,status')&&value.error==='FOLDER_BUSY'&&value.status===503?Error('FOLDER_BUSY'):null;
+   }catch{return null;}
+  },
+ })});
+}
+
 /** Repeat, using discovery only within the configured canonical project allowlist. */
 export async function watchPdsMcpFileSync({
  projects,pdsUrl=DEFAULT_PROJECT_FOLDER_MCP_URL,ngsUrl,
  now=()=>performance.now(),sleep=pause,signal,onResult=()=>{},onError=()=>{},
- pds=createFolderMcpClient({call:loopbackJsonMCP(pdsUrl,{clientName:'pds-canonical-reader',signal})}),
+ pds=senderPds(pdsUrl,signal),
  ngs=loopbackJsonMCP(ngsUrl,{clientName:'pds-ngs-file-sender',signal}),
 }={}){
  if(!Array.isArray(projects)||!projects.length||projects.length>maxEntries||
@@ -159,17 +184,18 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const {PDS_MCP_URL,NGS_FILE_SYNC_MCP_URL,NGS_FILE_SYNC_PROJECTS}=process.env;
  const controller=new AbortController(),health=startOpsHealthReport({serverName:'pds-mcp'});
  const signal=controller.signal;
+ const pds=sharePdsCompareSlot(senderPds(PDS_MCP_URL??DEFAULT_PROJECT_FOLDER_MCP_URL,signal));
  for(const action of ['SIGTERM','SIGINT'])process.once(action,()=>controller.abort());
  let space;
  if(process.env.NGS_SPACE_FILE_SYNC_ENABLED==='1'){
   try{
    const ngs=createSpaceFileSyncDestination({...spaceMachineConfiguration(),signal});
-   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],ngs,signal,
+   space=watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,projects:['binari'],pds,ngs,signal,
     ...reportFileLoop('space')}).catch(()=>reportFileLoop('space').onError(null));
   }catch{reportFileLoop('space').onError(null,Error('NGS_SPACE_MACHINE_CONFIGURATION_REQUIRED'));}
  }
  try{
   await watchPdsMcpFileSync({pdsUrl:PDS_MCP_URL,ngsUrl:NGS_FILE_SYNC_MCP_URL,projects:NGS_FILE_SYNC_PROJECTS?.split(','),
-   signal,...reportFileLoop('local')});
+   pds,signal,...reportFileLoop('local')});
  }finally{controller.abort();await space;health.stop();}
 }
