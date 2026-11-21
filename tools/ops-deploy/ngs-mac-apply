@@ -1,0 +1,365 @@
+#!/opt/homebrew/bin/python3.12
+"""Owner-prepared, fixed native NGS role executor. No fetch/build or caller paths."""
+import fcntl
+import hashlib
+import http.client
+import json
+import os
+from pathlib import Path
+import plistlib
+import re
+import signal
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+
+SHA = re.compile(r"[0-9a-f]{40}")
+DIGEST = re.compile(r"[0-9a-f]{64}")
+ID = re.compile(r"[1-9][0-9]{0,19}")
+LABEL = "com.vinus.ngs.local-mcp"
+LEGACY = "com.vinus.ngs.project-page"
+ENTRY = Path("sites/npcgen/build/local-miniflare-app.mjs")
+SCHEMA_INPUTS = (ENTRY, ENTRY.with_name("local-miniflare-runtime.mjs"),
+                 ENTRY.with_name("local-miniflare-worker.mjs"),
+                 ENTRY.with_name("local-request-queue.mjs"),
+                 Path("dev/0014_space_file_replica_versions.sql"),
+                 Path("dev/0015_replica_sync_progress.sql"),
+                 Path("local-miniflare/package-lock.json"))
+REPO = "pvenus/ngs-platform"
+BRANCH = "refs/heads/main"
+TOOLS = {"ngs_request_queue_list", "ngs_file_sync_begin", "ngs_file_sync_plan",
+         "ngs_file_sync_finish"}
+ROOT = Path("/Volumes/무제")
+HOME = Path.home()
+NGS = HOME / "Workspaces/NGS"
+CONTROL = NGS / "runtime/deploy-control"
+
+
+class Refused(RuntimeError):
+    pass
+
+
+def require(test, code):
+    if not test:
+        raise Refused(code)
+
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def private(path, directory=False):
+    s = path.lstat()
+    require(path.resolve() == path and s.st_uid == os.getuid()
+            and (stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode))
+            and stat.S_IMODE(s.st_mode) == (0o700 if directory else 0o600),
+            "PRIVATE_RELEASE_REQUIRED")
+    return path
+
+
+def atom(path, data, create=False):
+    fd, temp = tempfile.mkstemp(prefix=".deploy-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+            out.flush()
+            os.fsync(out.fileno())
+        if create:
+            os.link(temp, path)  # O_EXCL semantics
+        else:
+            os.replace(temp, path)
+        dfd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    finally:
+        try:
+            os.unlink(temp)
+        except FileNotFoundError:
+            pass
+
+
+def tree_sha(root):
+    rows = []
+    for p in sorted(root.rglob("*")):
+        s = p.lstat()
+        require(s.st_uid == os.getuid(), "RELEASE_TREE_OWNER_DRIFT")
+        if stat.S_ISLNK(s.st_mode):
+            require(p.is_relative_to(root / "local-miniflare/node_modules")
+                    and p.resolve(strict=True).is_relative_to(root / "local-miniflare/node_modules"),
+                    "RELEASE_LINK_DRIFT")
+            value = ["link", os.readlink(p)]
+        elif stat.S_ISREG(s.st_mode):
+            require(not s.st_mode & 0o022, "RELEASE_TREE_MODE_DRIFT")
+            with p.open("rb") as handle:
+                value = ["file", stat.S_IMODE(s.st_mode), hashlib.file_digest(handle, "sha256").hexdigest()]
+        else:
+            require(stat.S_ISDIR(s.st_mode) and not s.st_mode & 0o022, "RELEASE_TREE_MODE_DRIFT")
+            value = ["directory", stat.S_IMODE(s.st_mode)]
+        rows.append([p.relative_to(root).as_posix(), value])
+    return digest(json.dumps(rows, separators=(",", ":"), ensure_ascii=True).encode())
+
+
+def load_plan(sha, control, releases, scratch):
+    require(isinstance(sha, str) and SHA.fullmatch(sha), "INVALID_RELEASE_SHA")
+    private(control, True)
+    ops = json.loads(private(control / "prepared.json").read_bytes())
+    require(ops.get("schemaVersion") == "ops.ngs-prepared-deploy.v1" and ops.get("sha") == sha
+            and ops.get("mac") == {"ready": True}, "OPS_RELEASE_NOT_PREPARED")
+    prov = ops.get("provenance")
+    require(type(prov) is dict and set(prov) == {"runId", "runAttempt", "artifactId", "archiveSha256"}
+            and all(type(prov[k]) is str and ID.fullmatch(prov[k]) for k in ("runId", "runAttempt", "artifactId"))
+            and type(prov["archiveSha256"]) is str and DIGEST.fullmatch(prov["archiveSha256"]),
+            "OPS_PROVENANCE_INVALID")
+    private(control / "mac-releases", True)
+    folder = private(control / "mac-releases" / sha, True)
+    spec = json.loads(private(folder / "manifest.json").read_bytes())
+    require(set(spec) == {"schemaVersion", "sha", "repo", "ref", "workflow", "archiveSha256",
+                           "treeSha256", "expectedPriorPlistSha256"}
+            and spec["schemaVersion"] == "ops.ngs-mac-release.v1" and spec["sha"] == sha
+            and spec["repo"] == REPO and spec["ref"] == BRANCH, "RELEASE_PROVENANCE_INVALID")
+    wf = spec["workflow"]
+    require(type(wf) is dict and wf == {"headSha": sha, "headBranch": "main", "conclusion": "success",
+                                        "runId": prov["runId"], "runAttempt": prov["runAttempt"],
+                                        "artifactId": prov["artifactId"]},
+            "GITHUB_WORKFLOW_NOT_VERIFIED")
+    require(all(isinstance(spec[k], str) and DIGEST.fullmatch(spec[k])
+                for k in ("archiveSha256", "treeSha256", "expectedPriorPlistSha256")),
+            "RELEASE_DIGEST_INVALID")
+    require(prov["archiveSha256"] == spec["archiveSha256"], "RELEASE_ARCHIVE_DRIFT")
+    selected = private(releases / ("project-page-github-" + sha), True)
+    workdir = private(scratch / sha, True)
+    deps = selected / "local-miniflare/node_modules"
+    with private(folder / "ngs-local.tar").open("rb") as archive:
+        require(hashlib.file_digest(archive, "sha256").hexdigest() == spec["archiveSha256"],
+                "RELEASE_ARCHIVE_DRIFT")
+        archive.seek(0)
+        seen = set()
+        with tarfile.open(fileobj=archive, mode="r|") as tar:
+            for member in tar:
+                name = Path(member.name)
+                p = selected / name
+                require(not name.is_absolute() and ".." not in name.parts and p.resolve() == p
+                        and not p.is_relative_to(deps), "ARCHIVE_PATH_INVALID")
+                if member.isdir():
+                    require(p.is_dir(), "ARCHIVE_TREE_DRIFT")
+                    continue
+                require(member.isfile() and p.is_file() and p not in seen, "ARCHIVE_TREE_DRIFT")
+                seen.add(p)
+                with p.open("rb") as local, tar.extractfile(member) as source:
+                    require(hashlib.file_digest(local, "sha256").digest()
+                            == hashlib.file_digest(source, "sha256").digest(), "ARCHIVE_BLOB_DRIFT")
+        require(seen == {p for p in selected.rglob("*")
+                         if (p.is_file() or p.is_symlink()) and not p.is_relative_to(deps)},
+                "ARCHIVE_TREE_DRIFT")
+    require(tree_sha(selected) == spec["treeSha256"] and (selected / ENTRY).is_file()
+            and (selected / "local-miniflare/package-lock.json").is_file(), "RELEASE_TREE_DRIFT")
+    return folder, spec, selected, workdir
+
+
+def select(raw, release, workdir, releases, scratch, queue):
+    plist = plistlib.loads(raw)
+    args = plist["ProgramArguments"]
+    env = plist["EnvironmentVariables"]
+    require(plist["Label"] == LABEL and len(args) == 2 and Path(args[0]).is_absolute()
+            and Path(args[0]).name == "node", "NATIVE_ROLE_DRIFT")
+    old = Path(args[1]).parents[3]
+    require(old.parent == releases and re.fullmatch(r"project-page-github-[0-9a-f]{7,40}", old.name)
+            and Path(args[1]) == old / ENTRY and (old / ENTRY).is_file()
+            and Path(plist["WorkingDirectory"]).parent == scratch,
+            "NATIVE_ROLE_DRIFT")
+    require(env.get("NGS_PROJECT_LISTEN_PORT") == "5274" and env.get("NGS_REQUEST_QUEUE_MCP_PORT") == "5275"
+            and env.get("NGS_REQUEST_QUEUE_DB") == str(queue) and env.get("NGS_FILE_SYNC_MODE") == "push"
+            and env.get("NGS_FILE_SYNC_PROJECTS") == "binari"
+            and not {"NGS_LOCAL_S3_CONFIG", "NGS_LOCAL_REPLICA_DB"} & env.keys(), "NATIVE_ROLE_DRIFT")
+    require(all((old / f).read_bytes() == (release / f).read_bytes() for f in SCHEMA_INPUTS),
+            "STORAGE_STARTUP_INPUTS_CHANGED")
+    plist["ProgramArguments"] = [args[0], str(release / ENTRY)]
+    plist["WorkingDirectory"] = str(workdir)
+    return old, plistlib.dumps(plist), env
+
+
+class Mac:
+    uid = os.getuid()
+    plist = HOME / "Library/LaunchAgents" / f"{LABEL}.plist"
+    legacy = HOME / "Library/LaunchAgents" / f"{LEGACY}.plist"
+    releases = NGS / "code/releases"
+    scratch = NGS / "runtime/local-miniflare-execution"
+    queue = NGS / "data/local-request-queue/queue.sqlite"
+
+    def run(self, *cmd):
+        return subprocess.check_output(cmd, text=True, timeout=8, stderr=subprocess.DEVNULL)
+
+    def unchanged(self, env):
+        scope = Path(env["NGS_LOCAL_MINIFLARE_ROOT"])
+        require(scope.parent == ROOT and scope.name.startswith("NGS-Miniflare-")
+                and ROOT.is_mount(), "NATIVE_SSD_UNAVAILABLE")
+        def pin(p):
+            a = p.lstat()
+            require(p.resolve() == p and a.st_uid == self.uid, "NATIVE_STATE_DRIFT")
+            return (a.st_dev, a.st_ino)
+        pins = [pin(p) for p in (scope, scope / "d1", scope / "r2", self.queue)]
+        require(all(p[0] == ROOT.stat().st_dev for p in pins[:3]), "NATIVE_SSD_DRIFT")
+        return pins
+
+    def read_plist(self):
+        require(not self.legacy.exists() and not self.legacy.is_symlink()
+                and self.plist.resolve() == self.plist and self.plist.is_file()
+                and self.plist.stat().st_uid == self.uid, "NATIVE_PLIST_DRIFT")
+        return self.plist.read_bytes()
+
+    def replace(self, expected, candidate):
+        require(self.read_plist() == expected, "NATIVE_PLIST_DRIFT")
+        atom(self.plist, candidate)
+
+    def bootout(self):
+        self.run("/bin/launchctl", "bootout", f"gui/{self.uid}/{LABEL}")
+
+    def bootstrap(self):
+        self.run("/bin/launchctl", "bootstrap", f"gui/{self.uid}", str(self.plist))
+
+    def pid(self):
+        try:
+            info = self.run("/bin/launchctl", "print", f"gui/{self.uid}/{LABEL}")
+        except subprocess.CalledProcessError:
+            return None
+        m = re.search(r"(?m)^\s*pid = ([0-9]+)\s*$", info)
+        return int(m[1]) if m else None
+
+    def stop_if_loaded(self):
+        result = subprocess.run(["/bin/launchctl", "print", f"gui/{self.uid}/{LABEL}"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+        if result.returncode == 0:
+            self.bootout()
+
+    def listener(self, port):
+        try:
+            out = self.run("/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-Fp")
+        except subprocess.CalledProcessError as e:
+            if e.returncode != 1:
+                raise
+            return set()
+        return {int(p[1:]) for p in out.splitlines() if re.fullmatch(r"p[0-9]+", p)}
+
+    @staticmethod
+    def http(port, path, method="GET", headers=None, body=None):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        try:
+            conn.request(method, path, body=body, headers=headers or {})
+            response = conn.getresponse()
+            return response.status, response.getheader("Set-Cookie"), json.loads(response.read(256 * 1024))
+        finally:
+            conn.close()
+
+    def rpc(self, method, params):
+        status, _, doc = self.http(5275, "/mcp", "POST", {"Content-Type": "application/json"},
+                                   json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}))
+        require(status == 200 and doc.get("id") == 1 and "result" in doc, "NATIVE_MCP_UNAVAILABLE")
+        return doc["result"]
+
+    def healthy(self, release, old_pid=None, wait=35):
+        end = time.monotonic() + wait
+        while True:
+            try:
+                pid = self.pid()
+                require(pid and pid != old_pid and self.listener(5274) == self.listener(5275) == {pid},
+                        "NATIVE_PORT_OWNER_DRIFT")
+                command = self.run("/bin/ps", "-p", str(pid), "-o", "command=").strip()
+                require(command.endswith(" " + str(release / ENTRY)), "NATIVE_PROCESS_PIN_DRIFT")
+                status, cookie, session = self.http(5274, "/__npcgen_session")
+                require(status == 200 and cookie and session.get("state") == "authenticated",
+                        "NATIVE_AUTH_UNAVAILABLE")
+                path = "/api/ngs-sync-progress?projectId=binari"
+                require(self.http(5274, path)[0] == 401 and
+                        self.http(5274, path, headers={"Cookie": cookie.split(";")[0]})[0] == 200,
+                        "NATIVE_AUTH_SCOPE_DRIFT")
+                require(self.http(5275, "/api/ngs-file-sync-file") ==
+                        (405, None, {"error": "METHOD_NOT_ALLOWED"}), "NATIVE_RAW_ROUTE_UNAVAILABLE")
+                require(TOOLS <= {v["name"] for v in self.rpc("tools/list", {})["tools"]},
+                        "NATIVE_MCP_UNAVAILABLE")
+                queue = self.rpc("tools/call", {"name": "ngs_request_queue_list", "arguments": {"limit": 1}})
+                require(queue.get("isError") is False
+                        and isinstance(queue["structuredContent"]["requests"], list), "NATIVE_QUEUE_UNAVAILABLE")
+                return pid
+            except (Refused, ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, http.client.HTTPException):
+                if time.monotonic() >= end:
+                    raise Refused("NATIVE_HEALTH_UNVERIFIED") from None
+                time.sleep(0.25)
+
+
+def apply(sha, control, host):
+    folder, spec, release, workdir = load_plan(sha, control, host.releases, host.scratch)
+    # Lock only the known directory, including distinct releases.
+    fd = os.open(control, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        armed = folder / "prior.plist"
+        status = folder / "result.json"
+        prior = host.read_plist()
+        old, new, env = select(prior, release, workdir, host.releases, host.scratch, host.queue)
+        require(not armed.exists() and not armed.is_symlink() and not status.exists() and not status.is_symlink(),
+                "RELEASE_ALREADY_ATTEMPTED_RECONCILE")
+        require(old != release and digest(prior) == spec["expectedPriorPlistSha256"], "PRIOR_RELEASE_DRIFT")
+        pins = host.unchanged(env)
+        pid = host.healthy(old, wait=0)
+        atom(armed, prior, create=True)
+        advanced = False
+        stopped = False
+        try:
+            host.bootout()
+            stopped = True
+            require(not (host.listener(5274) or host.listener(5275)), "OLD_NATIVE_PORTS_BUSY")
+            host.replace(prior, new)
+            advanced = True
+            host.bootstrap()
+            host.healthy(release, old_pid=pid)
+            require(host.read_plist() == new and host.unchanged(env) == pins, "NATIVE_STORAGE_IDENTITY_DRIFT")
+            receipt = {"sha": sha, "target": "mac", "state": "deployed", "health": "verified"}
+            atom(status, (json.dumps(receipt) + "\n").encode(), create=True)
+            return receipt
+        except Exception:
+            try:
+                # Commands can fail after taking effect: always inspect actual selected bytes.
+                actual = host.read_plist()
+                if actual == new:
+                    host.stop_if_loaded()
+                    host.replace(new, prior)
+                    stopped = True
+                else:
+                    require(actual == prior and not advanced, "ROLLBACK_SELECTOR_DRIFT")
+                    stopped = stopped or not host.pid()
+                if stopped:
+                    host.stop_if_loaded()
+                    host.bootstrap()
+                host.healthy(old)
+                require(host.read_plist() == prior and host.unchanged(env) == pins, "ROLLBACK_STORAGE_IDENTITY_DRIFT")
+            except Exception:
+                atom(status, b'{"state":"rollback-failed"}\n', create=True)
+                raise Refused("MAC_ROLLBACK_UNVERIFIED") from None
+            atom(status, b'{"state":"rolled-back"}\n', create=True)
+            raise Refused("MAC_APPLY_FAILED_ROLLBACK_VERIFIED") from None
+    finally:
+        os.close(fd)
+
+
+def main():
+    def interrupt(_sig, _frame):
+        # Once inside a transaction, let the context verify rollback on first stop.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        raise Refused("MAC_RELEASE_INTERRUPTED")
+    signal.signal(signal.SIGTERM, interrupt)
+    require(len(sys.argv) == 2 and SHA.fullmatch(sys.argv[1]), "INVALID_RELEASE_SHA")
+    print(json.dumps(apply(sys.argv[1], CONTROL, Mac()), separators=(",", ":")), flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        # No paths, child stdout, queue content, or auth in OPS logs.
+        print(str(exc) if type(exc) is Refused else "MAC_RELEASE_REFUSED", file=sys.stderr)
+        sys.exit(1)
