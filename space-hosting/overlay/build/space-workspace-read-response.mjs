@@ -23,7 +23,7 @@ export async function spaceWorkspaceReadResponse(request,replica,{authorize,npcR
   return new Response(result.bytes,{headers:{...headers,'Content-Type':result.mime,'Content-Length':String(result.bytes.length),
    'Content-Security-Policy':"sandbox; default-src 'none'"}});
  }catch(e){
-  const status=[400,401,403,404,405].includes(e?.status)?e.status:503;
+  const status=[400,401,403,404,405,409].includes(e?.status)?e.status:503;
   return error(status!==503&&/^[A-Z0-9_]+$/.test(e.message)?e.message:'PROJECT_WORKSPACE_REPLICA_UNAVAILABLE',status);
  }
 }

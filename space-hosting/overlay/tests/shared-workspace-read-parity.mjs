@@ -86,3 +86,13 @@ test('one registry declares workspace routes and the view cannot import either s
   assert.doesNotMatch(source,/(?:from ['"](?:node:fs|node:path|cloudflare:workers)|\b(?:process\.env|R2Bucket|D1Database)\b)/);
  }
 });
+
+test('shared NPC conflict and its exact error are not downgraded by the hosted adapter',async()=>{
+ const response=await spaceWorkspaceReadResponse(new Request('https://fixture.invalid/api/npc-workspace?projectId=binari',{
+  headers:{'oai-authenticated-user-id':'fixture','oai-authenticated-user-email':'fixture@example.invalid'}
+ }),undefined,{
+  authorize:async()=>true,npcRead:async()=>{throw Object.assign(Error('NPC_WORKSPACE_MEDIA_CHANGED'),{status:409});}
+ });
+ assert.equal(response.status,409);
+ assert.deepEqual(await response.json(),{error:'NPC_WORKSPACE_MEDIA_CHANGED'});
+});
