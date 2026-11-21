@@ -1,11 +1,12 @@
 /** Shared object replica: temporary data becomes visible only through the version CAS. */
 import {createHash} from 'node:crypto';
+import {wholeFileObjectMaximum} from './replica-whole-file-wire.mjs';
 const project='binari',defaultNamespace='ngs-replica/v1/binari/';
 const passes='ngs_replica_pass_v2',receives='ngs_replica_receive_v2',entries='ngs_replica_version_v2',resets='ngs_replica_reset_v2';
 const progressRows='ngs_replica_progress_v1',progressResults='ngs_replica_progress_item_v1';
 const inactivity=60*60_000,maxPaths=32768,maxInventoryBytes=16*1024*1024;
 export const objectReplicaChunkSize=1024*1024;
-const chunkSize=objectReplicaChunkSize,minPart=5*chunkSize,maxParts=10000;
+const chunkSize=objectReplicaChunkSize,minPart=5*chunkSize,maxParts=10000,wholeTransfer='whole';
 // Shared wire tolerates the full supported R2 object range, not a product size cap.
 const nativeObjectMaximum=5*1024**4-5*1024**3;
 const partSize=size=>Math.max(minPart,Math.ceil(size/(maxParts*chunkSize))*chunkSize);
@@ -62,7 +63,8 @@ function headerCheck(path,first){
  */
 export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.randomUUID(),
  fixedLengthStream=()=>new TransformStream(),
- writePart=(upload,part,body)=>upload.uploadPart(part,body),namespace=defaultNamespace}={}){
+ writePart=(upload,part,body)=>upload.uploadPart(part,body),
+ writeWhole=(bucket,key,body,size,options)=>bucket.put(key,body,options),namespace=defaultNamespace}={}){
  if(typeof namespace!=='string'||!/^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){1,8}$/u.test(namespace))unavailable();
  const legacy=namespace+'files/',stage=namespace+'v2/stage/',versions=namespace+'v2/objects/';
  const pathOK=p=>typeof p==='string'&&p.isWellFormed()&&encoder.encode(legacy+p).length<=1024&&p.split('/').length<=64&&
@@ -168,19 +170,20 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   try{await collectExpired();return {syncId,scope:project,inventoryAt,files:await list()};}
   catch(e){await run(`DELETE FROM ${passes} WHERE sync_id=?`,syncId);throw e;}
  }
- async function createTransfer(session,path,sha256,size,epoch){
+ async function createTransfer(session,path,sha256,size,epoch,whole=false){
   const {prior,sha256:previous,size:previousSize}=await activePrior(path,session);
   const same=previous===sha256&&size===previousSize,attempt=makeId();
-  const multipart=!same&&size>chunkSize?await bucket.createMultipartUpload(objectKey(attempt),{customMetadata:{sha256}}):null;
+  const multipart=!whole&&!same&&size>chunkSize?await bucket.createMultipartUpload(objectKey(attempt),{customMetadata:{sha256}}):null;
   let changed;
   try{
    changed=await run(`INSERT INTO ${receives}(sync_id,path,attempt,sha256,size,prior,generation,upload_id,received,parts,last_sha,same)
-    SELECT ?,?,?,?,?,?,?,?,0,'[]',NULL,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
+    SELECT ?,?,?,?,?,?,?,?,0,?,NULL,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
     AND COALESCE((SELECT generation FROM ${resets} WHERE sync_id=? AND path=?),0)=?
-    ON CONFLICT(sync_id,path) DO NOTHING`,session.sync_id,path,attempt,sha256,size,prior,epoch,multipart?.uploadId??null,same?1:0,
+    ON CONFLICT(sync_id,path) DO NOTHING`,session.sync_id,path,attempt,sha256,size,prior,epoch,multipart?.uploadId??null,whole?wholeTransfer:'[]',same?1:0,
     session.sync_id,now(),session.sync_id,path,epoch);
   }finally{if(!changed&&multipart)await multipart.abort().catch(()=>{});}
-  const row=await transfer(session.sync_id,path);if(!row)stale();return row;
+  if(whole&&!changed)stale();
+  const row=await transfer(session.sync_id,path);if(!row||whole&&row.attempt!==attempt)stale();return row;
  }
  async function putStage(f,offset,data,sha256){
   const key=stageKey(f.attempt,offset);
@@ -295,7 +298,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
    }
    if(offset!==0)badOffset();f=await createTransfer(session,path,sha256,size,epoch);
   }
-  if(f.generation!==epoch||f.sha256!==sha256||f.size!==size)badOffset();
+  if(f.parts===wholeTransfer||f.generation!==epoch||f.sha256!==sha256||f.size!==size)badOffset();
   if(f.received!==offset){
    if(f.received!==next||f.last_sha!==chunkHash)badOffset();
    if(!final)return {nextOffset:next};
@@ -339,6 +342,86 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   if(!final)return {nextOffset:next};
   if(f.upload_id)await verifyLarge(f,JSON.parse(f.parts));
   return await publish(f,session);
+ }
+ async function receiveWholeFile(args,body){
+  ready();
+  need(exact(args,'syncId','path','sha256','size')&&syncOK(args.syncId)&&pathOK(args.path)&&hash(args.sha256)&&
+    safeInt(args.size,0,Number.MAX_SAFE_INTEGER));
+  const {syncId:id,path,sha256,size}=args;
+  need(size<=wholeFileObjectMaximum&&size<=headerBound(path),413,'NGS_FILE_SYNC_BODY_TOO_LARGE');
+  need(body instanceof ReadableStream);
+  const session=await loadSession(id);
+  const selected=await first(`SELECT total,state FROM ${progressRows} WHERE sync_id=?`,id);
+  if(!selected||selected.state!=='syncing'||selected.total<1)stale();
+  await run(`UPDATE ${passes} SET expiry=? WHERE sync_id=? AND expiry>?`,now()+inactivity,id,now());
+  const existing=await current(path);
+  const replay=existing?.object_key&&existing.sync_id===id&&existing.sha256===sha256&&existing.size===size;
+  let transferRow;
+  if(!replay){
+   const epoch=(await generation(id,path))?.generation??0;
+   if(await transfer(id,path))badOffset();
+   transferRow=await createTransfer(session,path,sha256,size,epoch,true);
+  }
+  // Stream verified input into at most one private provider PUT. The live
+  // pointer and completed counter stay untouched until the whole body checks.
+  const needsPut=!!transferRow&&!transferRow.same;
+  const fixed=needsPut&&size>0?fixedLengthStream(size):null;
+  const reader=body.getReader();
+  const digest=createHash('sha256');
+  const header=new Uint8Array(path==='project.json'?size:path==='icon.png'?Math.min(8,size):0);
+  let seen=0,checked=now(),checkpoint=0,validationError;
+  async function progressBytes(){
+   if(!transferRow||seen>=size||seen-checkpoint<chunkSize||now()-checked<1000)return;
+   const updated=await run(`UPDATE ${receives} SET received=? WHERE sync_id=? AND path=? AND attempt=?`,
+    seen,id,path,transferRow.attempt);
+   if(!updated)stale();
+   checked=now();checkpoint=seen;
+  }
+  const observed=new ReadableStream({async pull(controller){
+   try{
+    const {done,value}=await reader.read();
+    if(done){
+     if(seen!==size||digest.digest('hex')!==sha256)content();
+     headerCheck(path,header);controller.close();return;
+    }
+    if(!(value instanceof Uint8Array)||value.byteLength>size-seen)content();
+    if(seen<header.length)header.set(value.subarray(0,header.length-seen),seen);
+    seen+=value.byteLength;digest.update(value);
+    await progressBytes();
+    controller.enqueue(value);
+   }catch(e){validationError=e;controller.error(e);}
+  },cancel:reason=>reader.cancel(reason)});
+  const aborter=new AbortController();
+  try{
+   const flow=observed.pipeTo(fixed?.writable??new WritableStream(),{signal:aborter.signal});
+   let saved;
+   if(needsPut&&size>0){
+    [saved]=await Promise.all([Promise.resolve().then(()=>writeWhole(bucket,objectKey(transferRow.attempt),fixed.readable,size,
+     {sha256,onlyIf:noOverwrite(),customMetadata:{sha256}})),flow]);
+   }else{
+    await flow;
+    if(needsPut)saved=await bucket.put(objectKey(transferRow.attempt),new Uint8Array(),
+     {sha256,onlyIf:noOverwrite(),customMetadata:{sha256}});
+   }
+   if(replay)return {ok:true};
+   if(needsPut){
+    if(!saved)stale();
+    if(saved.size!==size||saved.customMetadata?.sha256!==sha256)content();
+   }
+   if(!await run(`UPDATE ${receives} SET received=?,last_sha=? WHERE sync_id=? AND path=? AND attempt=? AND parts=?`,
+      size,sha256,id,path,transferRow.attempt,wholeTransfer))stale();
+   await publish({...transferRow,last_sha:sha256},session);
+   return {ok:true};
+  }catch(e){
+   aborter.abort();
+   // A reset/failed/abort or pass expiry fences the temporary attempt; on
+   // an uncertain transport outcome never delete a possibly published object.
+   throw validationError??e;
+  }finally{
+   void reader.cancel().catch(()=>{});
+   // Release only after the asynchronous producer has surrendered pending reads.
+   try{reader.releaseLock();}catch{}
+  }
  }
  async function resetFile(args,session){
   need(exact(args,'syncId','path')&&pathOK(args.path));
@@ -444,5 +527,5 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   need(exact(args,'syncId'));
   return await close(name,args.syncId);
  }
- return {call,list,head,get,progress};
+ return {call,list,head,get,progress,receiveWholeFile};
 }

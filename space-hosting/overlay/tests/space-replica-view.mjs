@@ -19,7 +19,7 @@ const mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityD
    .then(response=>response??new Response(null,{status:404}));
  }};
  `},mod('build/space-file-replica.mjs','../build/space-file-replica.mjs'),mod('build/space-replica-view.mjs','../build/space-replica-view.mjs'),
- mod(shared+'object-replica-view.mjs',sharedRoot+shared+'object-replica-view.mjs'),mod(shared+'object-replica.mjs',sharedRoot+shared+'object-replica.mjs')],
+ mod(shared+'object-replica-view.mjs',sharedRoot+shared+'object-replica-view.mjs'),mod(shared+'object-replica.mjs',sharedRoot+shared+'object-replica.mjs'),mod(shared+'replica-whole-file-wire.mjs',sharedRoot+shared+'replica-whole-file-wire.mjs')],
 });
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const auth={'oai-authenticated-user-id':'owner-fixture','oai-authenticated-user-email':'owner@example.invalid'};

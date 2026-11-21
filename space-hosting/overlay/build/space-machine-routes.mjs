@@ -1,5 +1,6 @@
 /** Explicit Site routes for one project. Native visitors and Mac relay have separate identities. */
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
+import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from '../ngs-local/sites/npcgen/build/replica-whole-file-wire.mjs';
 export const machineTokenConfigured=validMachineToken;
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
 const chunkTool='ngs_file_sync_file_chunk',small=32*1024;
@@ -52,11 +53,24 @@ const fields=(v,keys)=>record(v)&&Object.keys(v).every(k=>keys.includes(k));
 /** No machine request falls through to visitor MCP, even with an invalid token. */
 export async function machineResponse(request,{db,secret,fileReplica,fileTools=[]}={}){
  const url=new URL(request.url),supplied=request.headers.get('X-NGS-Machine-Token');
- if(url.pathname!==machinePath)return supplied===null?null:fail(404,'SPACE_MACHINE_ROUTE_NOT_FOUND');
+ const whole=url.pathname===wholeFileSyncPath;
+ if(!whole&&url.pathname!==machinePath)return supplied===null?null:fail(404,'SPACE_MACHINE_ROUTE_NOT_FOUND');
  if(url.search||request.method!=='POST')return fail(404,'SPACE_MACHINE_ROUTE_NOT_FOUND');
  if(request.headers.has('Origin')||request.headers.has('Sec-Fetch-Site')||
     request.headers.has('Access-Control-Request-Method'))return fail(403,'SPACE_MACHINE_BROWSER_DENIED');
  if(!await sameToken(supplied,secret))return fail(403,'SPACE_MACHINE_AUTH_REQUIRED');
+ if(whole){
+  if(typeof fileReplica?.receiveWholeFile!=='function')return fail(503,'NGS_FILE_SYNC_UNAVAILABLE');
+  try{
+   const args=parseWholeFileHeaders(name=>request.headers.get(name));
+   const bytes=request.body??new ReadableStream({start:c=>c.close()});
+   return json(await fileReplica.receiveWholeFile(args,bytes));
+  }catch(e){
+   const failure=wholeFileError(e);
+   return fail(failure.status,failure.error);
+  }
+ }
+
  try{
   const configuredFileTools=fileReplica?fileTools:[];
   const names=new Set(configuredFileTools.map(x=>x.name));

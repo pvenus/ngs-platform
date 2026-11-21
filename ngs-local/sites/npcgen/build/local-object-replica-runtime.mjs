@@ -32,7 +32,8 @@ export async function openLocalObjectReplicaFromEnv(env=process.env,{
   bucket=await openLocalS3ReplicaBucket({configPath:selected.configPath});
   db=openReplicaSqlite({filename:selected.filename,readOnly:!writer});
   const complete=createObjectReplica({db,bucket,fixedLengthStream:()=>new TransformStream(),
-   writePart:(upload,part,body,length)=>upload.uploadPart(part,body,length)});
+   writePart:(upload,part,body,length)=>upload.uploadPart(part,body,length),
+   writeWhole:(bucket,key,body,size,opts)=>bucket.put(key,body,{...opts,size})});
   if(writer)return {replica:complete,fileSyncToolDefinitions:objectReplicaSyncTools,close};
   return {replica:{list:complete.list,head:complete.head,get:complete.get,progress:complete.progress},close};
  }catch(error){close();throw error;}

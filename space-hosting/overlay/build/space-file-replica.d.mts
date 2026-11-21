@@ -6,4 +6,5 @@ export function createSpaceFileReplica(options:{db:D1Database;bucket:R2Bucket}):
  head(path:string):Promise<R2Object|null>;
  get(path:string,options?:R2GetOptions):Promise<R2ObjectBody|null>;
  progress():Promise<ReplicaSyncProgress>;
+ receiveWholeFile(args:unknown,body:ReadableStream<Uint8Array>):Promise<{ok:true}>;
 };

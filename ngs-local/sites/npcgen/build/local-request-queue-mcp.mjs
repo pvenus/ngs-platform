@@ -1,5 +1,7 @@
 // A separate local control plane; never attach this request handler to public NGS.
 import { createServer } from 'node:http';
+import {Readable} from 'node:stream';
+import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from './replica-whole-file-wire.mjs';
 import { pathToFileURL } from 'node:url';
 import { MAX_QUEUE_LIST, LOCAL_QUEUE_MCP_DEFAULT_PORT, openLocalRequestQueue } from './local-request-queue.mjs';
 
@@ -26,6 +28,19 @@ export function createLocalRequestQueueMcp(queue,{fileSync,fileSyncToolDefinitio
   if(req.headers.host!=='127.0.0.1:'+port||req.headers.origin!==undefined||req.headers['sec-fetch-site']!==undefined||
     req.headers['access-control-request-method']!==undefined||Object.keys(req.headers).some(name=>name==='forwarded'||name.startsWith('x-forwarded-'))||res.socket.remoteAddress!=='127.0.0.1'){
    res.writeHead(403).end();return;
+  }
+  if(req.url===wholeFileSyncPath){
+   const reply=(status,body)=>res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store',
+    'X-Content-Type-Options':'nosniff',...(status===405?{Allow:'POST'}:{})}).end(JSON.stringify(body));
+   if(req.method!=='POST'){reply(405,{error:'METHOD_NOT_ALLOWED'});return;}
+   if(typeof fileSync?.receiveWholeFile!=='function'){reply(503,{error:'NGS_FILE_SYNC_UNAVAILABLE'});return;}
+   try{
+    const args=parseWholeFileHeaders(name=>req.headers[name]);
+    reply(200,await fileSync.receiveWholeFile(args,Readable.toWeb(req)));
+   }catch(e){
+    const failure=wholeFileError(e);reply(failure.status,{error:failure.error});
+   }
+   return;
   }
   if(req.url!=='/mcp'){res.writeHead(404).end();return;}
   if(req.method!=='POST'){res.writeHead(405,{allow:'POST'}).end();return;}

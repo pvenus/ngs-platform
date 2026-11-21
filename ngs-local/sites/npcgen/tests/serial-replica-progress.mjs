@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createObjectReplica,objectReplicaSyncTools} from '../build/object-replica.mjs';
+import {parseWholeFileHeaders,wholeFileObjectMaximum,wholeFileError} from '../build/replica-whole-file-wire.mjs';
 import {openReplicaSqlite} from '../build/replica-sqlite.mjs';
 import {createLocalProjectPageServer} from '../build/local-project-page-server.mjs';
 import {createLocalRequestQueueMcp} from '../build/local-request-queue-mcp.mjs';
@@ -78,4 +79,42 @@ test('Local project grant and no-store progress, serial-only machine cap',async 
  const request={jsonrpc:'2.0',id:1,method:'tools/call',params:{name:tool('file_batch'),arguments:{}}};
  assert.equal((await (await send(request)).json()).error.code,-32602);
  assert.equal((await send({...request,params:{...request.params,arguments:{data:'z'.repeat(10000)}}})).status,413);
+});
+
+test('Local companion binary route verifies one whole private object, keeps MCP cap and pointer intact',async t=>{
+ const db=openReplicaSqlite({filename:':memory:'});t.after(()=>db.close());
+ const objects=new Map();let puts=0;
+ const replica=createObjectReplica({db,bucket:{
+  async list(){return {objects:[],truncated:false};},
+  async head(path){return objects.get(path)??null;},
+  async put(path,body,options){
+   puts++;
+   const raw=body instanceof Uint8Array?body:new Uint8Array(await new Response(body).arrayBuffer());
+   const o={size:raw.length,etag:sha(raw),customMetadata:options.customMetadata};
+   assert.equal(sha(raw),options.sha256);
+   objects.set(path,o);return o;
+  },
+  createMultipartUpload(){assert.fail('whole-file route must not split');},async delete(){},
+ }});
+ const mcp=await listen(t,createLocalRequestQueueMcp({list:()=>({requests:[]})},{fileSync:replica,fileSyncToolDefinitions:objectReplicaSyncTools}));
+ const {syncId}=await replica.call(tool('begin'),{scope:'binari'});
+ await replica.call(tool('plan'),{syncId,totalFiles:1});
+ const body=Buffer.alloc(3264044,20),path='scope/한국어 음원.wav',sha256=sha(body);
+ const h={'Content-Type':'application/octet-stream','Content-Length':String(body.length),
+  'X-NGS-Sync-Id':syncId,'X-NGS-File-Path':Buffer.from(path).toString('base64url'),'X-NGS-File-Sha256':sha256};
+ const route=mcp+'/api/ngs-file-sync-file';
+ assert.equal((await fetch(route,{method:'POST',headers:{...h,Origin:'http://untrusted.invalid'},body})).status,403);
+ assert.equal((await fetch(route,{method:'POST',headers:{...h,'Content-Type':'application/json'},body})).status,415);
+ const sent=await fetch(route,{method:'POST',headers:h,body});
+ assert.equal(sent.status,200);assert.deepEqual(await sent.json(),{ok:true});assert.equal(puts,1);
+ assert.equal((await replica.head(path)).size,body.length);
+ assert.deepEqual(await (await fetch(route,{method:'POST',headers:h,body})).json(),{ok:true});
+ assert.equal(puts,1);
+ assert.deepEqual(await replica.call(tool('finish'),{syncId}),{ok:true,written:1});
+});
+
+test('whole-file native size limit is explicit without changing generic MCP caps',()=>{
+ const headers={'content-type':'application/octet-stream','content-length':String(wholeFileObjectMaximum+1)};
+ assert.throws(()=>parseWholeFileHeaders(key=>headers[key]),e=>e.status===413&&e.message==='NGS_FILE_SYNC_BODY_TOO_LARGE');
+ assert.deepEqual(wholeFileError({$metadata:{httpStatusCode:413}}),{status:413,error:'NGS_FILE_SYNC_BODY_TOO_LARGE'});
 });

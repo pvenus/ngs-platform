@@ -23,8 +23,20 @@ const mini=new Miniflare({
  import {createSpaceFileReplica,spaceFileSyncTools} from './build/space-file-replica.mjs';
  import {machineResponse} from './build/space-machine-routes.mjs';
  export default {async fetch(request,env){
-  const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
-  if(new URL(request.url).pathname==='/api/space-machine-mcp')
+  const url=new URL(request.url),binary=url.pathname==='/api/ngs-file-sync-file';
+  let put=0,multipart=0;
+  const bucket=binary?new Proxy(env.BUCKET,{get(target,key){
+   const original=target[key];
+   if(typeof original!=='function')return original;
+   return (...args)=>{if(key==='put')put++;if(key==='createMultipartUpload')multipart++;return original.apply(target,args);};
+  }}):env.BUCKET;
+  const replica=createSpaceFileReplica({db:env.DB,bucket});
+  if(binary){
+   const result=await machineResponse(request,{secret:'a'.repeat(64),fileReplica:replica,fileTools:spaceFileSyncTools});
+   const headers=new Headers(result.headers);headers.set('x-test-puts',String(put));headers.set('x-test-multipart',String(multipart));
+   return new Response(result.body,{status:result.status,headers});
+  }
+  if(url.pathname==='/api/space-machine-mcp')
    return machineResponse(request,{secret:'a'.repeat(64),fileReplica:replica,fileTools:spaceFileSyncTools});
   const {method,args}=await request.json();
   try {
@@ -40,7 +52,7 @@ const mini=new Miniflare({
  {type:'ESModule',path:sourcePath,contents:core},
  module('build/space-machine-routes.mjs','../build/space-machine-routes.mjs'),
  module('build/space-request-queue.mjs','../build/space-request-queue.mjs'),
- ...['local-concept-category-contract.mjs','local-npc-planning-ui.mjs','local-concept-category-ui.mjs',
+ ...['replica-whole-file-wire.mjs','local-concept-category-contract.mjs','local-npc-planning-ui.mjs','local-concept-category-ui.mjs',
      'local-request-queue-browser.mjs','local-audio-workspace.mjs'].map(f=>module(localBuild+f,base+localBuild+f)),],
 });
 const send=(method,args)=>mini.dispatchFetch('http://receiver.invalid',{method:'POST',body:JSON.stringify({method,args})});
@@ -177,5 +189,54 @@ try{
  const zero=await rpc('begin',{scope:'binari'});await rpc('plan',{syncId:zero.syncId,totalFiles:0});
  await rpc('finish',{syncId:zero.syncId});
  assert.deepEqual(await progress(),partial);
+ const binary=async (id,path,sha256,size,body,{headers={},status=200,puts=1}={})=>{
+  const res=await mini.dispatchFetch('http://receiver.invalid/api/ngs-file-sync-file',{
+   method:'POST',duplex:'half',body,headers:{'content-type':'application/octet-stream','content-length':String(size),
+    'x-ngs-machine-token':token,'x-ngs-sync-id':id,'x-ngs-file-path':Buffer.from(path).toString('base64url'),
+    'x-ngs-file-sha256':sha256,...headers}});
+  const value=await res.json();
+  assert.equal(res.status,status,JSON.stringify(value));
+  assert.equal(res.headers.get('x-test-puts'),String(puts));
+  assert.equal(res.headers.get('x-test-multipart'),'0');
+  if(status===200)assert.deepEqual(value,{ok:true});
+  return value;
+ };
+ const whole=await rpc('begin',{scope:'binari'});
+ const sizes=[part+1,3264044,19200000,65*part];
+ await rpc('plan',{syncId:whole.syncId,totalFiles:sizes.length+2});
+ const sample=Buffer.alloc(part,51);
+ for(const size of sizes){
+  const planned=createHash('sha256');
+  for(let remaining=size;remaining>0;remaining-=part)planned.update(sample.subarray(0,Math.min(remaining,part)));
+  const sha=planned.digest('hex'),name='raw/파일-'+size+'.dat';
+  let remaining=size;
+  const stream=new ReadableStream({pull(c){
+   if(remaining<=0){c.close();return;}
+   const n=Math.min(part,remaining);remaining-=n;c.enqueue(new Uint8Array(sample.subarray(0,n)));
+  }});
+  await binary(whole.syncId,name,sha,size,stream);
+  const ranged=await send('read',{path:name,options:{range:{offset:size-2,length:2}}});
+  assert.deepEqual(Buffer.from(await ranged.arrayBuffer()),Buffer.alloc(2,51));
+ }
+ const small=Buffer.from('good content'),correct=digest(small);
+ await binary(whole.syncId,'raw/good.bin',correct,small.length,small);
+ await binary(whole.syncId,'raw/good.bin',correct,small.length,small,{puts:0});
+ assert.equal((await binary(whole.syncId,'raw/blocked.bin',correct,small.length,small,{
+   status:403,puts:0,headers:{Origin:'http://receiver.invalid'}})).error,'SPACE_MACHINE_BROWSER_DENIED');
+ assert.equal((await binary(whole.syncId,'raw/blocked.bin',correct,small.length,small,{
+   status:403,puts:0,headers:{'x-ngs-machine-token':'b'.repeat(64)}})).error,'SPACE_MACHINE_AUTH_REQUIRED');
+ assert.equal((await binary(whole.syncId,'raw/bad.bin','0'.repeat(64),small.length,small,{status:409})).error,'NGS_FILE_SYNC_CONTENT_MISMATCH');
+ assert.equal((await send('read',{path:'raw/bad.bin'})).status,404);
+ await rpc('file_reset',{syncId:whole.syncId,path:'raw/bad.bin'});
+ const none=Buffer.alloc(0);
+ await binary(whole.syncId,'raw/empty.bin',digest(none),0,undefined);
+ assert.deepEqual(await rpc('finish',{syncId:whole.syncId}),{ok:true,written:sizes.length+2});
+ assert.deepEqual(await progress(),{state:'completed',fileName:null,percent:100,completed:sizes.length+2,total:sizes.length+2,failed:0});
+ const another=await rpc('begin',{scope:'binari'});
+ await rpc('plan',{syncId:another.syncId,totalFiles:1});
+ assert.equal((await binary(another.syncId,'raw/good.bin','f'.repeat(64),small.length,small,{status:409})).error,'NGS_FILE_SYNC_CONTENT_MISMATCH');
+ assert.deepEqual(Buffer.from(await (await send('read',{path:'raw/good.bin'})).arrayBuffer()),small);
+ await rpc('abort',{syncId:another.syncId});
+ console.log('Space signed whole binary single-PUT sizes',sizes);
  console.log('Space file replica: real workerd D1/R2 integrity, scoped inventory, replay, range, recoverable deletion and no unrelated changes PASS');
 }finally{await mini.dispose();}

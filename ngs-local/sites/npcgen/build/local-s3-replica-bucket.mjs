@@ -87,17 +87,21 @@ export function createS3ReplicaBucket({client,commands,bucketName}={}){
    return {...info,body,arrayBuffer:()=>new Response(body).arrayBuffer()};
   }catch(e){if(body)void body.cancel().catch(()=>{});else row?.Body?.destroy?.();throw e;}
  }
- async function put(key,body,{onlyIf,sha256,customMetadata}={}){
-  if(!(body instanceof Uint8Array)||sha256!==undefined&&!sha(sha256))throw invalid();
+ async function put(key,body,{onlyIf,sha256,customMetadata,size}={}){
+  const streamed=stream(body);
+  if((!streamed&&!(body instanceof Uint8Array))||sha256!==undefined&&!sha(sha256))throw invalid();
+  const length=streamed?size:body.byteLength;
+  if(!int(length,0,5*1024**3)||!streamed&&size!==undefined&&size!==length||streamed&&!sha256)throw invalid();
   const meta=metaInput(customMetadata);
   if(sha256!==undefined&&meta?.sha256!==sha256)throw invalid();
+  const input=streamed?Readable.fromWeb(body):body;
   let value;
   try{
-   value=await call('PutObject',{...K(key),Body:body,ContentLength:body.byteLength,Metadata:meta,
+   value=await call('PutObject',{...K(key),Body:input,ContentLength:length,Metadata:meta,
     ...condition(onlyIf,true),...(sha256?{ChecksumSHA256:Buffer.from(sha256,'hex').toString('base64')}: {})});
-  }catch(e){if(status(e)===412&&onlyIf!==undefined)return null;throw e;}
+  }catch(e){if(streamed)input.destroy();if(status(e)===412&&onlyIf!==undefined)return null;throw e;}
   if(!etag(value?.ETag))throw unavailable();
-  return {etag:value.ETag,size:body.byteLength,customMetadata:meta??{}};
+  return {etag:value.ETag,size:length,customMetadata:meta??{}};
  }
  async function list({prefix='',limit=1000,include=[],cursor}={}){
   if(!keyValid(prefix,0)||!int(limit,1,1000)||!Array.isArray(include)||include.some(v=>v!=='customMetadata')||
