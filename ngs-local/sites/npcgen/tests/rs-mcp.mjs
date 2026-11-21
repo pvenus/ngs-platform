@@ -6,7 +6,9 @@ import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {createRSQueueConsumer,sameMacRSQueue} from '../build/rs-mcp.mjs';
+import {createRSQueueConsumer,createSpaceRSQueueConsumer,sameMacRSQueue} from '../build/rs-mcp.mjs';
+import {createNgsHealthRelay} from '../build/rs-ops-ngs-health.mjs';
+import {createSpaceMachineMcp} from '../build/space-machine-mcp.mjs';
 import {loopbackJsonMCP} from '../build/folder-mcp-loopback.mjs';
 
 const list='ngs_request_queue_list',ack='ngs_request_queue_ack',submit='request_submit';
@@ -167,4 +169,61 @@ test('non-progressing or false continuation is rejected rather than looping fore
   callRS:async()=>{throw Object.assign(Error(),{rsCode:'OFFICIAL_REQUEST_IDEMPOTENCY_CONFLICT'});}});
  assert.equal((await consumer.pollOnce()).unresolved,16);
  await assert.rejects(consumer.pollOnce(),/QUEUE_RESPONSE_INVALID/);assert.equal(requests,2);
+});
+
+test('empty authenticated Local and Space lists relay version observations; bad payload does not',async t=>{
+ const sha='a'.repeat(40),calls=[];
+ const observeNgs=(...args)=>calls.push(args);
+ const ngsUrl=await listener(t,createServer(async(req,res)=>{
+  const parts=[];for await(const c of req)parts.push(c);
+  const msg=JSON.parse(Buffer.concat(parts));
+  if(!Object.hasOwn(msg,'id')){res.writeHead(202).end();return;}
+  const result=msg.method==='initialize'?{protocolVersion:'2025-06-18',capabilities:{tools:{}}}:
+   {isError:false,structuredContent:{requests:[]}};
+  res.writeHead(200,{'Content-Type':'application/json','X-NGS-Commit-Sha':sha});
+  res.end(JSON.stringify({jsonrpc:'2.0',id:msg.id,result}));
+ }));
+ // An empty queue never contacts RS (port 1 intentionally unusable).
+ const local=sameMacRSQueue({ngsUrl,rsUrl:'http://127.0.0.1:1/mcp',observeNgs});
+ assert.equal((await local.pollOnce()).seen,0);
+ let state='legacy';
+ const space= createSpaceMachineMcp({token:'c'.repeat(64),platformToken:'test'.repeat(8),send:async(_url,wire)=>{
+  const {id,params}=JSON.parse(wire.body);
+  assert.equal(params.name,'space_requests_pending');
+  return new Response(JSON.stringify({jsonrpc:'2.0',id,result:{isError:false,
+   structuredContent:state==='bad'?{invalid:true}:{requests:[]}}}),
+   {headers:{'Content-Type':'application/json',...(state==='legacy'?{}:{'X-NGS-Commit-Sha':sha})}});
+ }});
+ const pump=createSpaceRSQueueConsumer({callNGS:space,callRS:()=>assert.fail('empty queue touched RS'),observeNgs});
+ assert.equal((await pump.pollOnce()).seen,0);
+ state='new';assert.equal((await pump.pollOnce()).seen,0);
+ state='bad';await assert.rejects(pump.pollOnce(),/RESPONSE_INVALID/);
+ assert.deepEqual(calls,[['local',sha],['space',null],['space',sha]]);
+});
+
+test('RS observer sends common OPS heartbeats for each source, coalesces stable replies, and tolerates OPS failure',async()=>{
+ const hits=[]; let time=0,status=200;
+ const relay=createNgsHealthRelay({now:()=>time,send:async(url,opts)=>{
+  assert.equal(url,'http://127.0.0.1:8090/api/service-heartbeat');
+  hits.push(JSON.parse(opts.body));return new Response(null,{status});
+ }});
+ const sha='a'.repeat(40),newSha='b'.repeat(40);
+ const flush=()=>new Promise(resolve=>setImmediate(resolve));
+ relay('local',sha);relay('local',sha);relay('space','bad');relay('other',sha);await flush();
+ relay('local',sha);relay('local',newSha);await flush();
+ status=503; time=60_000;relay('space',undefined);await flush();
+ relay('space',sha);assert.equal(hits.length,4);
+ status=200; time+=5000;relay('space',sha);await flush();
+ assert.deepEqual(hits,[{serverName:'ngs-local',commitSha:sha},{serverName:'ngs-space'},
+  {serverName:'ngs-local',commitSha:newSha},{serverName:'ngs-space'},{serverName:'ngs-space',commitSha:sha}]);
+});
+
+test('a slow or unavailable health receiver never delays handing off queue contents',async()=>{
+ const a=makeQueue();let release;
+ const busy=new Promise(resolve=>{release=resolve;});
+ try{
+  const pump=createRSQueueConsumer({observeNgs:()=>busy,callNGS:async name=>name===list?{requests:[a]}:
+   {queueId:a.queueId,status:'acknowledged'},callRS:async()=>receipt(a)});
+  assert.equal((await pump.pollOnce()).acknowledged,1);
+ }finally{release();}
 });

@@ -76,7 +76,7 @@ export function createSpaceMachineMcp({
   typeof send!=='function'||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>60_000)
   throw configError();
  let seq=0;
- return async function call(name,args,{limit=128*1024}={}){
+ return async function call(name,args,{limit=128*1024,responseMeta}={}){
   if(!tools.has(name)||!object(args)||!Number.isSafeInteger(limit)||limit<1||limit>maxReply)throw denied();
   const id=++seq,body=JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}});
   if(Buffer.byteLength(body)>96*1024)throw denied();
@@ -102,6 +102,7 @@ export function createSpaceMachineMcp({
     throw Error(err.error);
   }
   if(envelope.result.isError!==false)throw unavailable();
+  if(typeof responseMeta==='function')responseMeta(response.headers.get('x-ngs-commit-sha'));
   return envelope.result.structuredContent;
  };
 }

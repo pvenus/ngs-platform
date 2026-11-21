@@ -26,7 +26,7 @@ export function loopbackJsonMCP(url,{
  if(endpoint.protocol!=='http:'||endpoint.hostname!=='127.0.0.1'||!endpoint.port
   ||endpoint.pathname!=='/mcp'||url!==endpoint.origin+'/mcp')throw transportError();
  let sequence=0,initialized;
- async function post(message,{limit=4*1024*1024,notification=false,handshake=false}={}){
+ async function post(message,{limit=4*1024*1024,notification=false,handshake=false,responseMeta}={}){
   const body=Buffer.from(JSON.stringify(message));
   // Native HTTP streams also support Python's HTTP/1.0 close and large MCP chunk JSON.
   const response=await new Promise((resolve,reject)=>{
@@ -47,6 +47,8 @@ export function loopbackJsonMCP(url,{
   let envelope;
   try{envelope=await readJSON(response,limit);}catch{throw transportError();}
   if(envelope?.jsonrpc!=='2.0'||envelope.id!==message.id||envelope.error||!envelope.result)throw transportError();
+  if(envelope.result.isError===false&&typeof responseMeta==='function')
+   responseMeta(response.headers['x-ngs-commit-sha']);
   return envelope.result;
  }
  function rpc(method,params,options){

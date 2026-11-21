@@ -1,4 +1,5 @@
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
+import {createNgsHealthRelay} from './rs-ops-ngs-health.mjs';
 import {startOpsHealthReport} from './local-ops-health-report.mjs';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
@@ -52,7 +53,7 @@ function parseBatch(batch,previous,source){
  return {rows:batch.requests,next:batch.nextCursor??null};
 }
 
-function createConsumer({callNGS,callRS,now=Date.now},sourceId){
+function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
  const local=sourceId==='local';
  const listTool=local?'ngs_request_queue_list':'space_requests_pending';
  const ackTool=local?'ngs_request_queue_ack':'space_requests_ack';
@@ -67,7 +68,11 @@ function createConsumer({callNGS,callRS,now=Date.now},sourceId){
  }
  async function work(){
   const listArgs=cursor?{limit,cursor}:{limit};
-  const {rows,next}=parseBatch(await callNGS(listTool,listArgs,{limit:4*1024*1024}),cursor,sourceId);
+  let commitSha;
+  const batch=await callNGS(listTool,listArgs,{limit:4*1024*1024,responseMeta:value=>{commitSha=value;}});
+  const {rows,next}=parseBatch(batch,cursor,sourceId);
+  // Report successful contact independently of RS registration or NGS ACK.
+  if(observeNgs)try{void Promise.resolve(observeNgs(sourceId,commitSha)).catch(()=>{});}catch{}
   // NGS returns an opaque cursor independent of ACK/removal. A full page
   // advances even if its deliveries were all rejected or remain unresolved.
   cursor=next;
@@ -124,7 +129,7 @@ export function watchSpaceRSQueue({pump,signal,onResult=()=>{},onError=()=>{},sl
 }
 export const ngsQueueMcpUrl='http://127.0.0.1:5275/mcp';
 export const rsRequestMcpUrl='http://127.0.0.1:8770/mcp';
-export function sameMacRSQueue({ngsUrl=ngsQueueMcpUrl,rsUrl=rsRequestMcpUrl,signal}={}){
+export function sameMacRSQueue({ngsUrl=ngsQueueMcpUrl,rsUrl=rsRequestMcpUrl,signal,observeNgs}={}){
  // Ports are an injected test seam; the executable takes no host or URL.
  const callNGS=loopbackJsonMCP(ngsUrl,{clientName:'ngs-rs-mcp-consumer',signal,timeoutMs:4000,transportError:localUnavailable});
  const callRS=loopbackJsonMCP(rsUrl,{clientName:'ngs-rs-mcp-consumer',signal,timeoutMs:4000,transportError:localUnavailable,
@@ -133,7 +138,7 @@ export function sameMacRSQueue({ngsUrl=ngsQueueMcpUrl,rsUrl=rsRequestMcpUrl,sign
    return name===rsTool&&exact(e,['error','status'])&&definitive.get(e.error)===e.status
     ?Object.assign(Error(e.error),{rsCode:e.error}):null;
   }});
- return createRSQueueConsumer({callNGS,callRS});
+ return createRSQueueConsumer({callNGS,callRS,observeNgs});
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
@@ -141,7 +146,9 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(!['--watch','--once'].includes(mode)){
   console.error('NGS_RS_MCP_EXPLICIT_MODE_REQUIRED');process.exitCode=2;
  }else{
-  const controller=new AbortController(),pump=sameMacRSQueue({signal:controller.signal});
+  const controller=new AbortController();
+  const observeNgs=mode==='--watch'?createNgsHealthRelay({signal:controller.signal}):undefined;
+  const pump=sameMacRSQueue({signal:controller.signal,observeNgs});
   const health=mode==='--watch'?startOpsHealthReport({serverName:'rs-mcp'}):null;
   let timer,wake,last='';
   const stop=()=>{health?.stop();controller.abort();clearTimeout(timer);wake?.();};
@@ -157,7 +164,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
        ?Object.assign(Error(e.error),{rsCode:e.error}):null;
      }});
     let spaceLast='';
-    space=watchSpaceRSQueue({pump:createSpaceRSQueueConsumer({callNGS,callRS}),signal:controller.signal,
+    space=watchSpaceRSQueue({pump:createSpaceRSQueueConsumer({callNGS,callRS,observeNgs}),signal:controller.signal,
      onResult:status=>{
       const safe=JSON.stringify(status);
       if(status.acknowledged||status.seen&&safe!==spaceLast)console.log('NGS_RS_MCP_SPACE_POLL',safe);
