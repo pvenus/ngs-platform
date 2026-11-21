@@ -3,7 +3,7 @@ import {createObjectReplica} from './object-replica.mjs';
 import {parseWholeFileHeaders,wholeFileError} from './replica-whole-file-wire.mjs';
 
 const json=(value,status=200)=>Response.json(value,{status});
-const api=new Set(['call','list','head','get','progress','cache-version','cache-read','cache-store']);
+const api=new Set(['call','list','head','get','progress','cache-version','cache-read','cache-store','verified-png']);
 const info=o=>({size:o.size,etag:o.etag,customMetadata:o.customMetadata??{}});
 function permitted(r,env){
  const cap=r.headers.get('x-ngs-internal');
@@ -14,7 +14,7 @@ export default {async fetch(r,env){
  if(!permitted(r,env)||r.method!=='POST')return new Response(null,{status:403});
  const url=new URL(r.url);
  if(url.search||!['/call','/raw'].includes(url.pathname))return new Response(null,{status:404});
- const replica=createObjectReplica({db:env.DB,bucket:env.BUCKET,fixedLengthStream:n=>new FixedLengthStream(n)});
+ const replica=createObjectReplica({db:env.DB,bucket:env.BUCKET,fixedLengthStream:n=>new FixedLengthStream(n),cacheOrigin:url.origin});
  if(url.pathname==='/raw'){
   try{
    const args=parseWholeFileHeaders(name=>r.headers.get(name));
@@ -25,6 +25,11 @@ export default {async fetch(r,env){
  try{
   const value=await r.json(),op=value?.op,args=value?.args;
   if(!api.has(op)||!Array.isArray(args)||args.length>3)return json({error:'NGS_MINIFLARE_INVALID'},400);
+  if(op==='verified-png'){
+   const bytes=await replica.readVerifiedPng(...args);
+   return bytes===undefined?new Response(null,{status:204}):bytes===null?new Response(null,{status:404}):
+    new Response(bytes,{headers:{'Content-Type':'image/png','Content-Length':String(bytes.byteLength)}});
+  }
   if(op==='get'){
    const o=await replica.get(...args);
    return o?new Response(o.body,{headers:{'x-ngs-storage-meta':JSON.stringify(info(o))}}):new Response(null,{status:404});

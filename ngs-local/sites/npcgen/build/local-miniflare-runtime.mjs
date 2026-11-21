@@ -85,6 +85,18 @@ export async function openLocalMiniflareReplica({persistRoot,fixture=false,load=
    const meta=JSON.parse(header);
    return {...meta,body:response.body,arrayBuffer:()=>response.arrayBuffer()};
   },
+  async readVerifiedPng(path,sha256,max){
+   const response=await io('/call',{headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'verified-png',args:[path,sha256,max]})});
+   if(response.status===204)return undefined;
+   if(response.status===404)return null;
+   if(!response.ok)throw parsedError(response,await response.json().catch(()=>null));
+   const length=Number(response.headers.get('Content-Length'));
+   if(response.headers.get('Content-Type')!=='image/png'||!Number.isSafeInteger(length)||length<8||length>max)throw down();
+   const bytes=new Uint8Array(await response.arrayBuffer());
+   if(bytes.length!==length)throw down();
+   return bytes;
+  },
   async receiveWholeFile({syncId,path,sha256,size},body){
    const response=await io('/raw',{headers:{'Content-Type':'application/octet-stream','Content-Length':String(size),
     'X-NGS-Sync-Id':syncId,'X-NGS-File-Path':Buffer.from(path).toString('base64url'),'X-NGS-File-Sha256':sha256},

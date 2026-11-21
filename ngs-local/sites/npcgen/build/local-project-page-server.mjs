@@ -94,7 +94,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  if(!object)prepareFreshParent(root);
  const projectCatalog=object?.catalog??createLocalProjectFolders({root});
  const openProject=object?.openProject??(id=>openLocalWorkspaceProject(root,id));
- const readWorkspace=(pathname,query,authorize)=>dispatchWorkspaceRead({pathname,query,openProject,authorize});
+ const readWorkspace=(pathname,query,authorize,mediaCache)=>dispatchWorkspaceRead({pathname,query,openProject,authorize,mediaCache});
  // Preserve the established browser paths, but only the separate receiver
  // may mutate content. Discovery, list, icon and workspace use local files.
  const catalog={...projectCatalog,
@@ -252,7 +252,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
     if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
     const result=await readWorkspace(url.pathname,url.searchParams,
-     projectId=>projectPermission(session.principal,projectId,undefined,false));
+     projectId=>projectPermission(session.principal,projectId,undefined,false),
+     req.headers.range===undefined&&req.headers['if-range']===undefined);
     if(object&&auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     res.setHeader('X-NPCGen-Frontend-Context',session.contextId);
     if(result.json)return json(200,result.json);

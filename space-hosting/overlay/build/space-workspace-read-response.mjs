@@ -14,6 +14,7 @@ export async function spaceWorkspaceReadResponse(request,replica,{authorize,npcR
  if(request.method!=='GET')return error('METHOD_NOT_ALLOWED',405);
  try{
   const result=await dispatchWorkspaceRead({pathname:url.pathname,query:url.searchParams,npcRead,
+   mediaCache:!request.headers.has('Range')&&!request.headers.has('If-Range'),
    openProject:id=>openSpaceWorkspaceProject(replica,id),
    authorize:async id=>{
     if(id!=='binari'||await authorize?.({userId,email},id,workspaceReadResource(route==='npc'?'npcs':url.searchParams.get('tab')))!==true)

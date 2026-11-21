@@ -243,7 +243,7 @@ async function detail(project,npc,markPartial){
  })).flat();
  return {npc:pick(npc,npcKeys),planning,portraits,animations,frameSets:await nativeFrameSets(project,npc,frameSets,materialized,markPartial)};
 }
-async function media(project,npc,locator,sha256){
+async function media(project,npc,locator,sha256,mediaCache=false){
  const fields=locator.split('/'),[kind,pos,a,b,c,d]=fields;
  let source;
  if(kind==='portrait'&&fields.length===3)source=picture(npc,pos,a);
@@ -257,9 +257,14 @@ async function media(project,npc,locator,sha256){
   source=nativeFrame(await nativeTrack(project,npc,pos,a,b),Number(c),d);
  if(!source)throw missing();
  if(source.asset.slice(0,64)!==sha256)throw fault('NPC_WORKSPACE_MEDIA_CHANGED',409);
+ const mime=source.ext==='.png'?'image/png':'video/mp4';
+ if(mediaCache&&mime==='image/png'&&typeof project.readVerifiedPng==='function'){
+  const verified=await project.readVerifiedPng(source.path,sha256,mediaLimit);
+  if(verified===null)throw missing();
+  if(verified!==undefined)return {bytes:verified,mime};
+ }
  const bytes=await project.readBytes(source.path,mediaLimit);
  if(!bytes)throw missing();
- const mime=source.ext==='.png'?'image/png':'video/mp4';
  if(await hashReplicaBytes(bytes)!==source.asset.slice(0,64)||
     mime==='image/png'&&!bytesMatch(bytes,pngHead)||
     mime==='video/mp4'&&!bytesMatch(bytes,mp4Head,4))throw unavailable();
@@ -279,7 +284,7 @@ export function isOptionalNpcMediaScope(scope){
  return id(project)&&folder==='npcs'&&id(npc)&&rest.length>0
   &&Object.values(mediaFolderParts).some(values=>values.includes(rest.join('/')));
 }
-export async function npcWorkspaceRead({openProject,query,authorize}){
+export async function npcWorkspaceRead({openProject,query,authorize,mediaCache=false}){
  const projectId=query.get('projectId'),npcId=query.get('npcId'),locator=query.get('media'),sha256=query.get('sha256'),keys=[...query.keys()];
  if(keys.length!==new Set(keys).size||keys.some(k=>!['projectId','npcId','media','sha256'].includes(k))||!id(projectId)||
    npcId!==null&&!id(npcId)||(locator===null)!==(sha256===null)||
@@ -310,7 +315,7 @@ export async function npcWorkspaceRead({openProject,query,authorize}){
  if(locator!==null){
   const selected=allowed.includes(npcId)&&await one(npcId);
   if(!selected)throw missing();
-  return media(project,selected,locator,sha256);
+  return media(project,selected,locator,sha256,mediaCache);
  }
  const roster=(await sequenceMap(allowed,one)).filter(Boolean);
  const base={projectId,actId,chapters:[...new Set(roster.flatMap(row=>ids(row.chapters)))].map(id=>({id,label:id})),

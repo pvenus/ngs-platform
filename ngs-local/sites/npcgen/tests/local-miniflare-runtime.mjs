@@ -44,10 +44,13 @@ test('real Miniflare keeps data/progress across restart while exact Local auth, 
   return {origin,ngs:loopbackJsonMCP(endpoint),upload:createLoopbackFileUpload(endpoint)};
  }
  let {origin,ngs,upload}=addresses();
+ const portrait=Buffer.from([137,80,78,71,13,10,26,10,1]);
  const data=new Map([
   ['project.json',Buffer.from('{"name":"Fixture Miniflare","projectId":"binari"}')],
   ['npcs/metadata.json',Buffer.from('{"characterOrder":["fixture"]}')],
-  ['npcs/fixture/metadata.json',Buffer.from('{"id":"fixture","name":"Fixture Actor","kind":"npc"}')],
+  ['npcs/fixture/metadata.json',Buffer.from(JSON.stringify({id:'fixture',name:'Fixture Actor',kind:'npc',
+   portraitSets:{representative:{portraitAssetId:sha(portrait)+'.png'}}}))],
+  ['npcs/fixture/assets/portraits/representative/portrait.png',portrait],
   ['test/control.bin',Buffer.alloc(19_200_000,11)],
  ]);
  const by=new Map(),scope='binari';
@@ -67,7 +70,7 @@ test('real Miniflare keeps data/progress across restart while exact Local auth, 
  assert.deepEqual((await initialCheck.json()).projects,[]);
  assert.deepEqual(await ngs('ngs_request_queue_list',{}),{requests:[]});
  const queueInode=statSync(env.NGS_REQUEST_QUEUE_DB).ino;
- assert.deepEqual(await pushProjectFiles({scope,pds,ngs,upload}),{ok:true,written:4,failed:0});
+ assert.deepEqual(await pushProjectFiles({scope,pds,ngs,upload}),{ok:true,written:5,failed:0});
  const cookie=await session();
  assert.equal((await (await fetch(origin+'/api/project-folders',{headers:cookie})).json()).projects[0].name,'Fixture Miniflare');
  const route='/api/npc-workspace?projectId=binari&npcId=fixture';
@@ -84,8 +87,22 @@ test('real Miniflare keeps data/progress across restart while exact Local auth, 
  assert.deepEqual(await(await fetch(origin+route,{headers:otherCookie})).json(),detail);
  assert.ok(requests.slice(beforeWarm).includes('cache-read'));
  assert.ok(!requests.slice(beforeWarm).includes('get'));
+ const portraitRoute=detail.portraits[0].url;
+ for(const headers of [cookie,otherCookie]){
+  const start=requests.length;
+  const opened=await fetch(origin+portraitRoute,{headers});
+  assert.equal(opened.status,200);
+  assert.match(opened.headers.get('cache-control'),/no-store/);
+  assert.deepEqual(Buffer.from(await opened.arrayBuffer()),portrait);
+  assert.equal(requests.slice(start).filter(op=>op==='verified-png').length,1);
+ }
+ const rangeStart=requests.length;
+ const ranged=await fetch(origin+portraitRoute,{headers:{...cookie,Range:'bytes=0-4'}});
+ assert.equal(ranged.status,200);
+ assert.deepEqual(Buffer.from(await ranged.arrayBuffer()),portrait);
+ assert.ok(!requests.slice(rangeStart).includes('verified-png'));
  assert.deepEqual(await(await fetch(origin+'/api/ngs-sync-progress?projectId=binari',{headers:cookie})).json(),
-  {state:'completed',fileName:null,percent:100,completed:4,total:4,failed:0});
+  {state:'completed',fileName:null,percent:100,completed:5,total:5,failed:0});
  const changed='npcs/fixture/metadata.json',updated=Buffer.from('{"id":"fixture","name":"Changed Fixture","kind":"npc"}');
  data.set(changed,updated);
  const delta={...pds,compare:async()=>({scope,deleted:[],groups:[{folder:'npcs',files:[{path:changed,sha256:sha(updated),size:updated.length}]}]})};

@@ -28,7 +28,7 @@ export default {
       const grant = await appProject(db, siteAppMaster(user), "binari");
       return grant.project_id === "binari" && grant.revoked === 0;
     };
-    const fileReplica = db && env.BUCKET ? createSpaceFileReplica({db,bucket:env.BUCKET}) : undefined;
+    const fileReplica = db && env.BUCKET ? createSpaceFileReplica({db,bucket:env.BUCKET,cacheOrigin:new URL(request.url).origin}) : undefined;
     const replicaReads = env.NPCGEN_SPACE_REPLICA_READ_ENABLED === "1" && !!fileReplica && machineTokenConfigured(secret);
     if (new URL(request.url).pathname === replicaSyncProgressPath) {
       const headers = {"cache-control":"private, no-store","x-content-type-options":"nosniff"};

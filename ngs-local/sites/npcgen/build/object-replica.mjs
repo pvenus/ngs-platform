@@ -9,6 +9,8 @@ export const objectReplicaChunkSize=1024*1024;
 const chunkSize=objectReplicaChunkSize,minPart=5*chunkSize,maxParts=10000,wholeTransfer='whole';
 // Shared wire tolerates the full supported R2 object range, not a product size cap.
 const nativeObjectMaximum=5*1024**4-5*1024**3;
+const npcPngCacheLimit=4*1024*1024,npcPngCacheAge=600;
+const pngMagic=[137,80,78,71,13,10,26,10];
 const partSize=size=>Math.max(minPart,Math.ceil(size/(maxParts*chunkSize))*chunkSize);
 const encoder=new TextEncoder(),hash=v=>typeof v==='string'&&/^[0-9a-f]{64}$/u.test(v);
 const safeInt=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
@@ -64,7 +66,7 @@ function headerCheck(path,first){
 export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.randomUUID(),
  fixedLengthStream=()=>new TransformStream(),
  writePart=(upload,part,body)=>upload.uploadPart(part,body),
- writeWhole=(bucket,key,body,size,options)=>bucket.put(key,body,options),namespace=defaultNamespace}={}){
+ writeWhole=(bucket,key,body,size,options)=>bucket.put(key,body,options),namespace=defaultNamespace,cacheOrigin}={}){
  if(typeof namespace!=='string'||!/^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){1,8}$/u.test(namespace))unavailable();
  const legacy=namespace+'files/',stage=namespace+'v2/stage/',versions=namespace+'v2/objects/';
  const pathOK=p=>typeof p==='string'&&p.isWellFormed()&&encoder.encode(legacy+p).length<=1024&&p.split('/').length<=64&&
@@ -113,6 +115,55 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   if(item?.customMetadata?.removed==='1'){void item.body?.cancel().catch(()=>{});return null;}
   if(item&&!item.body)stale();
   return item;
+ }
+
+ // Private cache: only a route-authorized, published and hash-pinned PNG.
+ // Cache API eviction or failure is a miss; it never replaces origin proof.
+ async function readVerifiedPng(path,sha256,max){
+  if(typeof cacheOrigin!=='string'||!globalThis.caches?.open)return undefined;
+  ready();need(pathOK(path)&&/^npcs\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\/assets\/.+\.png$/u.test(path)&&
+   hash(sha256)&&safeInt(max,1,8*1024*1024));
+  const committed=await current(path);
+  if(!committed)return undefined; // Unversioned legacy files follow the usual read.
+  if(!committed.object_key)return null;
+  if(committed.sha256!==sha256)throw Object.assign(Error('NPC_WORKSPACE_MEDIA_CHANGED'),{status:409});
+  const pinned=expectedObject(await bucket.head(committed.object_key),committed);
+  const valid=body=>body.byteLength===pinned.size&&pngMagic.every((v,i)=>body[i]===v)&&digest(body)===sha256;
+  const unchanged=async()=>{
+   const latest=await current(path);
+   if(latest?.version!==committed.version||latest?.object_key!==committed.object_key||latest?.sha256!==sha256)
+    throw Object.assign(Error('NPC_WORKSPACE_MEDIA_CHANGED'),{status:409});
+  };
+  if(!pinned||pinned.size>max)unavailable();
+  let cache,key,bytes;
+  if(pinned.size<=npcPngCacheLimit){
+   try{
+    // No auth or browser request headers enter this cache key or value.
+    const identity=digest(encoder.encode(JSON.stringify([namespace,sha256,pinned.etag])));
+    key=new Request(new URL('/.ngs-private-cache/v1/png/'+identity,cacheOrigin));
+    cache=await globalThis.caches.open('ngs-private-npc-png-v1');
+    const hit=await cache.match(key);
+    if(hit){
+     if(hit.status===200&&hit.headers.get('Content-Length')===String(pinned.size)&&
+        hit.headers.get('Content-Type')==='image/png'){
+      const value=new Uint8Array(await hit.arrayBuffer());
+      if(valid(value))bytes=value;
+     }else void hit.body?.cancel().catch(()=>{});
+    }
+   }catch{/* Optional cache; read current origin below. */}
+  }
+  if(bytes){await unchanged();return bytes;}
+  const object=expectedObject(await bucket.get(committed.object_key,{onlyIf:{etagMatches:pinned.etag}}),committed);
+  if(object?.etag!==pinned.etag||typeof object?.arrayBuffer!=='function')unavailable();
+  bytes=new Uint8Array(await object.arrayBuffer());
+  if(!valid(bytes))unavailable();
+  await unchanged();
+  if(cache&&key){
+   try{await cache.put(key,new Response(bytes,{headers:{'Content-Type':'image/png',
+    'Content-Length':String(bytes.byteLength),'Cache-Control':'public, max-age='+npcPngCacheAge}}));}
+   catch{/* Browser authorized bytes do not depend on cache storage. */}
+  }
+  return bytes;
  }
  async function list(scope=''){
   ready();
@@ -573,5 +624,5 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   need(exact(args,'syncId'));
   return await close(name,args.syncId);
  }
- return {call,list,head,get,progress,receiveWholeFile,npcCache};
+ return {call,list,head,get,progress,receiveWholeFile,npcCache,readVerifiedPng};
 }
