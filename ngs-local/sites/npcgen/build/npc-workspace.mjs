@@ -109,36 +109,72 @@ async function mediaInventory(project,npcId){
   (row.size===undefined||Number.isSafeInteger(row.size)&&row.size>=0&&row.size<=mediaLimit)?[row.path]:[]));
  return binding=>binding&&paths.has(binding.path);
 }
-const nativeMotions=['walk','run'];
+const nativePoses=['idle','combat'];
+const nativeMetadataLimit=2*1024*1024,nativeTrackLimit=256;
+const detailCacheView='npc-workspace.native-dynamic.v1';
 const nativeFiles={
  raw:['animation-sequences','ngs.animation-native-png-sequence.v1','assetId'],
  alpha:['animation-alpha','ngs.animation-alpha-output.v1','alphaAssetId'],
  pixel:['animation-processed-directions','workflow.animation-pixel-direction.v1','assetId'],
 };
 const nativeIdentity=['npcId','generationId','posePreset','presetId','direction','sourceBindingHash','frameCount','fps'];
-const hash=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
-async function nativeTrack(project,npc,pos,preset,d,markPartial=()=>{}){
- if(pos!=='idle'||!nativeMotions.includes(preset)||!direction.includes(d))return null;
+const hash=s=>typeof s==='string'&&s.length===64&&/^[a-f0-9]{64}$/.test(s);
+const nativeAddress=(pos,preset,d)=>nativePoses.includes(pos)&&id(preset)&&direction.includes(d);
+async function nativeTrack(project,npc,pos,preset,d,markPartial=()=>{},through='pixel'){
+ if(!nativeAddress(pos,preset,d)||!Object.hasOwn(nativeFiles,through))return null;
  const base=[pos,preset,d].join('/'),prefix='npcs/'+npc.id+'/';
  const read=async layer=>{
   const [directory,schema,assetKey]=nativeFiles[layer];
-  const row=await readReplicaObject(project,prefix+directory+'/'+base+'.json');
+  const path=prefix+directory+'/'+base+'.json',bytes=await project.readBytes(path,nativeMetadataLimit);
+  if(bytes===null)return null;
+  let row;
+  try{
+   if(!(bytes instanceof Uint8Array)||bytes.length>nativeMetadataLimit)throw unavailable();
+   row=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+  }catch{markPartial();return null;}
   const valid=row?.schemaVersion===schema&&row.npcId===npc.id&&row.posePreset===pos&&row.presetId===preset&&row.direction===d&&
    id(row.generationId)&&hash(row.sourceBindingHash)&&fps(row.fps)&&
    Number.isSafeInteger(row.frameCount)&&row.frameCount>0&&row.frameCount<=1000&&Array.isArray(row.frames)&&
-   row.frames.length===row.frameCount&&row.frames.every((frame,index)=>frame?.index===index&&mediaAsset(frame[assetKey],'.png'))
-  if(row&&!valid)markPartial();
-  return valid?row:null;
+   row.frames.length===row.frameCount&&row.frames.every((frame,index)=>frame?.index===index&&mediaAsset(frame[assetKey],'.png')&&
+    (!Object.hasOwn(frame,'sha256')||frame.sha256+'.png'===frame[assetKey])&&
+    (!Object.hasOwn(frame,'mimeType')||frame.mimeType==='image/png'));
+  if(!valid){markPartial();return null;}
+  return {row,bytes};
  };
- const raw=await read('raw');
- if(!raw)return null;
+ const r=await read('raw');
+ if(!r)return null;
+ const raw=r.row;
+ if(through==='raw')return {base,prefix,raw};
+ const [a,p]=await Promise.all([read('alpha'),through==='pixel'?read('pixel'):null]);
  const same=row=>row&&nativeIdentity.every(k=>raw[k]===row[k])&&
   row.frames.every((frame,i)=>frame.rawAssetId===raw.frames[i].assetId);
- const [a,p]=await Promise.all([read('alpha'),read('pixel')]);
- const alpha=same(a)?a:null;
- const pixel=alpha&&same(p)&&p.frames.every((f,i)=>f.alphaAssetId===alpha.frames[i].alphaAssetId)?p:null;
+ const pinnedRaw=(a&&Object.hasOwn(a.row,'rawManifestHash'))||(p&&Object.hasOwn(p.row,'rawManifestHash'));
+ const rawSha=pinnedRaw?await hashReplicaBytes(r.bytes):null;
+ const optional=(row,key,expected)=>!Object.hasOwn(row,key)||expected!=null&&row[key]===expected;
+ const alpha=same(a?.row)&&optional(a.row,'rawManifestId','canonical-files/binari/'+prefix+'animation-sequences/'+base+'.json')&&
+  optional(a.row,'rawRequestId',raw.requestId)&&optional(a.row,'rawManifestHash',rawSha)?a.row:null;
+ const alphaSha=alpha&&p&&Object.hasOwn(p.row,'alphaManifestHash')?await hashReplicaBytes(a.bytes):null;
+ const pixel=alpha&&same(p?.row)&&optional(p.row,'rawManifestHash',rawSha)&&optional(p.row,'alphaManifestHash',alphaSha)&&
+  p.row.frames.every((f,i)=>f.alphaAssetId===alpha.frames[i].alphaAssetId)?p.row:null;
  if(a&&!alpha||p&&!pixel)markPartial();
  return {base,prefix,raw,alpha,pixel};
+}
+async function nativeAddresses(project,npcId,markPartial){
+ // Detached publications live beneath the NPC, never in the project-wide
+ // motion catalog or the aggregate character document. Do not read media bytes.
+ const roots=['animation-sequences','animation-processed-directions'].map(dir=>'npcs/'+npcId+'/'+dir);
+ const lists=await Promise.all(roots.map(async root=>{
+  try{return await project.listFiles(root);}catch{markPartial();return [];}
+ }));
+ const addresses=new Map();
+ for(const [i,rows] of lists.entries())for(const row of rows){
+  const path=row?.path,prefix=roots[i]+'/';
+  if(typeof path!=='string'||!path.startsWith(prefix)||!path.endsWith('.json'))continue;
+  const key=path.slice(prefix.length,-5),parts=key.split('/');
+  if(parts.length===3&&nativeAddress(...parts))addresses.set(key,parts);
+ }
+ if(addresses.size>nativeTrackLimit)markPartial();
+ return [...addresses.keys()].sort().slice(0,nativeTrackLimit).map(key=>addresses.get(key));
 }
 function nativeFrame(track,index,layer){
  if(!track||!Object.hasOwn(nativeFiles,layer))return null;
@@ -147,36 +183,35 @@ function nativeFrame(track,index,layer){
  return mediaAsset(asset,'.png')?{asset,path:track.prefix+'assets/'+directory+'/'+track.base+'/'+layer+'-'+index+'.png',ext:'.png'}:null;
 }
 async function nativeFrameSets(project,npc,sets,materialized,markPartial){
- for(const motion of nativeMotions){
-  const merged=new Map(sets.find(x=>x.posePreset==='idle'&&x.presetId===motion)?.directions.map(row=>[row.direction,row])??[]);
-  let changed=false;
-  const tracks=await sequenceMap(direction,d=>nativeTrack(project,npc,'idle',motion,d,markPartial));
-  for(const [i,d] of direction.entries()){
-   const track=tracks[i];
-   if(!track)continue;
-   const frames=track.raw.frames.map((_,index)=>{
-    const layerUrl=layer=>{
-     const binding=nativeFrame(track,index,layer);
-     if(binding&&!materialized(binding))markPartial();
-     return materialized(binding)?url(npc.id,['native-frame','idle',motion,d,String(index),layer].join('/'),binding):null;
-    };
-    return {index,pixelUrl:layerUrl('pixel'),rawUrl:layerUrl('raw'),alphaUrl:layerUrl('alpha')};
-   });
-   if(!frames.every(f=>f.rawUrl))continue;
-   for(const layer of ['pixelUrl','alphaUrl']){
-    if(!frames.every(f=>f[layer]))for(const f of frames)f[layer]=null;
-   }
-   merged.set(d,{direction:d,fps:track.raw.fps,frameCount:frames.length,frames});
-   changed=true;
+ const addresses=await nativeAddresses(project,npc.id,markPartial);
+ const bySlot=new Map(sets.map(set=>[[set.posePreset,set.presetId].join('/'),
+  new Map(set.directions.map(row=>[row.direction,row]))]));
+ const tracks=await sequenceMap(addresses,async ([pos,preset,d])=>{
+  try{return await nativeTrack(project,npc,pos,preset,d,markPartial);}catch{markPartial();return null;}
+ });
+ for(const [i,[pos,preset,d]] of addresses.entries()){
+  const track=tracks[i];
+  if(!track){markPartial();continue;}
+  const frames=track.raw.frames.map((_,index)=>{
+   const layerUrl=layer=>{
+    const binding=nativeFrame(track,index,layer),available=materialized(binding);
+    if(binding&&!available)markPartial();
+    return available?url(npc.id,['native-frame',pos,preset,d,String(index),layer].join('/'),binding):null;
+   };
+   return {index,pixelUrl:layerUrl('pixel'),rawUrl:layerUrl('raw'),alphaUrl:layerUrl('alpha')};
+  });
+  if(!frames.every(f=>f.rawUrl))continue;
+  for(const layer of ['pixelUrl','alphaUrl']){
+   if(!frames.every(f=>f[layer]))for(const f of frames)f[layer]=null;
   }
-  if(changed){
-   const next={posePreset:'idle',presetId:motion,directions:direction.flatMap(d=>merged.has(d)?[merged.get(d)]:[])};
-   const index=sets.findIndex(x=>x.posePreset==='idle'&&x.presetId===motion);
-   if(index===-1)sets.push(next);
-   else sets[index]=next;
-  }
+  const key=pos+'/'+preset;
+  if(!bySlot.has(key))bySlot.set(key,new Map());
+  bySlot.get(key).set(d,{direction:d,fps:track.raw.fps,frameCount:frames.length,frames});
  }
- return sets;
+ return [...bySlot.entries()].map(([key,merged])=>{
+  const [posePreset,presetId]=key.split('/');
+  return {posePreset,presetId,directions:direction.flatMap(d=>merged.has(d)?[merged.get(d)]:[])};
+ });
 }
 async function planningDocuments(project,npc,markPartial){
  const prefix='npcs/'+npc.id+'/planning/';
@@ -253,8 +288,8 @@ async function media(project,npc,locator,sha256,mediaCache=false){
   const set=await frameSet(project,npc,pos,a);
   source=frame(set,b,sequence(set,b),Number(c),d);
  }
- if(kind==='native-frame'&&fields.length===6&&/^(?:0|[1-9][0-9]{0,2})$/.test(c))
-  source=nativeFrame(await nativeTrack(project,npc,pos,a,b),Number(c),d);
+ if(kind==='native-frame'&&fields.length===6&&nativeAddress(pos,a,b)&&Object.hasOwn(nativeFiles,d)&&/^(?:0|[1-9][0-9]{0,2})$/.test(c))
+  source=nativeFrame(await nativeTrack(project,npc,pos,a,b,undefined,d),Number(c),d);
  if(!source)throw missing();
  if(source.asset.slice(0,64)!==sha256)throw fault('NPC_WORKSPACE_MEDIA_CHANGED',409);
  const mime=source.ext==='.png'?'image/png':'video/mp4';
@@ -298,7 +333,8 @@ export async function npcWorkspaceRead({openProject,query,authorize,mediaCache=f
   try{
    generation=await cache.version();
    if(generation!==null){
-    const hit=await cache.read(npcId,generation);
+    const cached=await cache.read(npcId,generation);
+    const hit=npcId===null?cached:cached?.view===detailCacheView?cached.data:null;
     if(hit?.projectId===projectId&&Array.isArray(hit.npcs)&&
        (npcId===null?!Object.hasOwn(hit,'npc'):hit.npc?.id===npcId)&&
        await cache.version()===generation)return {json:hit};
@@ -330,7 +366,7 @@ export async function npcWorkspaceRead({openProject,query,authorize,mediaCache=f
   json={...base,...await detail(project,npc,markPartial),mediaScopes:mediaScopes(projectId,npcId)};
  }
  if(cache&&generation!=null&&full){
-  try{await cache.store(npcId,generation,json);}catch{/* A cache write must not fail the authorized read. */}
+  try{await cache.store(npcId,generation,npcId===null?json:{view:detailCacheView,data:json});}catch{/* A cache write must not fail the authorized read. */}
  }
  return {json};
 }
