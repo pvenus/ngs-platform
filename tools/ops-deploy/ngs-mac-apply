@@ -43,6 +43,70 @@ class Refused(RuntimeError):
     pass
 
 
+# Public diagnostic values are selected here, never copied from command output.
+PHASE_CODES = {
+    "validate_candidate": "MAC_CANDIDATE_VALIDATION_FAILED",
+    "check_current": "MAC_CURRENT_CHECK_FAILED",
+    "stop_current": "MAC_BOOTOUT_FAILED",
+    "wait_ports": "MAC_PORT_CHECK_FAILED",
+    "switch_selector": "MAC_SELECTOR_SWITCH_FAILED",
+    "start_candidate": "MAC_BOOTSTRAP_FAILED",
+    "check_candidate": "NATIVE_HEALTH_UNVERIFIED",
+    "check_storage": "MAC_STORAGE_CHECK_FAILED",
+    "record_result": "MAC_RESULT_WRITE_FAILED",
+    "rollback_stop": "MAC_BOOTOUT_FAILED",
+    "rollback_restore": "MAC_ROLLBACK_RESTORE_FAILED",
+    "rollback_start": "MAC_BOOTSTRAP_FAILED",
+    "rollback_check": "MAC_ROLLBACK_CHECK_FAILED",
+}
+HEALTH_CODES = {
+    "NATIVE_PORT_OWNER_DRIFT", "NATIVE_PROCESS_PIN_DRIFT", "NATIVE_AUTH_UNAVAILABLE",
+    "NATIVE_AUTH_SCOPE_DRIFT", "NATIVE_RAW_ROUTE_UNAVAILABLE", "NATIVE_MCP_UNAVAILABLE",
+    "NATIVE_QUEUE_UNAVAILABLE", "NATIVE_HEALTH_UNVERIFIED",
+}
+KNOWN_CODES = HEALTH_CODES | {
+    "INVALID_RELEASE_SHA", "PRIVATE_RELEASE_REQUIRED", "RELEASE_TREE_OWNER_DRIFT",
+    "RELEASE_LINK_DRIFT", "RELEASE_TREE_MODE_DRIFT", "OPS_RELEASE_NOT_PREPARED",
+    "OPS_PROVENANCE_INVALID", "RELEASE_PROVENANCE_INVALID", "GITHUB_WORKFLOW_NOT_VERIFIED",
+    "RELEASE_DIGEST_INVALID", "RELEASE_ARCHIVE_DRIFT", "ARCHIVE_PATH_INVALID",
+    "ARCHIVE_TREE_DRIFT", "ARCHIVE_BLOB_DRIFT", "RELEASE_TREE_DRIFT",
+    "MINIFLARE_DEPENDENCIES_NOT_LOCKED", "MINIFLARE_LOCK_INVALID",
+    "MINIFLARE_DEPENDENCIES_NOT_READY", "NATIVE_ROLE_DRIFT", "STORAGE_STARTUP_INPUTS_CHANGED",
+    "NATIVE_RELEASE_SHA_DRIFT", "NATIVE_SSD_UNAVAILABLE", "NATIVE_STATE_DRIFT",
+    "NATIVE_SSD_DRIFT", "NATIVE_PLIST_DRIFT", "RELEASE_ALREADY_ATTEMPTED_RECONCILE",
+    "PRIOR_RELEASE_DRIFT", "OLD_NATIVE_PORTS_BUSY", "NATIVE_STORAGE_IDENTITY_DRIFT",
+    "ROLLBACK_SELECTOR_DRIFT", "ROLLBACK_STORAGE_IDENTITY_DRIFT", "MAC_RELEASE_INTERRUPTED",
+}
+
+
+def known_reason(error, allowed):
+    code = error.args[0] if type(error) is Refused and len(error.args) == 1 else None
+    return code if type(code) is str and code in allowed else None
+
+
+def diagnostic(stage, error):
+    code = known_reason(error, KNOWN_CODES)
+    if stage == "check_current" and isinstance(error, BlockingIOError):
+        code = "MAC_DEPLOY_LOCK_BUSY"
+    return {"stage": stage, "code": code or PHASE_CODES[stage]}
+
+
+class ApplyFailed(Refused):
+    def __init__(self, failure, state=None):
+        self.failure = failure
+        super().__init__({
+            "rolled-back": "MAC_APPLY_FAILED_ROLLBACK_VERIFIED",
+            "rollback-failed": "MAC_ROLLBACK_UNVERIFIED",
+        }.get(state, failure["code"]))
+
+
+def error_record(error):
+    return {
+        "schemaVersion": "ops.ngs-mac-apply-error.v1",
+        "failure": error.failure if type(error) is ApplyFailed else diagnostic("validate_candidate", error),
+    }
+
+
 def require(test, code):
     if not test:
         raise Refused(code)
@@ -278,6 +342,7 @@ class Mac:
 
     def healthy(self, release, old_pid=None, wait=35):
         end = time.monotonic() + wait
+        last_explicit = None
         while True:
             try:
                 pid = self.pid()
@@ -300,17 +365,21 @@ class Mac:
                 require(queue.get("isError") is False
                         and isinstance(queue["structuredContent"]["requests"], list), "NATIVE_QUEUE_UNAVAILABLE")
                 return pid
-            except (Refused, ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, http.client.HTTPException):
+            except (Refused, ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError, http.client.HTTPException) as error:
+                last_explicit = known_reason(error, HEALTH_CODES) or last_explicit
                 if time.monotonic() >= end:
-                    raise Refused("NATIVE_HEALTH_UNVERIFIED") from None
+                    raise Refused(last_explicit or "NATIVE_HEALTH_UNVERIFIED") from None
                 time.sleep(0.25)
 
 
 def apply(sha, control, host):
-    folder, spec, release, workdir = load_plan(sha, control, host.releases, host.scratch)
-    # Lock only the known directory, including distinct releases.
-    fd = os.open(control, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    stage = "validate_candidate"
+    fd = None
     try:
+        folder, spec, release, workdir = load_plan(sha, control, host.releases, host.scratch)
+        # Lock only the known directory, including distinct releases.
+        stage = "check_current"
+        fd = os.open(control, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         armed = folder / "prior.plist"
         status = folder / "result.json"
@@ -321,45 +390,69 @@ def apply(sha, control, host):
         require(old != release and digest(prior) == spec["expectedPriorPlistSha256"], "PRIOR_RELEASE_DRIFT")
         pins = host.unchanged(env)
         pid = host.healthy(old, wait=0)
+        stage = "record_result"
         atom(armed, prior, create=True)
         advanced = False
         stopped = False
         try:
+            stage = "stop_current"
             host.bootout()
             stopped = True
+            stage = "wait_ports"
             require(not (host.listener(5274) or host.listener(5275)), "OLD_NATIVE_PORTS_BUSY")
+            stage = "switch_selector"
             host.replace(prior, new)
             advanced = True
+            stage = "start_candidate"
             host.bootstrap()
+            stage = "check_candidate"
             host.healthy(release, old_pid=pid)
+            stage = "check_storage"
             require(host.read_plist() == new and host.unchanged(env) == pins, "NATIVE_STORAGE_IDENTITY_DRIFT")
+            stage = "record_result"
             receipt = {"sha": sha, "target": "mac", "state": "deployed", "health": "verified"}
             private_receipt = {**receipt, "deployedAt": datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")}
             atom(status, (json.dumps(private_receipt) + "\n").encode(), create=True)
             return receipt
-        except Exception:
+        except Exception as error:
+            failure = diagnostic(stage, error)
+            result = {"state": "rolled-back", "failure": failure}
             try:
                 # Commands can fail after taking effect: always inspect actual selected bytes.
+                stage = "rollback_restore"
                 actual = host.read_plist()
                 if actual == new:
+                    stage = "rollback_stop"
                     host.stop_if_loaded()
+                    stage = "rollback_restore"
                     host.replace(new, prior)
                     stopped = True
                 else:
                     require(actual == prior and not advanced, "ROLLBACK_SELECTOR_DRIFT")
                     stopped = stopped or not host.pid()
                 if stopped:
+                    stage = "rollback_stop"
                     host.stop_if_loaded()
+                    stage = "rollback_start"
                     host.bootstrap()
+                stage = "rollback_check"
                 host.healthy(old)
                 require(host.read_plist() == prior and host.unchanged(env) == pins, "ROLLBACK_STORAGE_IDENTITY_DRIFT")
+            except Exception as rollback_error:
+                result.update(state="rollback-failed", rollbackFailure=diagnostic(stage, rollback_error))
+            try:
+                atom(status, (json.dumps(result, separators=(",", ":")) + "\n").encode(), create=True)
             except Exception:
-                atom(status, b'{"state":"rollback-failed"}\n', create=True)
-                raise Refused("MAC_ROLLBACK_UNVERIFIED") from None
-            atom(status, b'{"state":"rolled-back"}\n', create=True)
-            raise Refused("MAC_APPLY_FAILED_ROLLBACK_VERIFIED") from None
+                # If the receipt is unwritable, stderr still carries the original phase and safe cause.
+                pass
+            raise ApplyFailed(failure, result["state"]) from None
+    except ApplyFailed:
+        raise
+    except Exception as error:
+        raise ApplyFailed(diagnostic(stage, error)) from None
     finally:
-        os.close(fd)
+        if fd is not None:
+            os.close(fd)
 
 
 def main():
@@ -377,5 +470,5 @@ if __name__ == "__main__":
         main()
     except Exception as exc:
         # No paths, child stdout, queue content, or auth in OPS logs.
-        print(str(exc) if type(exc) is Refused else "MAC_RELEASE_REFUSED", file=sys.stderr)
+        print(json.dumps(error_record(exc), separators=(",", ":")), file=sys.stderr)
         sys.exit(1)

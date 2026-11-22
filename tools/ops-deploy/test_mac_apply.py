@@ -4,9 +4,12 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 m = importlib.machinery.SourceFileLoader("mac_apply", str(Path(__file__).with_name("ngs-mac-apply"))).load_module()
 SHA = "d" * 40
@@ -156,13 +159,81 @@ class Apply(unittest.TestCase):
         with self.assertRaisesRegex(m.Refused, "FAILED_ROLLBACK_VERIFIED"):
             self.run_apply()
         self.assertEqual(self.host.read_plist(), self.host.prior)
-        self.assertEqual(self.status(), {"state": "rolled-back"})
+        self.assertEqual(self.status(), {"state": "rolled-back", "failure": {
+            "stage": "check_candidate", "code": "NATIVE_HEALTH_UNVERIFIED"}})
+        original_status = self.status()
+        with self.assertRaisesRegex(m.Refused, "ALREADY_ATTEMPTED"):
+            self.run_apply()
+        self.assertEqual(self.status(), original_status)
 
     def test_unverified_rollback_never_claims_success(self):
         self.host.health_failure = self.host.rollback_failure = True
         with self.assertRaisesRegex(m.Refused, "ROLLBACK_UNVERIFIED"):
             self.run_apply()
-        self.assertEqual(self.status(), {"state": "rollback-failed"})
+        self.assertEqual(self.status(), {"state": "rollback-failed",
+            "failure": {"stage": "check_candidate", "code": "NATIVE_HEALTH_UNVERIFIED"},
+            "rollbackFailure": {"stage": "rollback_check", "code": "NATIVE_HEALTH_UNVERIFIED"}})
+
+    def test_bootout_failure_preserves_stage_and_hides_child_output(self):
+        error = subprocess.CalledProcessError(5, ["/sensitive/path"], output="TOP_SECRET")
+        with patch.object(self.host, "bootout", side_effect=error):
+            with self.assertRaises(m.ApplyFailed) as raised:
+                self.run_apply()
+        failure = {"stage": "stop_current", "code": "MAC_BOOTOUT_FAILED"}
+        self.assertEqual(self.status(), {"state": "rolled-back", "failure": failure})
+        self.assertEqual(m.error_record(raised.exception), {
+            "schemaVersion": "ops.ngs-mac-apply-error.v1", "failure": failure})
+        self.assertEqual(self.host.read_plist(), self.host.prior)
+
+    def test_ports_busy_is_a_distinct_rollback_reason(self):
+        with patch.object(self.host, "listener", return_value={222}):
+            with self.assertRaises(m.ApplyFailed):
+                self.run_apply()
+        self.assertEqual(self.status(), {"state": "rolled-back", "failure": {
+            "stage": "wait_ports", "code": "OLD_NATIVE_PORTS_BUSY"}})
+
+    def test_generic_rollback_error_is_selected_from_phase(self):
+        with patch.object(self.host, "bootstrap", side_effect=OSError("/sensitive/path")):
+            with self.assertRaises(m.ApplyFailed):
+                self.run_apply()
+        self.assertEqual(self.status(), {"state": "rollback-failed",
+            "failure": {"stage": "start_candidate", "code": "MAC_BOOTSTRAP_FAILED"},
+            "rollbackFailure": {"stage": "rollback_start", "code": "MAC_BOOTSTRAP_FAILED"}})
+
+    def test_selector_failure_after_change_restores_prior(self):
+        replace = self.host.replace
+        def after_replace(prior, new):
+            replace(prior, new)
+            if new != self.host.prior:
+                raise OSError("/sensitive/path")
+        with patch.object(self.host, "replace", side_effect=after_replace):
+            with self.assertRaises(m.ApplyFailed):
+                self.run_apply()
+        self.assertEqual(self.status(), {"state": "rolled-back", "failure": {
+            "stage": "switch_selector", "code": "MAC_SELECTOR_SWITCH_FAILED"}})
+        self.assertEqual(self.host.read_plist(), self.host.prior)
+
+    def test_storage_drift_has_distinct_phase(self):
+        with patch.object(self.host, "unchanged", side_effect=[1, 2, 1]):
+            with self.assertRaises(m.ApplyFailed):
+                self.run_apply()
+        self.assertEqual(self.status(), {"state": "rolled-back", "failure": {
+            "stage": "check_storage", "code": "NATIVE_STORAGE_IDENTITY_DRIFT"}})
+
+    def test_unwritable_result_does_not_mask_initial_failure(self):
+        self.host.health_failure = True
+        atom = m.atom
+        def fail_result(path, *args, **kwargs):
+            if path.name == "result.json":
+                raise OSError("/sensitive/path")
+            atom(path, *args, **kwargs)
+        with patch.object(m, "atom", side_effect=fail_result):
+            with self.assertRaises(m.ApplyFailed) as raised:
+                self.run_apply()
+        self.assertFalse((self.folder / "result.json").exists())
+        self.assertEqual(raised.exception.failure,
+                         {"stage": "check_candidate", "code": "NATIVE_HEALTH_UNVERIFIED"})
+        self.assertEqual(self.host.read_plist(), self.host.prior)
 
     def test_git_ci_branch_and_two_proof_files_must_match(self):
         self.prov["artifactId"] = "404"
@@ -199,7 +270,7 @@ class Apply(unittest.TestCase):
         fd = os.open(self.control, os.O_RDONLY)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with self.assertRaises(BlockingIOError):
+            with self.assertRaisesRegex(m.Refused, "MAC_DEPLOY_LOCK_BUSY"):
                 self.run_apply()
         finally:
             os.close(fd)
@@ -218,6 +289,31 @@ class Apply(unittest.TestCase):
         with self.assertRaisesRegex(m.Refused, "STORAGE_STARTUP_INPUTS_CHANGED"):
             self.run_apply()
         self.assertFalse(self.host.calls)
+
+class Diagnostic(unittest.TestCase):
+    def test_cli_invalid_input_outputs_one_safe_json_line(self):
+        run = subprocess.run([sys.executable, m.__file__, "/sensitive/path"],
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 1)
+        self.assertEqual(run.stdout, "")
+        self.assertEqual(len(run.stderr.splitlines()), 1)
+        self.assertEqual(json.loads(run.stderr), {"schemaVersion": "ops.ngs-mac-apply-error.v1",
+                         "failure": {"stage": "validate_candidate", "code": "INVALID_RELEASE_SHA"}})
+
+    def test_health_retains_last_known_code_even_after_generic_transport_error(self):
+        host = m.Mac()
+        host.pid = Mock(return_value=22)
+        host.listener = Mock(return_value={22})
+        host.run = Mock(return_value="node /tmp/release/" + str(m.ENTRY))
+        host.http = Mock(side_effect=[(503, None, {}), OSError("/sensitive/path")])
+        with patch.object(m.time, "monotonic", side_effect=[0, 1, 2]), patch.object(m.time, "sleep"):
+            with self.assertRaisesRegex(m.Refused, "^NATIVE_AUTH_UNAVAILABLE$"):
+                host.healthy(Path("/tmp/release"), wait=2)
+
+    def test_unknown_refused_string_is_not_a_public_code(self):
+        self.assertEqual(m.diagnostic("check_candidate", m.Refused("UNRECOGNIZED_INPUT")),
+                         {"stage": "check_candidate", "code": "NATIVE_HEALTH_UNVERIFIED"})
+
 
 if __name__ == "__main__":
     unittest.main()
