@@ -2,7 +2,7 @@
 
 This is **not installed or enabled** by source publication. One fixed executable provisioned by an owner runs:
 `$HOME/Workspaces/OPS/runtime/deploy-control/bin/ngs-mac-apply <40 lowercase hex SHA>`.
-The executable has no shell, network, command/plugin selection, path argument, stage operation, or Space authority. Install from separately reviewed OPS provisioning, not from the candidate being deployed. The only interface to OPS is the one SHA argument and exact success JSON `{"sha":"…","target":"mac","state":"deployed","health":"verified"}`. An exit error must not be treated as deployed. Successful relaunch can only affect `com.vinus.ngs.local-mcp` (combined 5274/5275); it cannot stop PDS, RS, OPS, a relay, or Space.
+The executable has no shell, network, command/plugin selection, path argument, stage operation, or Space authority. Install from separately reviewed OPS provisioning, not from the candidate being deployed. The ordinary OPS invocation takes one SHA argument and returns exact success JSON `{"sha":"…","target":"mac","state":"deployed","health":"verified"}`. An exit error must not be treated as deployed. Successful relaunch can only affect `com.vinus.ngs.local-mcp` (combined 5274/5275); it cannot stop PDS, RS, OPS, a relay, or Space.
 
 ## Control location
 
@@ -31,6 +31,32 @@ This prototype intentionally refuses changes to native Miniflare startup, curren
 ## Outcomes
 
 The single global private lock serializes role changes. The runner first saves `prior.plist` exclusively (sensitive, never exposed), then bootouts the fixed role, atomically replaces the selector, bootstraps, and verifies both sockets belong to the selected exact release; positive authenticated browser/progress and read-only MCP route/queue health must pass. Only private `result.json` on verified deployment includes UTC `deployedAt` (the stdout shape is unchanged). Ordinary failure attempts verified rollback to those exact prior plist bytes. A hard kill/reboot can leave a durable prior with no final `result.json`; do not retry automatically or remove the marker. Report reconciliation needed and independently inspect selector and health. Never present an unverified rollback as success.
+
+
+The runner emits a single diagnostic JSON line on stderr:
+`{"schemaVersion":"ops.ngs-mac-apply-error.v1","failure":{"stage":"…","code":"…"}}`.
+Verified rollback records `{"state":"rolled-back","failure":{…}}` in the
+private receipt; unverified rollback records `"rollback-failed"` plus
+`rollbackFailure`. Stderr, launch output and selector contents are never copied
+into these diagnostic fields.
+
+### Explicit same-SHA retry
+
+Only an explicit OPS retry may append `<attemptId> <expectedPreviousAttemptId>`
+to the ordinary argument. Retry IDs are distinct nonzero, lowercase 32-digit
+hex strings, and the previous ID is `initial` or an exact prior retry ID.
+The original `prior.plist` and `result.json` stay unchanged. Each retry has
+its own files in `mac-releases/<sha>/attempts/<attemptId>/`; the private
+`attempts/current.json` ledger has `{"attemptIds":[…]}` in reservation order.
+
+Under the same global lock, the runner checks the immutable candidate and
+archive again, rejects stale or reused IDs, requires a verified rollback
+receipt for the latest attempt (accepting the original legacy rolled-back
+receipt), and proves the archived prior selector, prepared pin, current
+selector, process health and storage checks agree before reserving a retry.
+An incomplete attempt, malformed or torn ledger, changed prior identity, or
+unverified rollback blocks all retries until separately reconciled. No
+automatic retry or marker removal is performed.
 
 Tests: `/opt/homebrew/bin/python3.12 -B tools/ops-deploy/test_mac_apply.py`. The fake host does not run launchctl, write a production path, or call Space/PDS.
 

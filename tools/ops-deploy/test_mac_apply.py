@@ -13,6 +13,8 @@ from unittest.mock import Mock, patch
 
 m = importlib.machinery.SourceFileLoader("mac_apply", str(Path(__file__).with_name("ngs-mac-apply"))).load_module()
 SHA = "d" * 40
+ATTEMPT_A = "a" * 32
+ATTEMPT_B = "b" * 32
 
 
 class FixedPaths(unittest.TestCase):
@@ -234,6 +236,109 @@ class Apply(unittest.TestCase):
         self.assertEqual(raised.exception.failure,
                          {"stage": "check_candidate", "code": "NATIVE_HEALTH_UNVERIFIED"})
         self.assertEqual(self.host.read_plist(), self.host.prior)
+
+    def seed_legacy_rollback(self):
+        m.atom(self.folder / "prior.plist", self.host.prior, create=True)
+        m.atom(self.folder / "result.json", b'{"state":"rolled-back"}\n', create=True)
+
+    def run_retry(self, attempt=ATTEMPT_A, previous="initial"):
+        return m.apply(SHA, self.control, self.host, attempt, previous)
+
+    def attempt_path(self, attempt=ATTEMPT_A):
+        return self.folder / "attempts" / attempt
+
+    def test_retry_from_legacy_rollback_preserves_first_receipt_and_success_contract(self):
+        self.seed_legacy_rollback()
+        self.assertEqual(self.run_retry(), {"sha": SHA, "target": "mac", "state": "deployed", "health": "verified"})
+        self.assertEqual((self.folder / "result.json").read_bytes(), b'{"state":"rolled-back"}\n')
+        self.assertEqual((self.folder / "prior.plist").read_bytes(), self.host.prior)
+        self.assertEqual((self.attempt_path() / "prior.plist").read_bytes(), self.host.prior)
+        self.assertEqual(json.loads((self.attempt_path() / "result.json").read_bytes())["state"], "deployed")
+        self.assertEqual(json.loads((self.attempt_path().parent / "current.json").read_bytes()),
+                         {"attemptIds": [ATTEMPT_A]})
+
+    def test_retry_previous_is_bound_and_prior_receipts_are_preserved(self):
+        self.seed_legacy_rollback()
+        self.host.health_failure = True
+        with self.assertRaisesRegex(m.Refused, "FAILED_ROLLBACK_VERIFIED"):
+            self.run_retry()
+        receipt = (self.attempt_path() / "result.json").read_bytes()
+        calls = self.host.calls[:]
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_PARENT_DRIFT"):
+            self.run_retry(ATTEMPT_B, "initial")
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_ATTEMPT_EXISTS"):
+            self.run_retry(ATTEMPT_A, ATTEMPT_A)
+        self.assertEqual(self.host.calls, calls)
+        self.host.health_failure = False
+        self.run_retry(ATTEMPT_B, ATTEMPT_A)
+        self.assertEqual((self.attempt_path() / "result.json").read_bytes(), receipt)
+        self.assertEqual(json.loads((self.attempt_path().parent / "current.json").read_bytes()),
+                         {"attemptIds": [ATTEMPT_A, ATTEMPT_B]})
+
+    def test_retry_blocked_by_rollback_failed_or_incomplete_latest(self):
+        self.seed_legacy_rollback()
+        self.host.health_failure = self.host.rollback_failure = True
+        with self.assertRaisesRegex(m.Refused, "ROLLBACK_UNVERIFIED"):
+            self.run_retry()
+        calls = self.host.calls[:]
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_ROLLBACK_REQUIRED"):
+            self.run_retry(ATTEMPT_B, ATTEMPT_A)
+        (self.attempt_path() / "result.json").unlink()
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_ROLLBACK_REQUIRED"):
+            self.run_retry(ATTEMPT_B, ATTEMPT_A)
+        self.assertEqual(self.host.calls, calls)
+
+    def test_retry_blocked_by_incomplete_initial_and_unhealthy_prior(self):
+        prior = self.folder / "prior.plist"
+        m.atom(prior, self.host.prior, create=True)
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_ROLLBACK_REQUIRED"):
+            self.run_retry()
+        m.atom(self.folder / "result.json", b'{"state":"rolled-back"}\n', create=True)
+        with patch.object(self.host, "healthy", side_effect=m.Refused("NATIVE_QUEUE_UNAVAILABLE")):
+            with self.assertRaisesRegex(m.Refused, "NATIVE_QUEUE_UNAVAILABLE"):
+                self.run_retry()
+        self.assertFalse(self.host.calls)
+        self.assertFalse(self.attempt_path().parent.exists())
+
+    def test_retry_archived_prior_must_match_current_bytes(self):
+        self.seed_legacy_rollback()
+        m.atom(self.folder / "prior.plist", self.host.prior + b"drift")
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_PRIOR_DRIFT"):
+            self.run_retry()
+        self.assertFalse(self.host.calls)
+        self.assertFalse(self.attempt_path().parent.exists())
+
+    def test_retry_revalidates_archive_despite_verified_rollback(self):
+        self.seed_legacy_rollback()
+        archive = self.folder / "ngs-local.tar"
+        archive.write_bytes(archive.read_bytes() + b"extra")
+        with self.assertRaisesRegex(m.Refused, "ARCHIVE_DRIFT"):
+            self.run_retry()
+        self.assertFalse(self.host.calls)
+
+    def test_retry_rejects_torn_reservation_and_unsafe_ids(self):
+        self.seed_legacy_rollback()
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_ID_INVALID"):
+            self.run_retry("../x", "initial")
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_ID_INVALID"):
+            self.run_retry(ATTEMPT_A, "0" * 32)
+        self.attempt_path().parent.mkdir(mode=0o700)
+        self.attempt_path().mkdir(mode=0o700)
+        with self.assertRaisesRegex(m.Refused, "MAC_RETRY_HISTORY_INVALID"):
+            self.run_retry(ATTEMPT_B)
+        self.assertFalse(self.host.calls)
+
+    def test_retry_cannot_pass_if_another_attempt_holds_lock_even_before_validation(self):
+        self.seed_legacy_rollback()
+        fd = os.open(self.control, os.O_RDONLY)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(m.Refused, "MAC_DEPLOY_LOCK_BUSY"):
+                self.run_retry()
+        finally:
+            os.close(fd)
+        self.assertFalse(self.host.calls)
+        self.assertFalse(self.attempt_path().parent.exists())
 
     def test_git_ci_branch_and_two_proof_files_must_match(self):
         self.prov["artifactId"] = "404"
