@@ -184,18 +184,19 @@ test('playlist displays one row per song and uses a single player without interr
  showAudioResults(host,[first,second]);
  assert.deepEqual(host.all('li').map(x=>x.children.slice(2).map(c=>c.textContent)),
   [['첫 곡','80','30초'],['두 번째 곡','90','30초']]);
- host.all('button')[1].events.click();
+ const trackButton=(i,j)=>host.all('ol')[0].all('li')[i].all('button')[j];
+ trackButton(0,0).events.click();
  const player=host.all('audio')[0];
  assert.equal(player.src,first.url);assert.equal(player.paused,false);
  assert.equal(host.all('li')[0].classes.has('audio-result-current'),true);
- host.all('button')[4].events.click();
+ trackButton(1,1).events.click();
  assert.equal(player.src,second.url);assert.equal(player.paused,false);
  assert.equal(host.all('li')[0].classes.has('audio-result-current'),false);
  assert.equal(host.all('li')[1].classes.has('audio-result-current'),true);
  showAudioResults(host,[first,second,first]);
  assert.equal(host.all('li').length,2);
  assert.equal(host.all('audio')[0],player);assert.equal(player.paused,false);
- host.all('button')[3].events.click();assert.equal(player.paused,true);
+ trackButton(1,0).events.click();assert.equal(player.paused,true);
  for(const check of host.all('input')){check.checked=true;check.events.change();}
  const playSelection=host.all('button')[0];
  assert.equal(playSelection.disabled,false);
@@ -241,6 +242,53 @@ test('selected deletes confirm the precise count, submit separately, and do not 
  assert.notEqual(calls[4].idempotencyKey,calls[2].idempotencyKey);
  showAudioResults(root,rows.slice(1));
  assert.equal(root.all('ol')[0].all('li').length,2);
+});
+
+test('pagination renders at most thirty rows and select-all, playback and deletion span every page',async t=>{
+ const Element=installDOM(t),root=new Element('section'),signal=new AbortController().signal;
+ const rows=Array.from({length:65},(_,i)=>audioRow('곡 '+(i+1),'request.official.'+i.toString(16).padStart(64,'0')));
+ const calls=[];
+ showAudioResults(root,rows,signal,{submitDelete:async cmd=>{calls.push(cmd);return Response.json(receipt,{status:201});}});
+ const button=title=>root.all('button').find(b=>b.textContent===title);
+ const items=()=>root.all('ol')[0].all('li');
+ const marks=()=>root.all('ol')[0].all('input');
+ const nav=root.all('nav')[0],status=nav.all('span')[0],next=button('다음'),previous=button('이전');
+ assert.equal(nav.hidden,false);
+ assert.equal(previous.disabled,true);
+ assert.equal(items().length,30);
+ assert.match(status.textContent,/1–30곡 \/ 전체 65곡/);
+ const mark=check=>{check.checked=true;check.events.change();};
+ mark(marks()[29]);next.events.click();
+ assert.match(status.textContent,/31–60곡/);
+ assert.equal(items().length,30);
+ mark(marks()[0]);next.events.click();
+ assert.equal(items().length,5);
+ assert.equal(next.disabled,true);
+ button('선택 재생').events.click();
+ const player=root.all('audio')[0];
+ assert.equal(player.src,rows[29].url);
+ player.ended=true;player.events.ended();assert.equal(player.src,rows[30].url);
+ showAudioResults(root,rows.slice(0,61));
+ assert.equal(items().length,1);
+ assert.equal(player.src,rows[30].url);
+ previous.events.click();assert.equal(marks()[0].checked,true);
+ button('전체 곡 선택').events.click();
+ assert.ok(marks().every(x=>x.checked));
+ previous.events.click();assert.ok(marks().every(x=>x.checked));
+ assert.match(root.all('span').find(x=>x.attrs.role==='status').textContent,/61곡 선택/);
+ button('선택 삭제 요청').events.click();assert.equal(root.all('dialog')[0].all('li').length,61);
+ button('취소').events.click();assert.deepEqual(calls,[]);
+ button('전체 선택 해제').events.click();assert.ok(marks().every(x=>!x.checked));
+ mark(marks()[0]);next.events.click();next.events.click();
+ mark(marks()[0]);
+ button('선택 삭제 요청').events.click();
+ assert.deepEqual(root.all('dialog')[0].all('li').map(x=>x.textContent),['곡 1','곡 61']);
+ await button('삭제 요청').events.click();
+ assert.deepEqual(calls.map(x=>x.payload.officialRequestId),[rows[0],rows[60]].map(r=>new URL(r.url,'https://example.test').searchParams.get('id')));
+ showAudioResults(root,rows.slice(0,29));
+ assert.equal(nav.hidden,true);
+ assert.equal(items().length,29);
+ assert.equal(player.src,undefined);
 });
 
 test('accepted deletes compare the parent but refresh only their exact folders and render only data returned by the replica',async()=>{

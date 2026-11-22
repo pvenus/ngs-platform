@@ -87,33 +87,42 @@ function field(label,tag,options){
 }
 const audioIndex='/api/audio-workspace?projectId=binari';
 const formatter=new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2});
-const playlists=new WeakMap();
+const playlists=new WeakMap(),audioPageSize=30;
 function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}){
  const list=node('ol','audio-results-list'),empty=node('p','meta','아직 게시된 BGM이 없습니다.');
  const actions=node('div','audio-playlist-actions'),playSelected=node('button','concept-category-trigger','선택 재생');
- playSelected.type='button';playSelected.disabled=true;actions.append(playSelected);actions.hidden=true;
+ const selectAll=node('button','concept-category-trigger','전체 곡 선택'),selectionCount=node('span','meta');
+ const nav=node('nav','audio-playlist-pages'),previous=node('button','concept-category-trigger','이전'),
+  pageStatus=node('span','meta'),next=node('button','concept-category-trigger','다음');
+ for(const button of [playSelected,selectAll,previous,next])button.type='button';
+ playSelected.disabled=true;actions.append(playSelected,selectAll,selectionCount);actions.hidden=true;
+ selectionCount.setAttribute('role','status');nav.setAttribute('aria-label','BGM 목록 페이지');
+ pageStatus.setAttribute('role','status');nav.append(previous,pageStatus,next);nav.hidden=true;
  const head=node('div','audio-playlist-columns');
  head.setAttribute('aria-hidden','true');
  head.append(node('span'),node('span'),node('span','','제목'),node('span','','BPM'),node('span','','총길이'));
  const now=node('div','audio-now-playing'),label=node('p','audio-now-title'),player=node('audio'),error=node('p','meta error');
  player.controls=true;player.preload='none';now.hidden=true;list.hidden=true;head.hidden=true;
  error.setAttribute('role','status');now.append(label,player,error);
- container.replaceChildren(actions,head,list,empty,now);
+ container.replaceChildren(actions,head,list,nav,empty,now);
  const checked=new Set();
- let selected=null,activeButtons=new Map(),queued=[],playAttempt=0,deleting=false;
+ let selected=null,allRows=new Map(),activeButtons=new Map(),page=0,queued=[],playAttempt=0,deleting=false;
  const deletions=new Map(),deleteButton=node('button','concept-category-trigger audio-delete','선택 삭제 요청'),
   deleteSummary=node('p','meta'),dialog=node('dialog','npc-one-stop-dialog audio-dialog'),
   heading=node('h2','','선택한 BGM 삭제'),description=node('p'),targets=node('ul'),
   footer=node('div','audio-delete-actions'),cancel=node('button','','취소'),confirm=node('button','audio-delete','삭제 요청');
  const candidates=()=>{
   const seen=new Set();
-  return [...activeButtons.values()].filter(({row,audioId})=>{
+  return [...allRows.values()].filter(({row,audioId})=>{
    if(!audioId||!checked.has(row.url)||seen.has(audioId)||deletions.get(audioId)?.state==='registered')return false;
    seen.add(audioId);return true;
   });
  };
  const updateSelection=()=>{
   playSelected.disabled=checked.size===0;
+  selectAll.disabled=allRows.size===0;
+  selectAll.textContent=allRows.size>0&&checked.size===allRows.size?'전체 선택 해제':'전체 곡 선택';
+  selectionCount.textContent=checked.size+'곡 선택 / 전체 '+allRows.size+'곡';
   deleteButton.disabled=deleting||candidates().length===0;
  };
  if(submitDelete){
@@ -137,7 +146,7 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
   signal?.addEventListener('abort',()=>{if(dialog.open)dialog.close();},{once:true});
   confirm.addEventListener('click',async()=>{
    if(!dialog.open||signal?.aborted||deleting)return;
-   const batch=confirmed.filter(({row})=>activeButtons.has(row.url));
+   const batch=confirmed.filter(({row})=>allRows.has(row.url));
    if(!batch.length){dialog.close();return;}
    deleting=true;updateSelection();dialog.close();
    const stats={registered:0,rejected:0,uncertain:0},accepted=[];
@@ -163,18 +172,27 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
    updateSelection();
    if(!deleteButton.disabled)deleteButton.focus();
    else if(!playSelected.disabled)playSelected.focus();
-   else activeButtons.values().next().value?.button.focus();
+   else if(!selectAll.disabled)selectAll.focus();
    if(accepted.length)onDeleteAccepted(accepted);
   });
  }
  playSelected.addEventListener('click',()=>{
-  queued=[...activeButtons.keys()].filter(url=>checked.has(url));
+  queued=[...allRows.keys()].filter(url=>checked.has(url));
   playNext();
  });
+ selectAll.addEventListener('click',()=>{
+  if(signal?.aborted||!allRows.size)return;
+  if(checked.size===allRows.size)checked.clear();
+  else for(const url of allRows.keys())checked.add(url);
+  updateSelection();paint();
+ });
+ const pageCount=()=>Math.max(1,Math.ceil(allRows.size/audioPageSize));
+ previous.addEventListener('click',()=>{if(!signal?.aborted&&page>0){--page;renderPage();}});
+ next.addEventListener('click',()=>{if(!signal?.aborted&&page+1<pageCount()){++page;renderPage();}});
  function playNext(){
   if(signal?.aborted)return;
   while(queued.length){
-   const row=activeButtons.get(queued.shift())?.row;
+   const row=allRows.get(queued.shift())?.row;
    if(row){select(row,true);return;}
   }
  }
@@ -216,13 +234,11 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
   ++playAttempt;selected=null;player.pause();player.removeAttribute('src');player.load();now.hidden=true;error.textContent='';
  }
  signal?.addEventListener('abort',()=>{queued=[];releasePlayer();},{once:true});
- return results=>{
-  if(signal?.aborted)return;
-  if(!Array.isArray(results)){empty.textContent='게시된 BGM을 읽고 있습니다.';return;}
+ function renderPage(){
+  const pages=pageCount();page=Math.min(page,pages-1);
+  const start=page*audioPageSize,rows=[...allRows.values()].slice(start,start+audioPageSize);
   const nextButtons=new Map(),entries=[];
-  for(const row of results){
-   if(typeof row?.title!=='string'||typeof row.url!=='string'||!row.url.startsWith(audioIndex+'&id=')||
-      !Number.isFinite(row.durationSeconds)||row.durationSeconds<=0||nextButtons.has(row.url))continue;
+  for(const {row,audioId} of rows){
    const item=node('li','audio-result'),button=node('button','audio-play', '▶'),check=node('input','audio-select');
    check.type='checkbox';check.checked=checked.has(row.url);check.setAttribute('aria-label',row.title+' 선택');
    check.addEventListener('change',()=>{if(check.checked)checked.add(row.url);else checked.delete(row.url);updateSelection();});
@@ -235,7 +251,7 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
    if(modeled)bpm.title='모델 추정 BPM';
    const duration=node('span','audio-duration',formatter.format(row.durationSeconds)+'초');
    duration.setAttribute('aria-label','총길이 '+duration.textContent);
-   const audioId=publishedAudioId(row),deleteStatus=submitDelete?node('span','audio-delete-status'):null;
+   const deleteStatus=submitDelete?node('span','audio-delete-status'):null;
    let song=title;
    if(deleteStatus){song=node('span','audio-track-song');song.append(title,deleteStatus);}
    item.append(check,button,song,bpm,duration);
@@ -243,12 +259,27 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
   }
   activeButtons=nextButtons;
   list.replaceChildren(...entries);
-  for(const url of checked)if(!activeButtons.has(url))checked.delete(url);
   updateSelection();
   list.hidden=head.hidden=actions.hidden=entries.length===0;
   empty.hidden=entries.length!==0;empty.textContent='아직 게시된 BGM이 없습니다.';
-  if(selected&&!activeButtons.has(selected)){queued=[];releasePlayer();}
+  nav.hidden=pages===1;previous.disabled=page===0;next.disabled=page+1>=pages;
+  pageStatus.textContent=entries.length?
+   (page+1)+' / '+pages+' 페이지 · '+(start+1)+'–'+(start+entries.length)+'곡 / 전체 '+allRows.size+'곡':'';
   paint();
+ }
+ return results=>{
+  if(signal?.aborted)return;
+  if(!Array.isArray(results)){empty.textContent='게시된 BGM을 읽고 있습니다.';return;}
+  const nextRows=new Map();
+  for(const row of results){
+   if(typeof row?.title!=='string'||typeof row.url!=='string'||!row.url.startsWith(audioIndex+'&id=')||
+      !Number.isFinite(row.durationSeconds)||row.durationSeconds<=0||nextRows.has(row.url))continue;
+   nextRows.set(row.url,{row,audioId:publishedAudioId(row)});
+  }
+  allRows=nextRows;
+  for(const url of checked)if(!allRows.has(url))checked.delete(url);
+  if(selected&&!allRows.has(selected)){queued=[];releasePlayer();}
+  renderPage();
  };
 }
 export function showAudioResults(container,results,signal,options){
