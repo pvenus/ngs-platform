@@ -8,7 +8,7 @@ import { spaceReplicaView } from "./space-replica-view.mjs";
 import { spaceWorkspaceReadResponse } from "./space-workspace-read-response.mjs";
 import { PromptService } from "../lib/prompt-service";
 import { createSpaceFileReplica, spaceFileSyncTools } from "./space-file-replica.mjs";
-import { browserQueueResponse, machineResponse, machineTokenConfigured } from "./space-machine-routes.mjs";
+import { browserQueueResponse, machineResponse, machineTokenConfigured, spaceQueueParticipant } from "./space-machine-routes.mjs";
 import { ngsCommitSha } from "./ngs-release-provenance.mjs";
 import { rejectCleanSpaceRequest } from "./clean-space-guard.mjs";
 import { runWithConnectorBinding } from "../lib/connector-context";
@@ -51,7 +51,10 @@ export default {
     const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools,commitSha:ngsCommitSha});
     if (machine) return machine;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,authorizeWrite:async user=>{
-      try { const grant=await masterPrincipal(user); return grant.role==="owner" && grant.projectId==="binari"; }
+      // Sites authentication/admission and the active project grant are checked
+      // by browserQueueResponse. The explicit participant roster remains required
+      // even if the Site audience later widens.
+      try { return spaceQueueParticipant(await masterPrincipal(user)); }
       catch { return false; }
     }});
     if (browserQueue) return browserQueue;

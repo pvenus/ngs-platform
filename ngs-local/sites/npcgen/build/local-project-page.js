@@ -645,7 +645,7 @@ async function loadWorkspace(search){
    let visible=null,busy=false;
    const display=rows=>{visible=rows;showAudioResults(library,rows,signal,submit?{
     submitDelete:submit,onDeleteAccepted:ids=>{void followDeletedAudioResults({ids,post,request,signal,display});}}:undefined);};
-   const library=mountAudioWorkspace({items,detail,signal,...(submit?{submit,
+   const library=mountAudioWorkspace({items,detail,signal,allowFullLength:!hosted,...(submit?{submit,
     loadConcepts:legacySpace?async()=>(await request('/api/space/audio-concepts')).concepts:
      ()=>readAudioSoundConcepts({post,request,signal}),
     onAccepted:id=>{void followAcceptedAudioResult({id,post,request,signal,display,visible:()=>visible});}}:{})});

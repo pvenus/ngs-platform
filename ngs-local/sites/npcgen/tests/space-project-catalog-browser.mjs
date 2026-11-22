@@ -130,6 +130,30 @@ test('Space replica reads its own project and BGM lists without legacy compare o
  assert.match(app.node('#workspace-status').textContent,/아직 Space에 연결되지 않았습니다/);
 });
 
+test('Space project queue capability enables its audio controls but not the local 60-second option',async()=>{
+ for(const requestWritable of [false,true]){
+  const app=browser(url=>{
+   if(url==='/__npcgen_session')return Response.json({...readyReplica,workspaceReady:true,requestWritable});
+   if(url==='/api/project-folders')return Response.json({projects:[project]});
+   if(url==='/api/audio-workspace?projectId=binari')return Response.json({results:[]});
+   throw Error('unexpected '+url);
+  },'',{
+   mountAudioWorkspace:settings=>{
+    assert.equal(settings.allowFullLength,false);
+    for(const method of ['submit','loadConcepts','onAccepted'])
+     assert.equal(typeof settings[method],requestWritable?'function':'undefined');
+    return dom();
+   },
+   showAudioResults:(_host,_rows,_signal,actions)=>{
+    assert.equal(typeof actions?.submitDelete,requestWritable?'function':'undefined');
+   },
+  });
+  await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=audio'));
+  assert.equal(app.node('#workspace-status').textContent,'');
+  assert.ok(app.calls.every(([,method])=>method==='GET'));
+ }
+});
+
 test('Space initial empty replica retries only authorized reads and stops when the project card arrives',async()=>{
  const session={state:'authenticated',backend:'space',readOnly:false,queueEnabled:true,requestWritable:false,
   contextId:'space.'+'a'.repeat(64),csrfToken:'b'.repeat(64)};
@@ -224,7 +248,7 @@ test('Space ready concept and 8-direction motion use the same shared project-det
  assert.ok(app.calls.every(([_,method])=>method==='GET'));
 });
 
-test('Space workspaceReady is not a write grant, but verified request owner uses common intake',async()=>{
+test('Space workspaceReady is not a write grant, but a verified project participant uses common intake',async()=>{
  for(const requestWritable of [false,true]){
   const config={...readyReplica,workspaceReady:true,requestWritable};
   const seen=[];

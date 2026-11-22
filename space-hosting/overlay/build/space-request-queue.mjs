@@ -76,6 +76,8 @@ export class SpaceRequestQueue{
  }
  async enqueue(actor,cmd){
   need(commandOK(cmd));
+  // The hosted relay does not yet support the local 60-second target.
+  need(cmd.requestType!=='audio.generate'||!Object.hasOwn(cmd.payload,'targetDurationSeconds'));
   const payload=canonical(cmd.payload),digest=await hash(canonical([cmd.requestType,cmd.payload])),queueId='ngs.space.'+this.uuid(),now=this.now();
   need(validQueueId(queueId),503,'SPACE_QUEUE_UNAVAILABLE');
   await this.ready();

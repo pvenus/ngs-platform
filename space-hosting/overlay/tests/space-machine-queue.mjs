@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {machineResponse,browserQueueResponse} from '../build/space-machine-routes.mjs';
+import {machineResponse,browserQueueResponse,spaceQueueParticipant} from '../build/space-machine-routes.mjs';
 import {SpaceRequestQueue,officialIdForSpace} from '../build/space-request-queue.mjs';
 
 const origin='https://site.example';
@@ -50,6 +50,67 @@ test('native browser queue is actor-bound, same-origin only, idempotent, and not
  assert.equal((await browser('/api/requests?queueId='+q,'GET',b)).status,404);
  assert.deepEqual(await (await browser('/api/requests?queueId='+q,'GET',a)).json(),receipt);
 });
+test('only authenticated active Binari participants can use the existing formal queue, independent of Site role',async t=>{
+ const db=store(t);
+ const grants={owner:{projectId:'binari',role:'owner'},viewer:{projectId:'binari',role:'viewer'},
+  editor:{projectId:'binari',role:'editor'},revoked:{projectId:'binari',role:'viewer'},
+  otherProject:{projectId:'other',role:'owner'},unknownRole:{projectId:'binari',role:'admin'}};
+ const options={db,secret:token,replicaReads:true,workspaceReady:true,
+  authorize:async user=>user.userId!=='revoked',
+  authorizeWrite:async user=>spaceQueueParticipant(grants[user.userId])};
+ const browser=(...args)=>browserQueueResponse(request(...args),options);
+ const load=id=>browser('/__npcgen_session','GET',headers(id));
+ const write=(id,c,cmd=command,h={})=>browser('/api/requests','POST',{
+  ...headers(id),Origin:origin,'X-NPCGen-Csrf':c?.csrfToken,'X-NPCGen-Frontend-Context':c?.contextId,...h},cmd);
+ for(const id of ['owner','viewer','editor']){
+  const c=await (await load(id)).json();
+  assert.equal(c.workspaceReady,true);assert.equal(c.requestWritable,true);
+ }
+ const viewer=await (await load('viewer')).json(),owner=await (await load('owner')).json();
+ const base={projectId:'binari'};
+ const concept={...base,schemaVersion:'ngs.concept-category-workflow.v1',title:'Fixture',categoryId:'sample',
+  groupId:null,outline:'',requirements:''};
+ const commands=[
+  command,
+  {requestType:'audio.delete',payload:{...base,schemaVersion:'ngs.audio-delete.v1',officialRequestId:'request.official.'+'a'.repeat(64)}},
+  {requestType:'npc.workflow',payload:{...base,schemaVersion:'ngs.npc-one-stop.v1',character:{
+   npcId:'npc.sample',slug:'sample',name:'Fixture',role:'test',actId:'act1',chapterId:'ch1'},intent:'Fixture',sourceRefs:['Test'],includeCombat:false}},
+  {requestType:'npc.planning.add',payload:{...base,schemaVersion:'ngs.npc-planning-add.v1',npcId:'npc.sample',
+   categoryId:'category.add.'+'a'.repeat(32),title:'Fixture',outline:'Test',requirements:'',requiredSections:['Test']}},
+  {requestType:'npc.planning.update',payload:{...base,schemaVersion:'ngs.npc-planning-update.v1',npcId:'npc.sample',role:'overview',requirements:'Test'}},
+  {requestType:'concept.category.workflow',payload:{...concept,operation:'remove'}},
+  {requestType:'concept.category.workflow',payload:{...concept,operation:'update',requirements:'Test'}},
+  {requestType:'concept.category.workflow',payload:{...concept,operation:'add',categoryId:'category.add.'+'b'.repeat(32),
+   outline:'Test',groupId:'group.sound',requiredSections:['Test']}},
+ ];
+ for(const [i,cmd] of commands.entries()){
+  const response=await write('viewer',viewer,{...cmd,idempotencyKey:'fixture-'+i});
+  assert.equal(response.status,202,JSON.stringify(await response.json()));
+ }
+ for(const id of ['audienceOnly','otherProject','unknownRole']){
+  const c=await (await load(id)).json();
+  assert.equal(c.requestWritable,false);
+  assert.equal((await write(id,c,command,{'X-Role':'owner'})).status,403);
+ }
+ assert.equal((await load('revoked')).status,403);
+ assert.equal((await write('revoked',viewer)).status,403);
+ assert.equal((await write('viewer',owner)).status,403);
+ assert.equal((await write('viewer',viewer,command,{Origin:'https://other.example'})).status,403);
+ for(const bad of [
+  {...command,requestType:'site.deploy'},
+  {...command,requestType:'project.member.add'},
+  {...command,payload:{...command.payload,projectId:'outside'}},
+  {...command,payload:{...command.payload,targetDurationSeconds:60}},
+  {...command,actorId:'owner'},
+ ]) assert.equal((await write('viewer',viewer,bad)).status,400);
+ assert.equal((await write('owner',owner,{...command,payload:{...command.payload,targetDurationSeconds:60}})).status,400);
+ assert.equal((await browser('/api/requests','GET',headers('owner')).then(r=>r.json())).requests.length,0);
+ assert.equal((await browser('/api/requests','GET',headers('viewer')).then(r=>r.json())).requests.length,commands.length);
+ for(const path of ['/api/space/audio-requests','/api/npc-one-stop','/mcp','/api/site/access']){
+  assert.equal(await browser(path,'POST',headers('viewer'),command),null);
+ }
+});
+
 test('machine auth cannot come from visitor headers, browser Origin, or wrong token; discovers only narrow approved tools',async t=>{
  const {machine,db}=fixture(t);
  assert.equal(await machineResponse(request('/mcp','POST',headers('a'),{}),{db,secret:token}),null);

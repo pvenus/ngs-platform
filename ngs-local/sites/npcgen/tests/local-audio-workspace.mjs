@@ -139,6 +139,22 @@ test('standalone playlist keeps BGM, opens a modal only on +, and uses standard 
  assert.deepEqual(detail.all('audio'),[]);
 });
 
+test('the hosted audio dialog does not offer or submit the local 60-second target',async t=>{
+ const Element=installDOM(t),items=new Element('ul'),detail=new Element('main'),sent=[];
+ mountAudioWorkspace({items,detail,concepts:[concept],signal:new AbortController().signal,allowFullLength:false,
+  submit:async command=>{sent.push(command);return Response.json(receipt,{status:201});}});
+ const open=detail.all('button').find(b=>b.textContent==='+');
+ await open.events.click();
+ const [form]=detail.all('form');
+ const label=name=>form.all('label').find(x=>x.textContent===name);
+ assert.equal(label('완곡 (60초 이상 목표)'),undefined);
+ assert.ok(!label('길이 (초, 선택)').children[0].disabled);
+ for(const [name,value] of [['제목',payload.title],['사운드 컨셉',concept.id],['제작 설명',payload.brief]])
+  label(name).children[0].value=value;
+ await form.events.submit({preventDefault(){}});
+ assert.deepEqual(sent.map(x=>x.payload),[{...payload,durationSeconds:null}]);
+});
+
 test('the song list is independent of lazy sound-concept loading and a failed lookup can be retried',async t=>{
  const Element=installDOM(t),items=new Element('ul'),detail=new Element('main');
  let calls=0;

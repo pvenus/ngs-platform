@@ -2,6 +2,9 @@
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
 import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from '../ngs-local/sites/npcgen/build/replica-whole-file-wire.mjs';
 export const machineTokenConfigured=validMachineToken;
+// Only call with the server-resolved participant, never browser-supplied roles.
+export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
+ ['owner','editor','viewer'].includes(grant.role);
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
 const chunkTool='ngs_file_sync_file_chunk',small=32*1024;
 const deploymentStatusTool=Object.freeze({name:'space_ngs_deployment_status',
