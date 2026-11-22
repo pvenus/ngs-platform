@@ -22,6 +22,7 @@ import {conceptCategoryRequestType,validConceptCategoryRequest} from './local-co
 import {npcPlanningAddType,npcPlanningRequestType,validNpcPlanningAdd,validNpcPlanningUpdate} from './local-npc-planning-ui.mjs';
 import {audioResponseRange,localAudioResults} from './local-audio-results.mjs';
 import {validLocalAudioPayload} from './local-audio-workspace.mjs';
+import {motionPresetConvertType,validMotionPresetConvert} from './motion-preset-convert-2d.mjs';
 
 const canonicalPolicy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const assets=new Map([
@@ -34,6 +35,7 @@ const assets=new Map([
  ['/local-concept-category-contract.mjs', ['text/javascript; charset=utf-8', new URL('./local-concept-category-contract.mjs',import.meta.url)]],
  ['/local-npc-planning-ui.mjs', ['text/javascript; charset=utf-8', new URL('./local-npc-planning-ui.mjs',import.meta.url)]],
  ['/local-audio-workspace.mjs', ['text/javascript; charset=utf-8', new URL('./local-audio-workspace.mjs',import.meta.url)]],
+ ['/motion-preset-convert-2d.mjs', ['text/javascript; charset=utf-8', new URL('./motion-preset-convert-2d.mjs',import.meta.url)]],
  ['/local-request-queue-browser.mjs', ['text/javascript; charset=utf-8', new URL('./local-request-queue-browser.mjs',import.meta.url)]],
 ]);
 const failure=(code,status)=>Object.assign(Error(code),{status});
@@ -162,6 +164,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
         typeof target.officialRequestId!=='string'||!/^request\.official\.[a-f0-9]{64}$/u.test(target.officialRequestId))
       throw failure('NGS_AUDIO_DELETE_PAYLOAD_INVALID',400);
     }
+    if(command.requestType===motionPresetConvertType&&!validMotionPresetConvert(command.payload))
+     throw failure('NGS_MOTION_PRESET_CONVERT_2D_PAYLOAD_INVALID',400);
     if(command.requestType===conceptCategoryRequestType&&!validConceptCategoryRequest(command.payload))
      throw failure('CONCEPT_CATEGORY_REQUEST_INVALID',400);
     if(command.requestType===npcPlanningAddType&&!validNpcPlanningAdd(command.payload))

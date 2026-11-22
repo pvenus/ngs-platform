@@ -2,6 +2,7 @@
 import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local-concept-category-contract.mjs';
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
 import {validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
+import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
 const table='ngs_space_request_queue_v1';
 const cap=128,maxList=16,receiptTTL=24*60*60*1000;
 const queuePattern=/^ngs\.space\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
@@ -48,6 +49,7 @@ function commandOK(cmd){
  case 'audio.generate':return validLocalAudioPayload(p);
  case 'audio.delete':return exact(p,['schemaVersion','projectId','officialRequestId'])&&p.schemaVersion==='ngs.audio-delete.v1'&&
   typeof p.officialRequestId==='string'&&p.officialRequestId.length===81&&officialPattern.test(p.officialRequestId);
+ case motionPresetConvertType:return validMotionPresetConvert(p);
  case 'npc.planning.add':return validNpcPlanningAdd(p);
  case 'npc.planning.update':return validNpcPlanningUpdate(p);
  case 'concept.category.workflow':return validConceptCategoryRequest(p);

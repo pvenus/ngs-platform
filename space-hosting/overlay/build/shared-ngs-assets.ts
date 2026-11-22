@@ -8,6 +8,7 @@ import contract from "../ngs-local/sites/npcgen/build/local-concept-category-con
 import planning from "../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs?raw";
 import audio from "../ngs-local/sites/npcgen/build/local-audio-workspace.mjs?raw";
 import queue from "../ngs-local/sites/npcgen/build/local-request-queue-browser.mjs?raw";
+import motionConversion from "../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs?raw";
 import logo from "../public/assets/vinus-mark.png?inline";
 import {createSharedNgsResponse, withProductionAudio} from "./shared-ngs-response.mjs";
 
@@ -26,6 +27,7 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/local-npc-planning-ui.mjs", {type: javascript, body: planning}],
  ["/local-audio-workspace.mjs", {type: javascript, body: audio}],
  ["/local-request-queue-browser.mjs", {type: javascript, body: queue}],
+ ["/motion-preset-convert-2d.mjs", {type: javascript, body: motionConversion}],
  ["/assets/vinus-mark.png", {type: "image/png", body: png}],
 ]);
 

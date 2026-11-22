@@ -73,6 +73,8 @@ test('only authenticated active Binari participants can use the existing formal 
   groupId:null,outline:'',requirements:''};
  const commands=[
   command,
+  {requestType:'motion-preset.convert-2d',payload:{...base,schemaVersion:'ngs.motion-preset-convert-2d.v1',
+   sourcePresetId:'walk',variantPresetId:'walk-2d',label:'걷기 · 2D 마네킹'}},
   {requestType:'audio.delete',payload:{...base,schemaVersion:'ngs.audio-delete.v1',officialRequestId:'request.official.'+'a'.repeat(64)}},
   {requestType:'npc.workflow',payload:{...base,schemaVersion:'ngs.npc-one-stop.v1',character:{
    npcId:'npc.sample',slug:'sample',name:'Fixture',role:'test',actId:'act1',chapterId:'ch1'},intent:'Fixture',sourceRefs:['Test'],includeCombat:false}},
@@ -98,6 +100,7 @@ test('only authenticated active Binari participants can use the existing formal 
  assert.equal((await write('viewer',owner)).status,403);
  assert.equal((await write('viewer',viewer,command,{Origin:'https://other.example'})).status,403);
  for(const bad of [
+  {requestType:'motion-preset.convert-2d',idempotencyKey:'bad-missing-target',payload:{projectId:'binari',schemaVersion:'ngs.motion-preset-convert-2d.v1',sourcePresetId:'walk',variantPresetId:'walk',label:'겹치는 원본'}},
   {...command,requestType:'site.deploy'},
   {...command,requestType:'project.member.add'},
   {...command,payload:{...command.payload,projectId:'outside'}},

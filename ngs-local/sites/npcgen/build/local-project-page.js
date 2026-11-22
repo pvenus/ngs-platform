@@ -2,6 +2,7 @@ import {conceptDetailOperations,conceptMarkdown,createConceptCategoryActions,syn
 import {followAcceptedAudioResult,followDeletedAudioResults,mountAudioWorkspace,readAudioSoundConcepts,refreshAudioResults,showAudioResults} from './local-audio-workspace.mjs';
 import {loadNpcFolder} from './local-npc-workspace-ui.mjs';
 import {isQueuedRequest,submitQueuedRequest} from './local-request-queue-browser.mjs';
+import {motionConversionForm,motionPresetConvertType} from './motion-preset-convert-2d.mjs';
 
 /* Project-list lifecycle only: local cards first, one stale comparison, separate applies. */
 const cards=new Map(),states=new Map(),progress=new Map(),cardNodes=new Map();
@@ -13,6 +14,7 @@ const queuePanel=document.querySelector('#local-request-queue');
 const queueLabel={
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
  'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제',
+ [motionPresetConvertType]:'2D 마네킹 프리셋 변환',
 };
 const queueTime=new Intl.DateTimeFormat('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 let queueSession,queueRefresh=()=>{};
@@ -467,7 +469,7 @@ async function loadWorkspace(search){
  const items=document.querySelector('#workspace-items'),detail=document.querySelector('#workspace-detail');
  const listToolbar=document.querySelector('#concept-category-tools');
  listToolbar.replaceChildren();listToolbar.hidden=true;
- let conceptActions=null;
+ let conceptActions=null,motionSubmit;
  const supported=(area,enabled)=>enabled&&(area!=='audio'||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
  document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':'항목';
@@ -524,7 +526,8 @@ async function loadWorkspace(search){
   if(!list.length)list.push(nodeOf('li','meta','게시된 항목이 없습니다.'));
   items.replaceChildren(...list);
  }
- function renderMotionPreset(selected,directions){
+ function renderMotionPreset(selected,preset,itemRows){
+  const directions=preset?.directions;
   const labels={nw:'북서',n:'북',ne:'북동',w:'서',e:'동',sw:'남서',s:'남',se:'남동'};
   const previews=new Map((Array.isArray(directions)?directions:[]).map(row=>[row.direction,row.path]));
   const compass=nodeOf('div','motion-preset-compass');
@@ -548,7 +551,10 @@ async function loadWorkspace(search){
    card.append(nodeOf('figcaption','',name),stage);
    compass.append(card);
   }
-  detail.replaceChildren(nodeOf('h3','',selected.label),nodeOf('p','meta','Filex 사본 · 읽기 전용'),compass);
+  const form=motionConversionForm({projectId,preset: preset?.presetId===selected.id?preset:null,
+   publishedIds:new Set((Array.isArray(itemRows)?itemRows:[]).map(row=>String(row.id).toLowerCase())),submit:motionSubmit,signal});
+  detail.replaceChildren(nodeOf('h3','',selected.label),nodeOf('p','meta','Filex 사본 · 읽기 전용'),
+   ...(form?[form]:[]),compass);
  }
  async function renderDetail(data){
   const selected=data.item;
@@ -556,7 +562,7 @@ async function loadWorkspace(search){
    detail.replaceChildren(nodeOf('h3','',label),nodeOf('p','meta',item?'선택한 항목이 현재 사본에 없습니다.':'왼쪽 목록에서 항목을 선택하세요.'));
    return;
   }
-  if(tab==='motion-presets'){renderMotionPreset(selected,data.motionPreset?.directions);return;}
+  if(tab==='motion-presets'){renderMotionPreset(selected,data.motionPreset,data.items);return;}
   const files=(data.files??[]).filter(row=>['markdown','json','image','video'].includes(row.kind));
   const markdown=tab==='concept'?files.find(row=>row.kind==='markdown'):null;
   const current=markdown??(file?files.find(row=>row.path===file):files.find(row=>row.kind==='json')??files[0]);
@@ -625,6 +631,7 @@ async function loadWorkspace(search){
   const session=await request('/__npcgen_session');
   const {hosted,post,submit}=workspaceTransport(session,request,signal);
   const legacySpace=hosted&&!spaceWorkspaceReady(session);
+  if(!legacySpace)motionSubmit=submit;
   if(hosted){
    if(session.queueEnabled===true)enableQueue(signal);
    const filter=id=>projectId==='binari'&&!session.readOnly&&(!legacySpace||id==='audio');

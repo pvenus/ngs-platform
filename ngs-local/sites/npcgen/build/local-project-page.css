@@ -275,3 +275,10 @@ ul{padding:0;list-style:none}
 .ngs-sync-count{margin-inline-start:auto;color:var(--muted-foreground)}
 .ngs-sync-partial .ngs-sync-project,.ngs-sync-failed .ngs-sync-project,.ngs-sync-failures{color:var(--destructive)}
 .ngs-sync-meter{display:block;width:100%;height:8px;margin-block-start:7px;accent-color:var(--primary)}
+
+.motion-preset-conversion{margin-block:.7rem 1.1rem}
+.motion-preset-conversion summary{cursor:pointer;font-weight:650}
+.motion-preset-conversion form{display:grid;gap:.6rem;max-width:30rem}
+.motion-preset-conversion label{display:grid;gap:.25rem}
+.motion-preset-conversion input{min-width:0;max-width:100%}
+.motion-preset-conversion button{justify-self:start}
