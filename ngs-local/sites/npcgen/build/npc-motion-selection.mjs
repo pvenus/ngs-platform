@@ -23,6 +23,25 @@ export function validMotionChoice(row){
 export function sameMotionChoice(a,b){
  return a?.presetId===b?.presetId&&a?.posePreset===b?.posePreset&&a?.assetSetSha256===b?.assetSetSha256;
 }
+export const animationRegenerateType='npc.animation.regenerate';
+export const animationRegenerateSchema='ngs.npc-animation.regenerate.v1';
+const npcIdPattern=/^(?:npc|character)\.[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/u;
+export function validNpcAnimationTarget(id){return typeof id==='string'&&id.length<=128&&id===id.trim()&&npcIdPattern.test(id);}
+export function validNpcAnimationRegenerate(value){
+ return exact(value,['schemaVersion','projectId','npcId','motionSelection'])&&
+  value.schemaVersion===animationRegenerateSchema&&value.projectId==='binari'&&
+  validNpcAnimationTarget(value.npcId)&&validMotionSelection(value.motionSelection);
+}
+export function npcAnimationRegenerateRequest(npcId,selected,catalog){
+ const payload={schemaVersion:animationRegenerateSchema,projectId:'binari',npcId,motionSelection:selected};
+ if(!validNpcAnimationRegenerate(payload)||!selected.every(choice=>catalog.some(row=>sameMotionChoice(choice,row))))
+  throw Error('게시된 모션 프리셋을 1~8개 다시 골라 주세요.');
+ return payload;
+}
+export function npcPublishedMotionLabel(posePreset,presetId,catalog=[]){
+ return catalog.find(row=>row.posePreset===posePreset&&row.presetId===presetId)?.label??null;
+}
+
 export function validNpcMotionSelectionRequest(value){
  const id=v=>typeof v==='string'&&v===v.trim()&&/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(v);
  const text=(v,max)=>typeof v==='string'&&v.isWellFormed()&&v===v.trim()&&v.length>0&&[...v].length<=max&&

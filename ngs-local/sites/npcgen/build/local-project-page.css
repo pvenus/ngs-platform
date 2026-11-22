@@ -288,3 +288,5 @@ ul{padding:0;list-style:none}
 .one-stop-motion-group{min-width:0;overflow-wrap:anywhere}
 .one-stop-motion-group label{display:flex;flex-direction:row;align-items:baseline;margin:.25rem 0;gap:.35rem}
 .one-stop-motion-group input{flex:none}
+
+.npc-animation-request-actions{display:flex;justify-content:flex-end;margin:0 0 8px}

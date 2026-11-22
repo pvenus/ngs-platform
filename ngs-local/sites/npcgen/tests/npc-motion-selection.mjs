@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {mkdir,mkdtemp,rm,writeFile} from 'node:fs/promises';import {realpathSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';import {createLocalProjectPageServer} from '../build/local-project-page-server.mjs';import {openLocalRequestQueue} from '../build/local-request-queue.mjs';
 import {workspaceRead} from '../build/project-workspace-view.mjs';
+import {mountNpcAnimationRegenerate} from '../build/local-npc-workspace-ui.mjs';
 import {mountNpcOneStop,newNpcOneStopRequest,readOneStopMotionPresets} from '../build/local-npc-one-stop-ui.mjs';
-import {motionCatalogSchema,motionDirections,motionSelectionOf,publishedMotionChoice,quickMotionSelection,
+import {animationRegenerateSchema,animationRegenerateType,npcAnimationRegenerateRequest,npcPublishedMotionLabel,validNpcAnimationRegenerate,motionCatalogSchema,motionDirections,motionSelectionOf,publishedMotionChoice,quickMotionSelection,
  selectionReplaceSchemaVersion,selectionSchemaVersion,validMotionSelection,validNpcMotionSelectionRequest} from '../build/npc-motion-selection.mjs';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const variant={kind:'2d',sourcePresetId:'run',sourcePresetHash:'a'.repeat(64)};
@@ -133,6 +134,10 @@ test('Local browser queue validates selected publication hashes without reading 
  const origin='http://127.0.0.1:'+server.address().port;
  const r=await fetch(origin+'/__npcgen_session'),cookie=r.headers.get('set-cookie').split(';')[0],session=await r.json();
  const headers={cookie,origin,'content-type':'application/json','x-npcgen-csrf':session.csrfToken,'x-npcgen-frontend-context':session.contextId};
+ const npcPath=join(project,'npcs','npc.ch1_dajeong');
+ await mkdir(npcPath,{mode:0o700,recursive:true});
+ await writeFile(join(project,'npcs','metadata.json'),JSON.stringify({characterOrder:['npc.ch1_dajeong']}),{mode:0o600});
+ await writeFile(join(npcPath,'metadata.json'),JSON.stringify({id:'npc.ch1_dajeong',name:'다정'}),{mode:0o600});
  const res=await fetch(origin+'/api/project-workspace?projectId=binari&tab=motion-presets&view=selection',{headers:{cookie}});
  assert.equal(res.status,200);
  const catalog=(await res.json()).presets;
@@ -147,4 +152,69 @@ test('Local browser queue validates selected publication hashes without reading 
  assert.equal(queue.list().requests.length,0);
  const queued=await send('exact-motion-selection',body);assert.equal(queued.status,202,JSON.stringify(await queued.json()));
  assert.deepEqual(queue.list().requests[0].payload,body);
+ const regen=motionSelectionPayload(catalog.map(motionSelectionOf));
+ const sendRegen=(id,payload)=>fetch(origin+'/api/requests',{method:'POST',headers,
+  body:JSON.stringify({requestType:animationRegenerateType,idempotencyKey:id,payload})});
+ assert.equal((await sendRegen('no-npc',{...regen,npcId:'npc.nonexistent'})).status,404);
+ assert.equal((await sendRegen('stale-npc-motion',{...regen,motionSelection:staleMotionPins(regen)})).status,409);
+ const accepted=await sendRegen('npc-motion-only',regen);assert.equal(accepted.status,202,JSON.stringify(await accepted.json()));
+ assert.deepEqual(queue.list().requests.find(row=>row.requestType===animationRegenerateType).payload,regen);
+
+});
+
+test('animation tab picks exact registered variants and queues only those for the current NPC',async t=>{
+ class Element{
+  constructor(tag){this.tag=tag;this.children=[];this.events={};this.textContent='';this.isConnected=true;}
+  append(...items){this.children.push(...items);}
+  addEventListener(name,fn){this.events[name]=fn;}
+  setAttribute(){}
+  showModal(){this.open=true;}
+  close(){this.open=false;}
+  remove(){this.isConnected=false;}
+  focus(){}
+ }
+ const previous=globalThis.document;
+ globalThis.document={createElement:tag=>new Element(tag)};
+ t.after(()=>{globalThis.document=previous;});
+ const owner=new Element('section'),seen=[];
+ const catalog=[choice('run','idle','달리기'),choice('run-flat','idle','달리기 3D Flat'),choice('run-2d','idle','달리기 2D'),
+  choice('run-flat-2d','idle','달리기 Flat 2D'),attack];
+ assert.deepEqual(catalog.slice(0,4).map(row=>npcPublishedMotionLabel('idle',row.presetId,catalog)),['달리기','달리기 3D Flat','달리기 2D','달리기 Flat 2D']);
+ assert.equal(npcPublishedMotionLabel('combat','run-2d',catalog),null);
+ const dispose=mountNpcAnimationRegenerate(owner,{npc:{id:'npc.ch1_dajeong',name:'다정'},intakes:new Map(),
+  request:async url=>{assert.match(url,/view=selection$/);return {schemaVersion:motionCatalogSchema,presets:catalog};},
+  submit:async command=>{seen.push(command);return Response.json({queueId:'ngs.local.00000000-0000-4000-8000-000000000000',status:'queued'},{status:202});}});
+ const all=(el,tag)=>[...(el.tag===tag?[el]:[]),...el.children.flatMap(next=>all(next,tag))];
+ all(owner,'button')[0].events.click();await Promise.resolve();await Promise.resolve();
+ const dialog=all(owner,'dialog')[0],form=all(dialog,'form')[0];
+ const send=all(form,'button')[0];assert.ok(send.disabled);
+ const chosen=['run-flat','run-flat-2d'];
+ for(const id of chosen){
+  const item=all(form,'label').find(el=>el.children[1].textContent.endsWith(' · '+id));
+  item.children[0].checked=true;
+  item.children[0].events.change();
+ }
+ await form.events.submit({preventDefault(){}});
+ assert.equal(seen.length,1);assert.equal(seen[0].requestType,animationRegenerateType);
+ const pick=catalog.filter(row=>chosen.includes(row.presetId)).map(motionSelectionOf);
+ assert.deepEqual(seen[0].payload,motionSelectionPayload(pick));
+ assert.equal(validNpcAnimationRegenerate({...seen[0].payload,intent:'whole NPC'}),false);
+ assert.throws(()=>npcAnimationRegenerateRequest('npc.ch1_dajeong',pick.map(row=>({...row,assetSetSha256:'f'.repeat(64)})),catalog));
+ dispose();assert.equal(dialog.isConnected,false);
+});
+function motionSelectionPayload(motionSelection){
+ return {schemaVersion:animationRegenerateSchema,projectId:'binari',npcId:'npc.ch1_dajeong',motionSelection};
+}
+
+const staleMotionPins=payload=>payload.motionSelection.map(row=>({...row,assetSetSha256:'1'.repeat(64)}));
+
+test('renaming a registered label keeps the source pin and existing output identity',async()=>{
+ const source=manifest('run-flat-2d');
+ const from=await publishedMotionChoice('run-flat-2d',source,'달리기 Flat 2D');
+ const changed=await publishedMotionChoice('run-flat-2d',{...source,label:'새 표시 이름'},'새 표시 이름');
+ assert.deepEqual(motionSelectionOf(changed),motionSelectionOf(from));
+ assert.equal(npcPublishedMotionLabel('idle','run-flat-2d',[changed]),'새 표시 이름');
+ assert.equal(npcPublishedMotionLabel('idle','run-flat',[changed]),null);
+ assert.deepEqual(npcAnimationRegenerateRequest('npc.ch1_dajeong',[motionSelectionOf(from)],[changed]),
+  motionSelectionPayload([motionSelectionOf(from)]));
 });

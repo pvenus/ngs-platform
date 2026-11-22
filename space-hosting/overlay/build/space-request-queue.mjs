@@ -3,7 +3,7 @@ import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
 import {validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
-import {isSelectionSchema,validNpcMotionSelectionRequest} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
+import {isSelectionSchema,validNpcMotionSelectionRequest,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 const table='ngs_space_request_queue_v1';
 const cap=128,maxList=16,receiptTTL=24*60*60*1000;
 const queuePattern=/^ngs\.space\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
@@ -56,6 +56,7 @@ function commandOK(cmd){
  case 'npc.planning.update':return validNpcPlanningUpdate(p);
  case 'concept.category.workflow':return validConceptCategoryRequest(p);
  case 'npc.workflow':return validOneStop(p);
+ case animationRegenerateType:return validNpcAnimationRegenerate(p);
  default:return false;
  }
 }

@@ -1,5 +1,4 @@
 {
-  "sourceCommit": null,
   "files": {
     "README.md": "bff6516f3867b43cb7dd9076334c86fd6867534427418d813eb64450f10249c1",
     "dev/0014_space_file_replica_versions.sql": "ece870d0e6aae03efb748bc8823ace35b6465b1b7ed47907a9dfdb3473fe4117",
@@ -25,17 +24,17 @@
     "sites/npcgen/build/local-miniflare-app.mjs": "39691649498c49fb0eccf6186a4ccf9733bfab50f8907dbe900b806d770641d9",
     "sites/npcgen/build/local-miniflare-runtime.mjs": "ee6ecfd6d0b8686e8bb84d5173af7bf0c1ae6b7ae02c5bd5b08c66fc2a0b51e5",
     "sites/npcgen/build/local-miniflare-worker.mjs": "16390508ba2d4eeb37fa642945e7a725600a1fc4cd03ecc5508b60ad5624982e",
-    "sites/npcgen/build/local-npc-one-stop-ui.mjs": "022630cb53d70765ee2396bf62d5ab37358a5118561a1bd8f5440934cb5f96c5",
+    "sites/npcgen/build/local-npc-one-stop-ui.mjs": "6ba30f5065ff422cd9fbfcf3dea03cec373daf84a3a16edfc233e7f239eef5ce",
     "sites/npcgen/build/local-npc-planning-ui.mjs": "a4416bb4bf9843e5002a31f96308c13e71183acf50d0edbbbd2e73f9bac90e8f",
-    "sites/npcgen/build/local-npc-workspace-ui.mjs": "3f51e6e6523576827cf219d1fe89833b7d305a8e99b32b771d5871bbf63e914f",
+    "sites/npcgen/build/local-npc-workspace-ui.mjs": "0d2e8c5f5329480838da8503b7daea52d26b8f303eaf5427fd0e53045e30588f",
     "sites/npcgen/build/local-npc-workspace.mjs": "3c3db06805a670e3313d3de7b9334a269795ec612a72ccf32f56f795fb9e9619",
     "sites/npcgen/build/local-object-replica-runtime.mjs": "5dd2684ada8ba35d8cd4b69e848b17d5f9950dd40d2b436ad1c8d21053d07405",
     "sites/npcgen/build/local-object-replica-views.mjs": "67b5431564c5b66ce0bdf8fdd558aefe08854f01893eb0a180cdfc9f3666512b",
     "sites/npcgen/build/local-ops-health-report.mjs": "699dfa677585425eda5b68f613297e4b65979b7c47eaf8ea1cfc82516a5bf34f",
     "sites/npcgen/build/local-project-folder-route.mjs": "5b4a8abda9c31827d757db4af12d1135d227d0f146a069b221b605af7abce4ac",
     "sites/npcgen/build/local-project-folders.mjs": "61b1470fd9cef15c9eadd1200cf2bd360c0773db0126041ba85bae42f6119688",
-    "sites/npcgen/build/local-project-page-server.mjs": "f4e26d867b39319ea3c001cbb817dc3fdc0ffa5be72c23baadae76f50114c2ec",
-    "sites/npcgen/build/local-project-page.css": "fd79c46fba4c100b18705840988ac11c5a40f8330a1855f3cf272d327e8fcd2d",
+    "sites/npcgen/build/local-project-page-server.mjs": "97992c2324569e94027bec7fc44bf92701b3fc4cae6a70f09642451d58f6d662",
+    "sites/npcgen/build/local-project-page.css": "c8ec9640e377453d49f340150174cb53e385f94d2022be54bec7f385bd5011f3",
     "sites/npcgen/build/local-project-page.html": "985258a59b571ec73c4d0680237945c2352598b75bf2f6538933c8acd7a97b1f",
     "sites/npcgen/build/local-project-page.js": "64981ae67d935974e237775ac59bd8b3db06d8277f5375112d49c1ed6bf31dea",
     "sites/npcgen/build/local-project-workspace.mjs": "8ebf331c166bdc921aeb8ea8295d08404f8892e63398242efb14ecd7e939aeb2",
@@ -48,7 +47,7 @@
     "sites/npcgen/build/local-s3-replica-bucket.mjs": "214778337c1ff0c5d47f5cb7ccd60a91d57b3bcec5cdc2c9614e5070abcbd1b4",
     "sites/npcgen/build/loopback-auth.mjs": "bd920a871bd7cfd864b9cf3095c4aa7b5e987893ead87422524b4c69279e45f3",
     "sites/npcgen/build/motion-preset-convert-2d.mjs": "1fe6812ffeb0e034daa50b0360373c7b069d75c184c96091a2413a383cc019fe",
-    "sites/npcgen/build/npc-motion-selection.mjs": "2a5e175ec709953a4f5fce1475636f8039abd2d5bd8e6d9e3499b89ce5958ab3",
+    "sites/npcgen/build/npc-motion-selection.mjs": "345997ef37f6d6af65d4cb9044f540f5f21723a72207a335dd3fefc4ddc5d6bd",
     "sites/npcgen/build/npc-workspace.mjs": "ca9ce63f9cdd4159b4389412e5836acaf7f5a9b8721d09e001723ea8b6b6dc66",
     "sites/npcgen/build/object-replica-view.mjs": "60ca1a14b843a884414c25649da607b9bff2359036d3dfaaacb452d9a3a9ab2b",
     "sites/npcgen/build/object-replica.mjs": "93fa0bb86d9aa80048987ecac94a40138f38b28bd84db7cc5b1e1169e7dfa0b9",
@@ -59,7 +58,7 @@
     "sites/npcgen/build/replica-sync-progress.d.mts": "6980a118166b45fe2a3ff4cf4b1a11da09e3951c4fe8a7b0958a3d632f84ec3a",
     "sites/npcgen/build/replica-sync-progress.mjs": "1aa313975a4815f16ba4256cb3845656cfdcc2306f643d209dfde1c946f85e54",
     "sites/npcgen/build/replica-whole-file-wire.mjs": "a08c5ffec5fdabecc849f5113bdf821727293362bb92c5bd56b268096f9f05eb",
-    "sites/npcgen/build/rs-mcp.mjs": "cfa4cc4d3c6ef954eefad19c5935f7a00846926ba5c93bd01a4b0bfe03565435",
+    "sites/npcgen/build/rs-mcp.mjs": "fada92ac2a456ed90552a6bd1330e1c25588a8c3378d535aaeedb726c632564b",
     "sites/npcgen/build/rs-ops-ngs-health.mjs": "94ef987ce3bfb086084cb153bdfbdf32f1263816dbb7880667fc2d8207fb97ff",
     "sites/npcgen/build/space-catalog-owner-mcp.mjs": "cc91e596f50f0b2368e069b52a5ba6a0bd8d52b3a395d0f16203b9e4fd60b25b",
     "sites/npcgen/build/space-catalog-worker.mjs": "84306defc2ec73a57cd19977138a65e0babdb4407f7ed0e0779e33955dccd132",
@@ -82,7 +81,7 @@
     "sites/npcgen/tests/local-s3-replica-bucket.mjs": "6d6aaafb6f6c5b5d6281eaade0074043f0c3516270110cd0f41839b3ef6dc8be",
     "sites/npcgen/tests/local-seaweedfs-object-replica.mjs": "62a8fc9e08456b87a792d8f2ecfdb76cd12d8511673215438858c8e9d328f761",
     "sites/npcgen/tests/motion-preset-convert-2d.mjs": "7b3138caccb7111a0461fe8ee5c567b14001b97e11ea17b50393799ebe415663",
-    "sites/npcgen/tests/npc-motion-selection.mjs": "0b9f99bf431a9a3c63e72e0fa02eadd54d93443e376fe7e5b9e0e0ebd84b941e",
+    "sites/npcgen/tests/npc-motion-selection.mjs": "f2e397730cdd7a0599aa64c46a8af4e539fff103e541504eaa3ec47d62972864",
     "sites/npcgen/tests/pds-mcp-file-sync.mjs": "dce6b6be6bcce27c254febc5b42dd220edcc07be1d3b2bc953d213ea4f42f747",
     "sites/npcgen/tests/pds-ngs-push-e2e.mjs": "2d7cb32ffe9487742343d1fc21d79bd81dd196a36c3e3b5f7da28b2cdc490484",
     "sites/npcgen/tests/replica-sqlite.mjs": "601d6cf4e2211460366f345a5ae5d8774fc86ba06622db5033af93b46c182c9a",
@@ -93,5 +92,6 @@
     "sites/npcgen/tests/space-machine-mcp.mjs": "cda60731807a74308abb1176a11595b82682bcb877c1722d6a6172311e26a6df",
     "sites/npcgen/tests/space-project-catalog-browser.mjs": "446fbf8abffeb9982056ee4a2f3d01ab1990842ff57004fd6b67210323984a28",
     "sites/npcgen/tests/workspace-storage-boundary.mjs": "670e32380fdc50d2d93ed6e369b94fb0f3fb2aff0c0dfc2236196c13af4f012c"
-  }
+  },
+  "sourceCommit": null
 }

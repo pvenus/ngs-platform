@@ -23,7 +23,7 @@ import {npcPlanningAddType,npcPlanningRequestType,validNpcPlanningAdd,validNpcPl
 import {audioResponseRange,localAudioResults} from './local-audio-results.mjs';
 import {validLocalAudioPayload} from './local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from './motion-preset-convert-2d.mjs';
-import {isSelectionSchema,selectionReplaceSchemaVersion,validNpcMotionSelectionRequest,sameMotionChoice} from './npc-motion-selection.mjs';
+import {isSelectionSchema,selectionReplaceSchemaVersion,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate} from './npc-motion-selection.mjs';
 
 const canonicalPolicy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const assets=new Map([
@@ -174,6 +174,16 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      throw failure('NGS_NPC_PLANNING_ADD_PAYLOAD_INVALID',400);
     if(command.requestType===npcPlanningRequestType&&!validNpcPlanningUpdate(command.payload))
      throw failure('NGS_NPC_PLANNING_UPDATE_PAYLOAD_INVALID',400);
+    if(command.requestType===animationRegenerateType){
+     if(!validNpcAnimationRegenerate(command.payload))throw failure('NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID',400);
+     const {projectId,npcId,motionSelection}=command.payload;
+     const {json:{npcs}}=await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId}),()=>{});
+     if(!npcs?.some(npc=>npc.id===npcId))throw failure('NPC_ANIMATION_REGENERATE_TARGET_NOT_FOUND',404);
+     const query=new URLSearchParams({projectId,tab:'motion-presets',view:'selection'});
+     const {json:{presets}}=await readWorkspace('/api/project-workspace',query,()=>{});
+     if(!motionSelection.every(choice=>presets.some(row=>sameMotionChoice(choice,row))))
+      throw failure('NPC_ANIMATION_REGENERATE_PRESETS_STALE',409);
+    }
     if(command.requestType==='npc.workflow'){
      const {character,includeCombat,combatMotionPresets,schemaVersion,motionSelection}=command.payload;
      if(isSelectionSchema(schemaVersion)){

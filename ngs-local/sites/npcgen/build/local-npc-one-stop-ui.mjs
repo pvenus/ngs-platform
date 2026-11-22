@@ -18,6 +18,7 @@ const knownRejections=new Set([
  'LOCAL_SIGN_IN_REQUIRED','LOCAL_SESSION_EXPIRED_OR_REVOKED','FRONTEND_SESSION_CONTEXT_CHANGED',
  'REQUEST_SUBMIT_INVALID','NGS_ONE_STOP_PAYLOAD_INVALID','OFFICIAL_REQUEST_NPC_ALREADY_REGISTERED',
  'ONE_STOP_REPLACE_TARGET_NOT_FOUND','ONE_STOP_REPLACE_IDENTITY_INVALID','ONE_STOP_MOTION_SELECTION_STALE',
+ 'NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID','NPC_ANIMATION_REGENERATE_TARGET_NOT_FOUND','NPC_ANIMATION_REGENERATE_PRESETS_STALE',
 ]);
 
 function oneStopRequest(values,motionCatalog,target){
@@ -71,14 +72,14 @@ export async function readOneStopMotionPresets(request,signal){
  return catalog.presets;
 }
 
-export function createNpcOneStopIntake(submit,{key=()=>crypto.randomUUID()}={}){
+export function createNpcOneStopIntake(submit,{key=()=>crypto.randomUUID(),requestType='npc.workflow'}={}){
  let pending=null,busy=false,accepted=false;
  return {
   get waitingConfirmation(){return pending!==null;},
   get accepted(){return accepted;},
   async send(makeRequest){
    if(busy||accepted)return null;
-   if(!pending)pending={requestType:'npc.workflow',idempotencyKey:key(),payload:makeRequest()};
+   if(!pending)pending={requestType,idempotencyKey:key(),payload:makeRequest()};
    busy=true;
    try{
     const response=await submit(pending);

@@ -1,5 +1,7 @@
 import {createNpcPlanningEditor,editableNpcPlanningDocument,npcPlanningSelection,renderNpcPlanningDocument} from './local-npc-planning-ui.mjs';
-import {mountNpcOneStop} from './local-npc-one-stop-ui.mjs';
+import {createNpcOneStopIntake,mountNpcOneStop,readOneStopMotionPresets} from './local-npc-one-stop-ui.mjs';
+import {animationRegenerateType,motionLimit,motionSelectionOf,npcAnimationRegenerateRequest,
+ npcPublishedMotionLabel,validNpcAnimationTarget} from './npc-motion-selection.mjs';
 
 /* Only the typed NPC read model is used here; no generic files or legacy transport. */
 function nodeOf(tag,className,text){
@@ -316,6 +318,83 @@ export async function refreshNpcScopes(scopes,{post,signal,onDownload=()=>{}}){
  return {changed,failed};
 }
 
+export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,modalOwner=owner}){
+ if(!validNpcAnimationTarget(npc?.id)||typeof submit!=='function')return ()=>{};
+ const actions=nodeOf('div','npc-animation-request-actions'),trigger=nodeOf('button','npc-one-stop-trigger','+');
+ trigger.type='button';trigger.setAttribute('aria-label','애니메이션 재생성 요청');trigger.setAttribute('aria-haspopup','dialog');
+ trigger.title='애니메이션 재생성 요청';actions.append(trigger);owner.append(actions);
+ let disposeDialog=()=>{},mounted=true;
+ trigger.addEventListener('click',()=>{
+  if(!mounted)return;
+  const controller=new AbortController(),modal=nodeOf('dialog','npc-one-stop-dialog');
+  const intake=intakes.get(npc.id)??createNpcOneStopIntake(submit,{requestType:animationRegenerateType});
+  const title=nodeOf('h2','','애니메이션 재생성 요청'),head=nodeOf('header'),close=nodeOf('button','','닫기');
+  title.id='npc-animation-request-heading';modal.setAttribute('aria-labelledby',title.id);
+  close.type='button';head.append(title,close);
+  const intro=nodeOf('p','meta',npc.name+'의 선택한 모션만 8방향으로 생성합니다. 기존 방향별 포트레이트를 사용하며, 기획·포트레이트·다른 모션은 그대로 둡니다.');
+  const form=nodeOf('form'),fields=nodeOf('fieldset','one-stop-section'),legend=nodeOf('legend','','등록된 모션 프리셋');
+  const choices=nodeOf('div','one-stop-motion-choices'),count=nodeOf('p','meta'),status=nodeOf('p','meta');
+  const send=nodeOf('button','npc-one-stop-submit','재생성 요청');send.type='submit';
+  status.setAttribute('role','status');fields.append(legend,choices,count);form.append(fields,send);
+  modal.append(head,intro,form,status);
+  const selected=new Map(),checks=new Map();let rows=null,busy=false,closed=false;
+  function update(){
+   fields.hidden=intake.waitingConfirmation;fields.disabled=busy||intake.waitingConfirmation;
+   close.disabled=busy;send.disabled=busy||intake.accepted||(!intake.waitingConfirmation&&!selected.size);
+   send.textContent=busy?'접수 중…':intake.waitingConfirmation?'같은 접수 다시 확인':'재생성 요청';
+   count.textContent=selected.size+' / '+motionLimit+'개 선택';
+   for(const [id,box] of checks)box.disabled=!selected.has(id)&&selected.size>=motionLimit;
+  }
+  function dismiss(restore=true){
+   if(closed)return;closed=true;controller.abort();if(modal.open)modal.close();modal.remove();
+   if(restore&&trigger.isConnected)trigger.focus();
+  }
+  disposeDialog=()=>dismiss(false);
+  close.addEventListener('click',()=>{if(!busy)dismiss();});
+  modal.addEventListener('cancel',event=>{event.preventDefault();if(!busy)dismiss();});
+  form.addEventListener('submit',async event=>{
+   event.preventDefault();if(send.disabled||closed)return;
+   busy=true;update();status.textContent='';
+   try{
+    const receipt=await intake.send(()=>npcAnimationRegenerateRequest(npc.id,[...selected.values()],rows??[]));
+    if(receipt)intakes.delete(npc.id);
+    if(closed)return;
+    if(receipt){form.hidden=true;status.textContent=receipt.status==='queued'?'NGS 대기열에 저장했습니다.':'요청을 접수했습니다.';}
+   }catch(error){
+    if(intake.waitingConfirmation)intakes.set(npc.id,intake);
+    else intakes.delete(npc.id);
+    if(!closed){
+     if(error.message==='NPC_ANIMATION_REGENERATE_PRESETS_STALE'){
+      status.textContent='프리셋이 변경됐습니다. 창을 다시 열고 선택해 주세요.';form.hidden=true;
+     }else status.textContent=intake.waitingConfirmation?'접수 응답을 확인하지 못했습니다. 같은 접수를 다시 확인해 주세요.':'요청을 받지 못했습니다. 선택한 NPC와 프리셋을 확인해 주세요.';
+    }
+   }finally{if(!closed){busy=false;update();if(intake.accepted)close.focus();}}
+  });
+  update();modalOwner.append(modal);modal.showModal();
+  if(intake.waitingConfirmation){send.focus();return;}
+  status.textContent='등록된 프리셋을 확인하는 중…';
+  void readOneStopMotionPresets(request,controller.signal).then(catalog=>{
+   if(closed)return;rows=catalog;
+   status.textContent=rows.length?'':'게시된 8방향 모션 프리셋이 없습니다.';
+   for(const [pose,label] of [['idle','아이들'],['combat','전투']]){
+    const matches=rows.filter(row=>row.posePreset===pose);if(!matches.length)continue;
+    const group=nodeOf('div','one-stop-motion-group');group.append(nodeOf('strong','',label));choices.append(group);
+    for(const row of matches){
+     const item=nodeOf('label'),box=nodeOf('input');box.type='checkbox';checks.set(row.presetId,box);
+     box.addEventListener('change',()=>{
+      if(!box.checked)selected.delete(row.presetId);
+      else if(selected.size<motionLimit)selected.set(row.presetId,motionSelectionOf(row));
+      box.checked=selected.has(row.presetId);update();
+     });
+     item.append(box,nodeOf('span','',row.label+' · '+row.presetId));group.append(item);
+    }
+   }
+   update();
+  }).catch(()=>{if(!closed)status.textContent='모션 프리셋을 읽지 못했습니다. 창을 다시 열어 주세요.';});
+ });
+ return ()=>{mounted=false;disposeDialog();actions.remove();};
+}
+
 export async function loadNpcFolder({search,projectId,signal,request,post,submitOneStop,submitPlanning,note,items,detail,workspace}){
  const planEditor=projectId==='binari'&&typeof submitPlanning==='function'?createNpcPlanningEditor({owner:workspace,submit:submitPlanning,signal}):null;
  const listPane=items.parentElement;
@@ -337,7 +416,7 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
  const wanted=search.get('item');
  const chapter=search.get('npcChapter')??'all';
  let selected='',disposeMedia=()=>{},replacementAction=null;
- const animationSettings=new Map();
+ const animationSettings=new Map(),animationIntakes=new Map();
  signal.addEventListener('abort',()=>{disposeMedia();replacementAction?.controller.abort();},{once:true});
  const nav=values=>navigation({projectId,catalogArea:'npcs',npcChapter:chapter==='all'?'':chapter,...values});
  const get=(npcId='')=>request('/api/npc-workspace?'+new URLSearchParams({projectId,...(npcId?{npcId}:{})}));
@@ -500,7 +579,11 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
   else if(tab==='traits')traitsPanel(data,panel);
   else if(tab==='animations'){
    if(!animationSettings.has(npc.id))animationSettings.set(npc.id,{percent:100,intervalMs:null});
-   disposeMedia=renderNpcAnimations(data,panel,signal,animationSettings.get(npc.id));
+   const disposeRequest=projectId==='binari'?mountNpcAnimationRegenerate(panel,{npc,request,submit:submitOneStop,
+    intakes:animationIntakes,modalOwner:workspace}):()=>{};
+   const catalog=projectId==='binari'?readOneStopMotionPresets(request,signal).catch(()=>[]):Promise.resolve([]);
+   const disposePlayback=renderNpcAnimations(data,panel,signal,animationSettings.get(npc.id),catalog);
+   disposeMedia=()=>{disposeRequest();disposePlayback();};
   }
   else planPanel(data,panel);
  }
@@ -529,7 +612,7 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
 }
 
 const npcPoseLabels={idle:'아이들',combat:'전투',representative:'대표'};
-const npcMotionLabels={walk:'걷기',run:'뛰기','sword-attack':'검 공격'};
+const npcMotionLabels={walk:'걷기',run:'달리기','sword-attack':'검 공격'};
 const frameModes=[['pixelUrl','픽셀'],['alphaUrl','알파'],['rawUrl','원본']];
 const frameCacheLimit=64*1024*1024,frameCacheEntries=512;
 
@@ -634,7 +717,7 @@ export function createNpcFrameCache({fetchFrame,makeURL=URL.createObjectURL.bind
  };
 }
 
-export function renderNpcAnimations(data,panel,signal,settings={percent:100,intervalMs:null}){
+export function renderNpcAnimations(data,panel,signal,settings={percent:100,intervalMs:null},catalog=Promise.resolve([])){
  const poses=groupNpcAnimations(data.frameSets);
  if(!poses.length){panel.append(nodeOf('p','meta','게시된 애니메이션 프레임이 없습니다.'));return ()=>{};}
  const tabs=nodeOf('div','npc-animation-pose-tabs npc-portrait-pose-tabs');
@@ -683,6 +766,11 @@ export function renderNpcAnimations(data,panel,signal,settings={percent:100,inte
   let player;
   for(const action of actions){
    const option=nodeOf('option','',npcMotionLabels[action.id]??action.id);option.value=action.id;actionSelect.append(option);
+   void catalog.then(rows=>{
+    if(signal.aborted||!option.isConnected)return;
+    const label=npcPublishedMotionLabel(pose,action.id,rows);
+    if(label)option.textContent=label;
+   });
   }
   actionSelect.value=actionsByPose.get(pose)??actions.find(action=>action.id==='walk')?.id??actions[0].id;
   head.append(actionLabel,actionSelect,modeLabel,modeSelect,tools);activePanel.replaceChildren(head,body);

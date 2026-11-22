@@ -89,6 +89,10 @@ test('only authenticated active Binari participants can use the existing formal 
   {requestType:'concept.category.workflow',payload:{...concept,operation:'update',requirements:'Test'}},
   {requestType:'concept.category.workflow',payload:{...concept,operation:'add',categoryId:'category.add.'+'b'.repeat(32),
    outline:'Test',groupId:'group.sound',requiredSections:['Test']}},
+  {requestType:'npc.animation.regenerate',payload:{...base,schemaVersion:'ngs.npc-animation.regenerate.v1',npcId:'npc.sample',
+   motionSelection:[{presetId:'run-flat',posePreset:'idle',assetSetSha256:'a'.repeat(64)},
+    {presetId:'run-flat-2d',posePreset:'idle',assetSetSha256:'b'.repeat(64)}]}},
+
  ];
  for(const [i,cmd] of commands.entries()){
   const response=await write('viewer',viewer,{...cmd,idempotencyKey:'fixture-'+i});
