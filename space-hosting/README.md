@@ -23,3 +23,15 @@ latest saved Site version. The current implementation always returns
 the Worker. Consumers needing actual publication time must read the native
 Sites deployment status for the matching production version. Do not infer
 it from a Git commit, build date, queue poll, or request time.
+
+## Formal Binari request authorization
+
+The hosted browser queue requires Sites authentication and admission, the active
+Binari project grant, and an existing participant roster entry. A single
+previously approved Sites visitor outside that roster can be enabled for this
+queue only with the optional server binding
+`NPCGEN_SPACE_QUEUE_EXTRA_EMAIL_SHA256`. Store it as a secret in the selected
+Site's runtime settings (not the repository); use the lowercase 64-character
+SHA-256 digest of the visitor's authenticated email after trimming and
+lowercasing it. Missing or malformed settings grant nothing. This binding is
+not a Sites invitation, a role change, or an authorization for any other API.

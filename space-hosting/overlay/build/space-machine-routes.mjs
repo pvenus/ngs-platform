@@ -21,6 +21,21 @@ const postJSON=req=>/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.hea
 const utf8=new TextEncoder();
 const hex=buffer=>Array.from(new Uint8Array(buffer),v=>v.toString(16).padStart(2,'0')).join('');
 const hash=async v=>hex(await crypto.subtle.digest('SHA-256',utf8.encode(v)));
+// The optional exception is available only on the project queue and only when
+// the server's existing roster explicitly reports no participant.
+export async function authorizeSpaceQueueWrite(user,participant,extraEmailSha256){
+ try { return spaceQueueParticipant(await participant(user)); }
+ catch(error){
+  if(error?.status!==403||error.message!=='MASTER_CONCEPT_PARTICIPANT_DENIED')return false;
+ }
+ if(typeof extraEmailSha256!=='string'||extraEmailSha256.length!==64||!/^[0-9a-f]{64}$/.test(extraEmailSha256)||
+    typeof user?.email!=='string'||!user.email||user.email.length>320)return false;
+ // Match the normalization used by the existing Sites participant resolver.
+ const email=user.email.trim().toLowerCase();if(!email)return false;
+ const actual=await hash(email);let difference=0;
+ for(let i=0;i<64;i++)difference|=actual.charCodeAt(i)^extraEmailSha256.charCodeAt(i);
+ return difference===0;
+}
 async function sameToken(a,b){
  if(!validMachineToken(a)||!validMachineToken(b))return false;
  const aa=await hash(a),bb=await hash(b);let difference=0;

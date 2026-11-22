@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {machineResponse,browserQueueResponse,spaceQueueParticipant} from '../build/space-machine-routes.mjs';
+import {machineResponse,browserQueueResponse,spaceQueueParticipant,authorizeSpaceQueueWrite} from '../build/space-machine-routes.mjs';
 import {SpaceRequestQueue,officialIdForSpace} from '../build/space-request-queue.mjs';
 
 const origin='https://site.example';
@@ -109,6 +110,54 @@ test('only authenticated active Binari participants can use the existing formal 
  for(const path of ['/api/space/audio-requests','/api/npc-one-stop','/mcp','/api/site/access']){
   assert.equal(await browser(path,'POST',headers('viewer'),command),null);
  }
+});
+
+test('one private authenticated email exception is queue-only and cannot override the active project or existing policy denial',async t=>{
+ const db=store(t),email='queue-only@example.invalid';
+ const digest=createHash('sha256').update(email).digest('hex');
+ const owner='owner',guest='guest';
+ const auth=(id,address=id+'@example.invalid')=>({...headers(id),'oai-authenticated-user-email':address});
+ const missing=()=>Object.assign(Error('MASTER_CONCEPT_PARTICIPANT_DENIED'),{status:403});
+ const participant=async({userId})=>{
+  if(userId===owner)return {projectId:'binari',role:'owner'};
+  if(userId==='badGrant')return {projectId:'other',role:'owner'};
+  if(userId==='exception')throw Object.assign(Error('UNAVAILABLE'),{status:503});
+  throw missing();
+ };
+ const route=(setting,project=()=>true)=> (path,method,h,body)=>browserQueueResponse(request(path,method,h,body),{
+  db,secret:token,authorize:async user=>project(user),authorizeWrite:user=>authorizeSpaceQueueWrite(user,participant,setting)});
+ const session=(browser,h)=>browser('/__npcgen_session','GET',h);
+ const configured=route(digest),named=auth(guest,email.toUpperCase());
+ const deniedMedia=await session(configured,{'oai-authenticated-user-email':email});
+ assert.equal(deniedMedia.status,401);
+ const selected=await (await session(configured,named)).json();
+ const ordinary=await (await session(configured,auth('visitor'))).json();
+ assert.equal(selected.requestWritable,true);
+ assert.equal(ordinary.requestWritable,false);
+ assert.ok(!JSON.stringify(selected).includes(digest));
+ assert.ok(!JSON.stringify(selected).includes(email));
+ assert.equal((await session(route(digest,()=>false),named)).status,403);
+ for(const id of ['badGrant','exception'])
+  assert.equal((await (await session(configured,auth(id,email))).json()).requestWritable,false);
+ for(const bad of [undefined,null,digest.toUpperCase(),digest+'\n',digest.slice(1),digest+'x',
+  digest+','+digest,JSON.stringify([digest]),' '+digest])
+  assert.equal((await (await session(route(bad),named)).json()).requestWritable,false);
+ assert.equal((await (await session(route('malformed'),auth(owner))).json()).requestWritable,true);
+ const post=(browser,authn,c,cmd=command,more={})=>browser('/api/requests','POST',{
+  ...authn,Origin:origin,'X-NPCGen-Csrf':c.csrfToken,'X-NPCGen-Frontend-Context':c.contextId,...more},cmd);
+ assert.equal((await post(configured,auth('visitor'),ordinary,command,{'X-Email':email,'X-Email-Sha256':digest})).status,403);
+ assert.equal((await post(configured,auth('visitor'),selected)).status,403);
+ assert.equal((await post(route(digest,()=>false),named,selected)).status,403);
+ assert.equal((await post(configured,named,selected,command,{'X-NPCGen-Csrf':'x'})).status,403);
+ assert.equal((await post(configured,named,selected,{...command,payload:{...command.payload,projectId:'other'}})).status,400);
+ assert.equal((await post(configured,named,selected,{...command,requestType:'site.deploy'})).status,400);
+ const accepted=await post(configured,named,selected);
+ assert.equal(accepted.status,202);
+ const path='/api/requests?queueId='+(await accepted.json()).queueId;
+ assert.equal((await configured(path,'GET',auth('visitor'))).status,404);
+ assert.equal((await configured(path,'GET',named)).status,200);
+ for(const path of ['/api/space/audio-requests','/api/npc-one-stop','/mcp','/api/site/access'])
+  assert.equal(await configured(path,'POST',named,command),null);
 });
 
 test('machine auth cannot come from visitor headers, browser Origin, or wrong token; discovers only narrow approved tools',async t=>{
