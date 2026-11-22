@@ -195,6 +195,24 @@ test('machine exact pending/get and ack verify official source hash, clear paylo
  assert.equal((await db.prepare('SELECT payload FROM ngs_space_request_queue_v1 WHERE queue_id=?').bind(q).first()).payload,null);
 });
 
+test('Space browser and machine preserve direct concept and both lyric modes',async t=>{
+ const {db,browser}=fixture(t),queue=new SpaceRequestQueue(db),a=headers('a');
+ const session=await (await browser('/__npcgen_session','GET',a)).json();
+ const auth={...a,Origin:origin,'X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId};
+ const base={...command.payload,conceptId:'direct',conceptText:'새 사운드 컨셉\n악기는 자유'};
+ const lyric='  첫 줄\n\n  다음 줄 \n';
+ for(const [i,payload] of [{...base,text:lyric},{...base,lyricsRequest:'이야기를 가사로'}].entries()){
+  const response=await browser('/api/requests','POST',auth,{...command,idempotencyKey:'lyrics-'+i,payload});
+  assert.equal(response.status,202);
+  const {queueId}=await response.json();
+  assert.deepEqual((await queue.get({queueId})).payload,payload);
+ }
+ for(const payload of [{...base,text:lyric,lyricsRequest:'conflict'}, {...base,conceptText:''},
+  {...base,lyricsRequest:'이야기를 가사로',durationSeconds:23},{...base,targetDurationSeconds:60}]){
+  assert.equal((await browser('/api/requests','POST',auth,{...command,idempotencyKey:'reject',payload})).status,400);
+ }
+});
+
 test('only successful authorized pending responses carry compiled canonical source identity',async t=>{
  const db=store(t),sha='a12c'.repeat(10),forged='f'.repeat(40);
  const args={name:'space_requests_pending',arguments:{}};

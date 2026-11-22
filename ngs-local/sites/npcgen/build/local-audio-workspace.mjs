@@ -7,7 +7,10 @@ const definite=new Set(['REQUEST_SUBMIT_INVALID','NGS_AUDIO_GENERATE_PAYLOAD_INV
  'NGS_AUDIO_DELETE_PAYLOAD_INVALID','AUDIO_WORKSPACE_UNAVAILABLE','OFFICIAL_REQUEST_IDEMPOTENCY_CONFLICT','PROJECT_OR_RESOURCE_DENIED',
  'LOCAL_SIGN_IN_REQUIRED','LOCAL_SESSION_EXPIRED_OR_REVOKED','FRONTEND_SESSION_CONTEXT_CHANGED',
  'CSRF_INVALID','ORIGIN_OR_CSRF_REJECTED']);
-const limits=Object.freeze({title:120,brief:4000});
+const limits=Object.freeze({title:120,brief:4000,conceptText:4000,lyrics:4000});
+const directConcept='direct',requestBytes=32*1024;
+const baseAudioKeys=['brief','conceptId','durationSeconds','kind','projectId','schemaVersion','text','title'];
+const optionalAudioKeys=['conceptText','lyricsRequest','targetDurationSeconds'];
 
 const control=/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u;
 function validText(value,max,multiline=true){
@@ -15,31 +18,47 @@ function validText(value,max,multiline=true){
   !control.test(value)&&(multiline||!/[\r\n\t\u2028\u2029]/u.test(value));
 }
 
+function validLyrics(value){
+ return typeof value==='string'&&value.isWellFormed()&&value.trim()!==''&&
+  [...value].length<=limits.lyrics&&!control.test(value);
+}
 export function validLocalAudioPayload(v){
- return v&&typeof v==='object'&&!Array.isArray(v)&&
-  (Object.keys(v).sort().join(',')==='brief,conceptId,durationSeconds,kind,projectId,schemaVersion,text,title'||
-   (Object.keys(v).sort().join(',')==='brief,conceptId,durationSeconds,kind,projectId,schemaVersion,targetDurationSeconds,text,title'&&
-    v.durationSeconds===null&&v.targetDurationSeconds===60))&&
-  v.schemaVersion===schemaVersion&&v.projectId==='binari'&&v.kind==='bgm'&&
-  typeof v.conceptId==='string'&&id.test(v.conceptId)&&validText(v.title,limits.title,false)&&validText(v.brief,limits.brief)&&
-  (v.durationSeconds===null?(v.text===''||validText(v.text,512)):
-   v.text===''&&Number.isFinite(v.durationSeconds)&&v.durationSeconds>=10&&v.durationSeconds<=30);
+ if(!v||typeof v!=='object'||Array.isArray(v)||
+    !baseAudioKeys.every(key=>Object.hasOwn(v,key))||
+    !Object.keys(v).every(key=>baseAudioKeys.includes(key)||optionalAudioKeys.includes(key))||
+    v.schemaVersion!==schemaVersion||v.projectId!=='binari'||v.kind!=='bgm'||
+    typeof v.conceptId!=='string'||!id.test(v.conceptId)||
+    !validText(v.title,limits.title,false)||!validText(v.brief,limits.brief))return false;
+ const direct=v.conceptId===directConcept,hasConceptText=Object.hasOwn(v,'conceptText');
+ if(direct!==hasConceptText||direct&&!validText(v.conceptText,limits.conceptText))return false;
+ const requested=Object.hasOwn(v,'lyricsRequest');
+ if(requested&&(!validText(v.lyricsRequest,limits.lyrics)||v.text!==''))return false;
+ if(Object.hasOwn(v,'targetDurationSeconds')&&(v.durationSeconds!==null||v.targetDurationSeconds!==60))return false;
+ return v.durationSeconds===null?(v.text===''||validLyrics(v.text)):
+  v.text===''&&!requested&&Number.isFinite(v.durationSeconds)&&v.durationSeconds>=10&&v.durationSeconds<=30;
 }
 export function soundConceptOptions(index){
  if(index?.projectId!=='binari'||index.tab!=='concept'||!Array.isArray(index.groups)||!index.groups.some(group=>group?.id==='group.sound')||
     !Array.isArray(index.items))return [];
  const found=new Set();
  return index.items.flatMap(row=>{
-  if(row?.groupId!=='group.sound'||row.archived===true||typeof row.id!=='string'||!id.test(row.id)||
+  if(row?.groupId!=='group.sound'||row.archived===true||row.id===directConcept||typeof row.id!=='string'||!id.test(row.id)||
      typeof row.label!=='string'||!row.label.trim()||found.has(row.id))return [];
   found.add(row.id);return [{id:row.id,label:row.label}];
  });
 }
-export function makeAudioPayload({kind,title,conceptId,brief,duration,targetFullLength=false},options){
+export function makeAudioPayload({kind,title,conceptId,brief,duration,targetFullLength=false,conceptText,lyricsRequest,lyricsText},options){
  const v={schemaVersion,projectId:'binari',kind,title:title.trim(),conceptId,brief:brief.trim(),
-  text:'',durationSeconds:duration===null||typeof duration==='string'&&!duration.trim()?null:Number(duration)};
+  text:lyricsText??'',
+  durationSeconds:duration===null||typeof duration==='string'&&!duration.trim()?null:Number(duration)};
+ if(lyricsText!==undefined&&!validLyrics(lyricsText))throw Error('AUDIO_FORM_INVALID');
+ if(conceptText!==undefined)v.conceptText=conceptText.trim();
+ if(lyricsRequest!==undefined)v.lyricsRequest=lyricsRequest.trim();
  if(targetFullLength)v.targetDurationSeconds=60;
- if(!options.some(row=>row.id===conceptId)||!validLocalAudioPayload(v))throw Error('AUDIO_FORM_INVALID');
+ if((conceptId!==directConcept&&!options.some(row=>row.id===conceptId))||!validLocalAudioPayload(v))
+  throw Error('AUDIO_FORM_INVALID');
+ const bytes=new TextEncoder().encode(JSON.stringify({requestType:audioRequestType,idempotencyKey:'x'.repeat(36),payload:v})).length;
+ if(bytes>requestBytes)throw Error('AUDIO_FORM_TOO_LARGE');
  return v;
 }
 
@@ -379,7 +398,7 @@ export function mountAudioWorkspace({items,detail,concepts=[],loadConcepts,signa
  const toolbar=node('div','audio-playlist-toolbar'),title=node('h3','','BGM');
  const open=node('button','concept-category-trigger audio-add','+');open.type='button';
  open.setAttribute('aria-label','BGM 생성 요청');open.setAttribute('aria-haspopup','dialog');open.title='BGM 생성 요청';
- open.disabled=!loadConcepts&&!concepts.length;toolbar.append(title,open);
+ open.disabled=typeof submit!=='function';toolbar.append(title,open);
  detail.replaceChildren(toolbar);
  const controls=kinds.map(([kind,label])=>{
   const entry=node('li'),button=node('button','request-item audio-kind',label);button.type='button';
@@ -397,23 +416,45 @@ export function mountAudioWorkspace({items,detail,concepts=[],loadConcepts,signa
  const fields=node('div','concept-category-fields');
  const name=field('제목','input',{required:true,maxLength:limits.title,autocomplete:'off'});
  const concept=field('사운드 컨셉','select',{required:true});
- const empty=node('option','','카테고리를 선택하세요');empty.value='';concept.input.append(empty);
+ const empty=node('option','','카테고리를 선택하세요');empty.value='';
+ const direct=node('option','','직접 입력');direct.value=directConcept;
  function setConceptOptions(){
-  concept.input.replaceChildren(empty,...concepts.map(row=>Object.assign(node('option','',row.label),{value:row.id})));
+  const selected=concept.input.value;
+  const choices=concepts.filter(row=>row.id!==directConcept);
+  concept.input.replaceChildren(empty,...choices.map(row=>Object.assign(node('option','',row.label),{value:row.id})),direct);
+  concept.input.value=selected===directConcept||choices.some(row=>row.id===selected)?selected:'';
  }
  setConceptOptions();
+ const conceptText=field('사운드 컨셉 직접 입력','textarea',{maxLength:limits.conceptText});
  const brief=field('제작 설명','textarea',{required:true,maxLength:limits.brief});
  const duration=field('길이 (초, 선택)','input',{type:'number',min:10,max:30,step:'any',placeholder:'비우면 모델이 결정'});
  const full=allowFullLength?field('완곡 (60초 이상 목표)','input',{type:'checkbox'}):null;
- fields.append(name.wrapper,concept.wrapper,brief.wrapper,duration.wrapper);
+ const vocals=field('가사 입력','input',{type:'checkbox',checked:false});
+ const directLyrics=field('가사 직접 입력','input',{type:'checkbox',checked:false});
+ const lyricsRequest=field('가사 제작 요청','textarea',{maxLength:limits.lyrics});
+ const lyrics=field('가사 원문','textarea',{maxLength:limits.lyrics});
+ function toggle(field,enabled){
+  field.wrapper.hidden=!enabled;field.input.disabled=!enabled;field.input.required=enabled;
+ }
+ function updateModes(){
+  const vocal=vocals.input.checked,verbatim=directLyrics.input.checked;
+  toggle(conceptText,concept.input.value===directConcept);
+  directLyrics.wrapper.hidden=!vocal;directLyrics.input.disabled=!vocal;
+  toggle(lyricsRequest,vocal&&!verbatim);toggle(lyrics,vocal&&verbatim);
+  duration.input.disabled=vocal||full?.input.checked===true;
+ }
+ fields.append(name.wrapper,concept.wrapper,conceptText.wrapper,brief.wrapper,vocals.wrapper,directLyrics.wrapper,
+  lyricsRequest.wrapper,lyrics.wrapper,duration.wrapper);
  if(full){
   full.input.title='최대 5번 작곡하고, 목표에 못 미치면 가장 긴 계획을 사용합니다.';
   full.input.addEventListener('change',()=>{
    if(full.input.checked)duration.input.value='';
-   duration.input.disabled=full.input.checked;
+   updateModes();
   });
   fields.append(full.wrapper);
  }
+ for(const input of [concept.input,vocals.input,directLyrics.input])input.addEventListener('change',updateModes);
+ updateModes();
  inputs.append(fields);
  const send=node('button','concept-category-trigger','BGM 생성 요청');send.type='submit';form.append(inputs,send);
  const error=node('p','meta error'),notice=node('p','meta'),loading=node('p','meta');
@@ -423,19 +464,18 @@ export function mountAudioWorkspace({items,detail,concepts=[],loadConcepts,signa
  let conceptLookup=null;
  open.addEventListener('click',async()=>{
   if(dialog.open||signal.aborted)return;
-  dialog.showModal();
-  if(!loadConcepts||concepts.length){name.input.focus();return;}
-  form.hidden=true;error.textContent='';loading.textContent='사운드 컨셉을 읽고 있습니다.';
+  dialog.showModal();name.input.focus();
+  if(!loadConcepts||concepts.length)return;
+  error.textContent='';loading.textContent='저장된 사운드 컨셉을 읽고 있습니다.';
   const lookup=conceptLookup??=Promise.resolve().then(loadConcepts);
   try{
    const rows=await lookup;
    if(signal.aborted||!dialog.open)return;
    concepts=rows;
-   setConceptOptions();form.hidden=!concepts.length;
-   if(concepts.length)name.input.focus();
-   else error.textContent='선택할 수 있는 활성 사운드 컨셉이 없습니다.';
+   setConceptOptions();updateModes();
   }catch{
-   if(!signal.aborted&&dialog.open)error.textContent='활성 사운드 컨셉을 확인하지 못했습니다. 창을 닫고 다시 열어 주세요.';
+   if(!signal.aborted&&dialog.open)
+    error.textContent='저장된 사운드 컨셉을 확인하지 못했습니다. 직접 입력하거나 창을 닫고 다시 열어 주세요.';
   }finally{
    if(lookup===conceptLookup)conceptLookup=null;
    if(dialog.open)loading.textContent='';
@@ -455,16 +495,21 @@ export function mountAudioWorkspace({items,detail,concepts=[],loadConcepts,signa
   if(working||!dialog.open||signal.aborted)return;
   working=true;error.textContent='';update();
   try{
+   const vocal=vocals.input.checked,verbatim=directLyrics.input.checked,directSound=concept.input.value===directConcept;
    const result=await intake.send(()=>makeAudioPayload({kind:'bgm',title:name.input.value,conceptId:concept.input.value,
-    brief:brief.input.value,duration:duration.input.value,targetFullLength:full?.input.checked===true},concepts));
+    brief:brief.input.value,duration:vocal||full?.input.checked===true?null:duration.input.value,
+    targetFullLength:full?.input.checked===true,conceptText:directSound?conceptText.input.value:undefined,
+    ...(vocal?(verbatim?{lyricsText:lyrics.input.value}:{lyricsRequest:lyricsRequest.input.value}):{})},concepts));
    if(result&&!signal.aborted){
-    intake=createAudioIntake(submit);name.input.value='';concept.input.value='';brief.input.value='';duration.input.value='';
-    if(full){full.input.checked=false;duration.input.disabled=false;}
-    dialog.close();notice.textContent=result.status==='queued'?'NGS 대기열에 저장했습니다.':'요청을 접수했습니다. 요청 ID: '+result.officialRequestId;
+    intake=createAudioIntake(submit);
+    for(const f of [name,concept,conceptText,brief,duration,lyricsRequest,lyrics])f.input.value='';
+    vocals.input.checked=directLyrics.input.checked=false;
+    if(full)full.input.checked=false;
+    updateModes();dialog.close();notice.textContent=result.status==='queued'?'NGS 대기열에 저장했습니다.':'요청을 접수했습니다. 요청 ID: '+result.officialRequestId;
     if(result.officialRequestId)onAccepted(result.officialRequestId);
    }
   }catch(cause){
-   if(!signal.aborted)error.textContent=intake.uncertain?'접수 결과를 확인하지 못했습니다. 같은 요청만 다시 확인할 수 있습니다.':
+   if(!signal.aborted)error.textContent=cause.message==='AUDIO_FORM_TOO_LARGE'?'요청 내용이 너무 깁니다. 입력 분량을 줄여 주세요.':intake.uncertain?'접수 결과를 확인하지 못했습니다. 같은 요청만 다시 확인할 수 있습니다.':
     cause.definitive?'요청을 접수하지 못했습니다. 입력과 접수 권한을 확인해 주세요.':'입력 내용과 선택한 사운드 컨셉을 확인해 주세요.';
   }finally{working=false;update();}
  });

@@ -26,7 +26,7 @@ test('only sorted-wire audio fields, active sound selections and bounded status 
  assert.throws(()=>makeAudioPayload(values,[]),/AUDIO_FORM_INVALID/);
  for(const bad of [{...payload,title:'두\n줄'},{...payload,title:'\ud800'},
   {...payload,brief:'x'.repeat(4001)},{...payload,text:'speech'},{...payload,durationSeconds:31},
-  {...payload,durationSeconds:Infinity},{...payload,durationSeconds:9.9},{...payload,durationSeconds:null,text:'x'.repeat(513)},
+  {...payload,durationSeconds:Infinity},{...payload,durationSeconds:9.9},{...payload,durationSeconds:null,text:'x'.repeat(4001)},
   speak,{...speak,durationSeconds:10},{...speak,model:'untrusted'}])assert.equal(validLocalAudioPayload(bad),false);
  const index={projectId:'binari',tab:'concept',groups,items:[
   {...concept,groupId:'group.sound'},{id:'other',label:'기획',groupId:'different'},
@@ -44,6 +44,26 @@ test('full-length goal is opt-in, valid only with automatic length',()=>{
  assert.equal(validLocalAudioPayload({...goal,targetDurationSeconds:59}),false);
  assert.equal(validLocalAudioPayload({...goal,targetDurationSeconds:'60'}),false);
  assert.throws(()=>makeAudioPayload({...values,targetFullLength:true},[concept]),/AUDIO_FORM_INVALID/);
+});
+
+test('direct sound and exact lyrics use strict mutually exclusive wire fields',()=>{
+ const base={...payload,durationSeconds:null},lyrics='  첫째 줄\n\n  둘째 줄 \n';
+ const direct={...base,conceptId:'direct',conceptText:'피아노 중심\n리듬은 자유'};
+ assert.deepEqual(makeAudioPayload({...values,conceptId:'direct',conceptText:'  '+direct.conceptText+' ',duration:null},[]),direct);
+ assert.deepEqual(makeAudioPayload({...values,duration:null,lyricsText:lyrics},[concept]),{...base,text:lyrics});
+ assert.deepEqual(makeAudioPayload({...values,duration:null,lyricsRequest:'  첫 만남의 이야기  '},[concept]),
+  {...base,lyricsRequest:'첫 만남의 이야기'});
+ assert.equal(validLocalAudioPayload({...direct,text:lyrics,targetDurationSeconds:60}),true);
+ assert.equal(validLocalAudioPayload({...direct,lyricsRequest:'우리말 가사',targetDurationSeconds:60}),true);
+ assert.equal(validLocalAudioPayload({...direct,durationSeconds:15}),true);
+ for(const bad of [{...base,conceptId:'direct'},{...base,conceptText:'not direct'},
+  {...direct,conceptText:''},{...direct,conceptText:' padded '},{...direct,lyricsRequest:''},
+  {...direct,text:lyrics,lyricsRequest:'conflict'},{...direct,text:'  \n '},{...direct,text:'x'.repeat(4001)},
+  {...direct,text:lyrics,durationSeconds:15},{...direct,lyricsRequest:'내용',durationSeconds:15},
+  {...direct,other:'no'}])assert.equal(validLocalAudioPayload(bad),false);
+ assert.throws(()=>makeAudioPayload({...values,duration:null,lyricsText:'  \n '},[concept]),/AUDIO_FORM_INVALID/);
+ assert.throws(()=>makeAudioPayload({...values,duration:null,brief:'한'.repeat(4000),conceptId:'direct',
+  conceptText:'한'.repeat(4000),lyricsText:'한'.repeat(4000)},[]),/AUDIO_FORM_TOO_LARGE/);
 });
 
 test('sound selector updates only concept root index before reading; unrelated group bytes stay untouched',async()=>{
@@ -103,7 +123,7 @@ test('standalone playlist keeps BGM, opens a modal only on +, and uses standard 
   sent.push(cmd);return Response.json(receipt,{status:201});
  }});
  run([]);
- assert.equal(detail.all('form').length,0);assert.equal(detail.all('button')[0].disabled,true);assert.deepEqual(items.all('button').map(b=>b.disabled),[false,true,true]);
+ assert.equal(detail.all('form').length,1);assert.equal(detail.all('button')[0].disabled,false);assert.deepEqual(items.all('button').map(b=>b.disabled),[false,true,true]);
  run([concept]);
  const buttons=items.all('button');assert.deepEqual(buttons.map(b=>b.textContent),['BGM','효과음','TTS']);
  const label=name=>detail.all('form')[0].all('label').find(x=>x.textContent===name);
@@ -165,12 +185,63 @@ test('the song list is independent of lazy sound-concept loading and a failed lo
  assert.equal(calls,0);
  const dialog=detail.all('dialog')[0],open=detail.all('button')[0],form=dialog.all('form')[0];
  await open.events.click();
- assert.equal(form.hidden,true);assert.match(dialog.all('p').find(p=>p.attrs.role==='alert').textContent,/확인하지 못했습니다/);
+ assert.equal(!!form.hidden,false);assert.match(dialog.all('p').find(p=>p.attrs.role==='alert').textContent,/확인하지 못했습니다/);
+ assert.deepEqual(form.all('option').map(o=>o.textContent),['카테고리를 선택하세요','직접 입력']);
  assert.equal(results.all('li').length,1);
  dialog.close();
  await open.events.click();
- assert.equal(form.hidden,false);assert.equal(calls,2);
- assert.deepEqual(form.all('option').map(o=>o.textContent),['카테고리를 선택하세요',concept.label]);
+ assert.equal(!!form.hidden,false);assert.equal(calls,2);
+ assert.deepEqual(form.all('option').map(o=>o.textContent),['카테고리를 선택하세요',concept.label,'직접 입력']);
+});
+
+test('direct sound works without master categories and vocal toggles never leak hidden inputs',async t=>{
+ const Element=installDOM(t),items=new Element('ul'),detail=new Element('main'),sent=[];
+ mountAudioWorkspace({items,detail,signal:new AbortController().signal,loadConcepts:async()=>[],
+  submit:async command=>{sent.push(command.payload);return Response.json(receipt,{status:201});}});
+ const open=detail.all('button').find(b=>b.textContent==='+'),form=detail.all('form')[0];
+ const label=name=>form.all('label').find(x=>x.textContent===name);
+ const input=name=>label(name).children[0];
+ const change=(name,key,val)=>{const control=input(name);control[key]=val;control.events.change();};
+ const save=()=>form.events.submit({preventDefault(){}});
+ const fill=async()=>{
+  await open.events.click();assert.equal(!!form.hidden,false);
+  assert.deepEqual(form.all('option').map(o=>o.textContent),['카테고리를 선택하세요','직접 입력']);
+  assert.equal(label('가사 원문').hidden,true);assert.equal(label('가사 제작 요청').hidden,true);
+  input('제목').value='새 곡';input('제작 설명').value='가벼운 리듬';
+  change('사운드 컨셉','value','direct');assert.equal(label('사운드 컨셉 직접 입력').hidden,false);
+  input('사운드 컨셉 직접 입력').value='  어두운 소편성  ';
+ };
+ const base={...payload,title:'새 곡',brief:'가벼운 리듬',conceptId:'direct',conceptText:'어두운 소편성',durationSeconds:null};
+ await fill();input('길이 (초, 선택)').value='22';change('가사 입력','checked',true);
+ assert.equal(input('길이 (초, 선택)').disabled,true);assert.equal(label('가사 제작 요청').hidden,false);
+ input('가사 제작 요청').value='  남겨진 편지 이야기  ';
+ await save();assert.deepEqual(sent,[{...base,lyricsRequest:'남겨진 편지 이야기'}]);
+ await fill();change('가사 입력','checked',true);input('가사 제작 요청').value='discard this';
+ change('가사 직접 입력','checked',true);assert.equal(label('가사 제작 요청').hidden,true);
+ assert.equal(label('가사 원문').hidden,false);
+ const lyrics='  첫 줄\n\n둘째 줄 \n';input('가사 원문').value=lyrics;
+ await save();assert.deepEqual(sent[1],{...base,text:lyrics});
+ await fill();change('가사 입력','checked',true);change('가사 직접 입력','checked',true);
+ input('가사 원문').value='discard this too';change('가사 입력','checked',false);
+ assert.equal(input('길이 (초, 선택)').disabled,false);input('길이 (초, 선택)').value='20';
+ await save();assert.deepEqual(sent[2],{...base,durationSeconds:20});
+});
+
+test('direct sound can submit while optional master discovery is unresolved',async t=>{
+ const Element=installDOM(t),items=new Element('ul'),detail=new Element('main'),sent=[];
+ let finish;const lookup=new Promise(resolve=>{finish=resolve;});
+ mountAudioWorkspace({items,detail,signal:new AbortController().signal,loadConcepts:()=>lookup,
+  submit:async command=>{sent.push(command.payload);return Response.json(receipt,{status:201});}});
+ const pending=detail.all('button').find(b=>b.textContent==='+').events.click();
+ const form=detail.all('form')[0];
+ assert.equal(!!form.hidden,false);
+ const get=name=>form.all('label').find(x=>x.textContent===name).children[0];
+ get('제목').value='즉시 입력';get('제작 설명').value='기악';
+ get('사운드 컨셉').value='direct';get('사운드 컨셉').events.change();
+ get('사운드 컨셉 직접 입력').value='관현악';
+ await form.events.submit({preventDefault(){}});
+ assert.equal(sent[0].conceptId,'direct');assert.equal(sent[0].conceptText,'관현악');
+ finish([concept]);await pending;
 });
 
 test('playlist displays one row per song and uses a single player without interruption on refresh',t=>{
@@ -329,8 +400,8 @@ test('audio forms queue behind authenticated BFF; pending list clears only after
   const origin=await listen(t,createLocalProjectPageServer({root,requestQueue:queue,audioWorkspaceEnabled}));
   const session=await fetch(origin+'/__npcgen_session'),context=await session.json(),cookie=session.headers.get('set-cookie').split(';')[0];
   const headers={cookie,origin,'content-type':'application/json','x-npcgen-csrf':context.csrfToken,'x-npcgen-frontend-context':context.contextId};
-  return {origin,headers,post:(payload,auth=headers,requestType='audio.generate')=>fetch(origin+'/api/requests',{method:'POST',headers:auth,
-   body:JSON.stringify({requestType,idempotencyKey:'audio-fixture-'+requestType,payload})}),
+  return {origin,headers,post:(payload,auth=headers,requestType='audio.generate',idempotencyKey='audio-fixture-'+requestType)=>fetch(origin+'/api/requests',{method:'POST',headers:auth,
+   body:JSON.stringify({requestType,idempotencyKey,payload})}),
    read:(auth=headers)=>fetch(origin+'/api/requests',{headers:auth})};
  }
  assert.equal(configuration({}).audioWorkspaceEnabled,false);
@@ -360,6 +431,15 @@ test('audio forms queue behind authenticated BFF; pending list clears only after
  assert.equal(confirmed.status,200);
  assert.deepEqual(await confirmed.json(),{requests:[]});
  assert.equal(queue.list().requests.length,0);
+
+ const direct={...payload,conceptId:'direct',conceptText:'편성은 자유',durationSeconds:null,text:'  첫째 줄\n\n둘째 줄 \n'};
+ assert.equal((await on.post({...direct,lyricsRequest:'차단할 충돌'})).status,400);
+ const directResponse=await on.post({...direct,title:'직접 입력 검증'},on.headers,'audio.generate','audio-direct');
+ assert.equal(directResponse.status,202);
+ const directPending=queue.list().requests[0];
+ assert.deepEqual(directPending.payload,{...direct,title:'직접 입력 검증'});
+ const directFinal='request.official.'+createHash('sha256').update(JSON.stringify(['request.official.v1','local','binari',directPending.queueId])).digest('hex');
+ queue.ack(directPending.queueId,{officialRequestId:directFinal,status:'registered'});
 
  const deletion={schemaVersion:'ngs.audio-delete.v1',projectId:'binari',officialRequestId:'request.official.'+'c'.repeat(64)};
  assert.equal((await off.post(deletion,off.headers,'audio.delete')).status,404);
