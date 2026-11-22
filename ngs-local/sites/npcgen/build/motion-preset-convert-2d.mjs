@@ -20,7 +20,7 @@ export function validMotionPresetConvert(value){
 
 export function readyMotionPreset(preset){
  const rows=preset?.directions;
- return typeof preset?.presetId==='string'&&!controls.test(preset.presetId)&&sourceId.test(preset.presetId)&&
+ return typeof preset?.presetId==='string'&&!Object.hasOwn(preset,'variant')&&!controls.test(preset.presetId)&&sourceId.test(preset.presetId)&&
   Array.isArray(rows)&&rows.length===8&&rows.every(row=>directions.has(row?.direction)&&
    typeof row.path==='string'&&/^motion-presets\/assets\/[a-f0-9]{64}\.mp4$/u.test(row.path)&&!controls.test(row.path))&&
   new Set(rows.map(row=>row.direction)).size===8&&new Set(rows.map(row=>row.path)).size===8;
@@ -59,7 +59,7 @@ export function createMotionPresetIntake(submit){
 
 /** Extension of the existing preset detail, not a new menu. The source remains read-only. */
 export function motionConversionForm({projectId,preset,publishedIds,submit,signal}){
- if(projectId!=='binari'||typeof submit!=='function'||signal.aborted)return null;
+ if(projectId!=='binari'||typeof submit!=='function'||signal.aborted||preset&&Object.hasOwn(preset,'variant'))return null;
  const node=(tag,text)=>{const el=document.createElement(tag);if(text)el.textContent=text;return el;};
  const panel=node('details');panel.className='motion-preset-conversion';
  panel.append(node('summary','2D 마네킹 프리셋 등록'));

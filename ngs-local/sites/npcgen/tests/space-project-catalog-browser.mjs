@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {refreshAudioResults} from '../build/local-audio-workspace.mjs';
+import {motionPresetConvertType} from '../build/motion-preset-convert-2d.mjs';
 const source=readFileSync(new URL('../build/local-project-page.js',import.meta.url),'utf8')
  .replace(/^import .*;\n/gm,'').replace(/\nroute\(\);\s*$/,'\n');
 const path='/api/space/project-catalog', requestId='space.catalog.11111111-2222-4333-8444-555555555555';
@@ -29,7 +30,7 @@ function browser(handler,search='',extra={},progressEnabled=false){
   documentElement:{dataset:{audioWorkspace:'enabled'}},createElement:()=>dom(),createElementNS:()=>dom(),
   hidden:false,addEventListener(name,fn,opts){events.set(name,{fn,signal:opts?.signal});}};
  const context={document,location:{search},window:{addEventListener(){}},Intl,URLSearchParams,AbortController,AbortSignal,
-  mountAudioWorkspace:()=>dom(),showAudioResults:()=>{},refreshAudioResults,setInterval:()=>42,clearInterval(){},
+  mountAudioWorkspace:()=>dom(),showAudioResults:()=>{},refreshAudioResults,motionPresetConvertType,motionConversionForm:()=>null,setInterval:()=>42,clearInterval(){},
   setTimeout:(fn,ms)=>{
    if(ms===2500){const id=++sequence;syncTimer.set(id,fn);return id;}
    return setTimeout(fn,ms===2000?ms:0);
@@ -342,4 +343,23 @@ test('visibility stops progress polling; errors clear stale rows and authorizati
  await app.nextProgress();assert.equal(slot.hidden,true);
  fail=403;
  await app.nextProgress();assert.equal(app.pendingProgress(),0);assert.equal(slot.hidden,true);
+});
+
+test('a published 2D variant is labeled and keeps its directional preview without a conversion form',async()=>{
+ const config={...readyReplica,workspaceReady:true,requestWritable:true};
+ const id='walk-2d',path='motion-presets/assets/'+'a'.repeat(64)+'.mp4';
+ const row={id,label:'걷기 2D'};
+ const app=browser((url,opts)=>{
+  assert.equal(opts.method,undefined);
+  if(url==='/__npcgen_session')return Response.json(config);
+  if(url==='/api/project-folders')return Response.json({projects:[project]});
+  return Response.json({items:[row],item:row,motionPreset:{presetId:id,label:row.label,directions:[{direction:'n',path}],
+   variant:{kind:'2d',sourcePresetId:'walk',sourcePresetHash:'b'.repeat(64)}}});
+ },'',{motionConversionForm:()=>assert.fail('2D variants must not be offered as sources')});
+ await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=motion-presets&item='+id));
+ const [title,sub,marker,compass]=app.node('#workspace-detail').children;
+ assert.equal(title.textContent,'걷기 2D');
+ assert.match(marker.textContent,/2D 마네킹 변환 결과 .* 원본 프리셋: walk/);
+ assert.equal(compass.children.length,9);
+ assert.match(compass.children[1].children[1].children[0].src,/item=walk-2d&file=/);
 });

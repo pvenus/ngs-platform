@@ -112,7 +112,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
   const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',item:preset});
   const {json:items}=await readWorkspace('/api/project-workspace',query,()=>{});
   const motion=items?.motionPreset;
-  return motion?.posePreset==='combat'&&motion.directions.filter(row=>row.path).length===8&&
+  return motion?.posePreset==='combat'&&!Object.hasOwn(motion,'variant')&&motion.directions.filter(row=>row.path).length===8&&
    new Set(motion.directions.map(row=>row.direction)).size===8;
  }
  const sourceAssets=new Map([...assets].map(([url,[type,path]])=>[url,{type,body:readFileSync(path)}]));

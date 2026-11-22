@@ -31,6 +31,21 @@ function fixture(t){
  add('motion-presets/presets/'+motionId+'.json',{presetId:motionId,label:'Walk',posePreset:'idle',
   directions:[{direction:'n',assetId:mediaName,sha256:mediaName.slice(0,64)}]});
  add('motion-presets/assets/'+mediaName,Buffer.from('1234ftyp...'));
+ const variantMarker={kind:'2d',sourcePresetId:motionId,sourcePresetHash:'f'.repeat(64)};
+ const variantDirections=['n','ne','e','se','s','sw','w','nw'].map(direction=>{
+  const raw=Buffer.from('1234ftyp-'+direction),sha256=hash(raw),assetId=sha256+'.mp4';
+  add('motion-presets/assets/'+assetId,raw);
+  return {direction,assetId,sha256};
+ });
+ add('motion-presets/presets/walk-2d.json',{presetId:'walk-2d',label:'Walk 2D',posePreset:'idle',variant:variantMarker,directions:variantDirections});
+ for(const [id,variant] of Object.entries({
+  'bad-extra':{...variantMarker,wrong:'unexpected'},'bad-hash':{...variantMarker,sourcePresetHash:'x'.repeat(64)},
+  'bad-path':{...variantMarker,sourcePresetId:'../walk'},'bad-null':null,
+  'bad-case':{...variantMarker,sourcePresetId:'BAD-CASE'},
+ })){
+  add('motion-presets/presets/'+id+'.json',{presetId:id,label:id,posePreset:'combat',variant,directions:variantDirections});
+ }
+
  add('audio/'+official+'/metadata.json',{private:'not visible from any workspace tab'});
  const metric={list:0,head:0,get:0},prefixes=[];
  const space={
@@ -95,4 +110,24 @@ test('shared NPC conflict and its exact error are not downgraded by the hosted a
  });
  assert.equal(response.status,409);
  assert.deepEqual(await response.json(),{error:'NPC_WORKSPACE_MEDIA_CHANGED'});
+});
+
+test('strict canonical 2D lineage retains all previews on both hosts; corrupt markers never become eligible originals',async t=>{
+ const {root,space}=fixture(t);
+ const base='projectId=binari&tab=motion-presets';
+ const local=async query=>(await localProjectWorkspace({root,query:new URLSearchParams(query),authorize:()=>true})).json;
+ const hosted=async query=>spaceWorkspaceReadResponse(request(query),space,{authorize:async()=>true});
+ const list=await local(base);
+ assert.deepEqual(list.items.map(i=>i.id).sort(),['walk','walk-2d']);
+ assert.deepEqual(await (await hosted(base)).json(),list);
+ const query=base+'&item=walk-2d',loaded=await local(query);
+ assert.deepEqual(await (await hosted(query)).json(),loaded);
+ assert.deepEqual(loaded.motionPreset.variant,{kind:'2d',sourcePresetId:'walk',sourcePresetHash:'f'.repeat(64)});
+ assert.equal(loaded.motionPreset.directions.length,8);
+ assert.ok(loaded.motionPreset.directions.every(d=>d.path));
+ assert.equal(Object.hasOwn((await local(base+'&item=walk')).motionPreset,'variant'),false);
+ for(const id of ['bad-extra','bad-hash','bad-path','bad-null','bad-case']){
+  await assert.rejects(local(base+'&item='+id),e=>e.status===404);
+  assert.equal((await hosted(base+'&item='+id)).status,404);
+ }
 });

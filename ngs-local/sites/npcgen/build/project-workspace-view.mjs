@@ -67,6 +67,14 @@ function structuredDisplay(source){
   return !/^<!-- ngs\/(category|field):\{.*\} -->$/.test(line);
  }).join('\n');
 }
+function motionVariant(meta,id){
+ const v=meta.variant;
+ if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).sort().join(',')!=='kind,sourcePresetHash,sourcePresetId'||
+    v.kind!=='2d'||typeof v.sourcePresetId!=='string'||v.sourcePresetId.trim()!==v.sourcePresetId||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(v.sourcePresetId)||v.sourcePresetId.toLowerCase()===id.toLowerCase()||
+    typeof v.sourcePresetHash!=='string'||v.sourcePresetHash.length!==64||!/^[a-f0-9]{64}$/u.test(v.sourcePresetHash))return null;
+ return {kind:'2d',sourcePresetId:v.sourcePresetId,sourcePresetHash:v.sourcePresetHash};
+}
 async function findItems(root,tab,conceptIndex,conceptState,markdownIndex){
  const dirs=tab!=='motion-presets', parent=tab==='concept'?'concept/sections':dirs?'npcs':'motion-presets/presets';
  const index=tab==='concept'?conceptIndex:tab==='npcs'?await readReplicaObject(root,tab+'/metadata.json'):null;
@@ -81,12 +89,16 @@ async function findItems(root,tab,conceptIndex,conceptState,markdownIndex){
   const meta=markdown?{id,title:markdown.title,priority:markdown.priority}:await readReplicaObject(root,path);
   const identity=tab==='motion-presets'?meta?.presetId:meta?.id;
   if(identity!==id)continue;
+  // A malformed marker is not valid publication metadata, and must never
+  // be downgraded into an original eligible for NPC production or conversion.
+  const variant=tab==='motion-presets'&&Object.hasOwn(meta,'variant')?motionVariant(meta,id):undefined;
+  if(variant===null)continue;
   const item={id,label:label(tab==='concept'?meta.title:tab==='npcs'?meta.name:meta.label,id),scope:dirs?'binari/'+parent+'/'+id:null};
   if(tab==='concept'&&conceptState?.active.has(id)){
    item.groupId=conceptState.active.get(id);
    if(typeof meta.title==='string'&&meta.title.trim()&&[...meta.title.trim()].length<=120)item.title=meta.title.trim();
   }
-  rows.push({item,path,meta,markdown,folder:parent+'/'+id});
+  rows.push({item,path,meta,markdown,variant,folder:parent+'/'+id});
  }
  return rows;
 }
@@ -163,7 +175,8 @@ export async function workspaceRead({openProject,query,authorize}){
   [{path,label:direction.toUpperCase(),kind:'video',sha:path.slice(-68,-4)}]:[]):await visibleFiles(project,tab,selection);
  if(file===null)return {json:{...common,item:selection.item,
   ...(directions?{motionPreset:{presetId:selection.item.id,label:selection.item.label,
-   posePreset:['idle','combat'].includes(selection.meta.posePreset)?selection.meta.posePreset:null,directions}}:{}),
+   posePreset:['idle','combat'].includes(selection.meta.posePreset)?selection.meta.posePreset:null,directions,
+   ...(selection.variant?{variant:selection.variant}:{})}}:{}),
   files:files.map(({path,label,kind})=>({path,label,kind}))}};
  const row=files.find(r=>r.path===file);
  if(!row)throw missing();

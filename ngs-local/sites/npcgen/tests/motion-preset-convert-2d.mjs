@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {dirname,join} from 'node:path';
 import {createLocalProjectPageServer} from '../build/local-project-page-server.mjs';
 import {openLocalRequestQueue} from '../build/local-request-queue.mjs';
 import {createRSQueueConsumer} from '../build/rs-mcp.mjs';
+import {readyCombatPreset} from '../build/local-npc-one-stop-ui.mjs';
 import {createMotionPresetIntake,motionConversionCommand,motionConversionForm,readyMotionPreset,
  suggestMotionVariantId,validMotionPresetConvert} from '../build/motion-preset-convert-2d.mjs';
 
@@ -47,6 +48,13 @@ test('source needs eight distinct authorized preview paths; missing inputs expos
  assert.equal(readyMotionPreset({...ready,directions:ready.directions.map((d,i)=>i===0?{...d,path:null}:d)}),false);
  assert.equal(readyMotionPreset({...ready,directions:ready.directions.map((d,i)=>i===0?{...d,path:ready.directions[1].path}:d)}),false);
  const signal=new AbortController().signal;
+ const variant={kind:'2d',sourcePresetId:'walk',sourcePresetHash:'a'.repeat(64)};
+ assert.equal(readyMotionPreset({...ready,variant}),false);
+ assert.equal(motionConversionForm({projectId:'binari',preset:{...ready,variant},submit:()=>assert.fail('variant submit'),signal}),null);
+ const combat={...ready,presetId:'slash',posePreset:'combat'};
+ assert.deepEqual(readyCombatPreset('slash',{item:{id:'slash'},motionPreset:combat}),{presetId:'slash',label:'걷기'});
+ assert.equal(readyCombatPreset('slash',{item:{id:'slash'},motionPreset:{...combat,variant}}),null);
+ assert.equal(readyCombatPreset('slash',{item:{id:'slash'},motionPreset:{...combat,variant:null}}),null);
  assert.equal(motionConversionForm({projectId:'binari',preset:ready,submit:null,signal}),null);
  assert.equal(motionConversionForm({projectId:'other',preset:ready,submit:()=>{},signal}),null);
 });
@@ -119,4 +127,38 @@ test('Local auth/CSRF and queue admission to exact existing RS, never a worker o
  assert.equal((await rs.pollOnce()).acknowledged,1);
  assert.deepEqual(seen,[{tool:'request_submit',args:{sourceId:'local',requestType:command.requestType,idempotencyKey:accepted.queueId,payload:command.payload}}]);
  assert.deepEqual(queue.list().requests,[]);
+});
+
+test('Local NPC admission rejects a published 2D combat variant even if posted outside the picker',async t=>{
+ const temp=await mkdtemp(join(realpathSync(tmpdir()),'ngs-motion-variant-npc-'));
+ const queue=openLocalRequestQueue(join(temp,'queue.sqlite')),root=join(temp,'workspace');
+ const write=async(path,data)=>{
+  const target=join(root,'binari',path);
+  await mkdir(dirname(target),{recursive:true,mode:0o700});
+  await writeFile(target,Buffer.isBuffer(data)?data:JSON.stringify(data),{mode:0o600});
+ };
+ await write('project.json',{name:'Binari fixture'});
+ const rows=await Promise.all(ready.directions.map(async ({direction})=>{
+  const input=Buffer.from('1234ftyp-'+direction),sha256=createHash('sha256').update(input).digest('hex'),assetId=sha256+'.mp4';
+  await write('motion-presets/assets/'+assetId,input);
+  return {direction,assetId,sha256};
+ }));
+ await write('motion-presets/presets/slash.json',{presetId:'slash',label:'Slash',posePreset:'combat',directions:rows});
+ await write('motion-presets/presets/slash-2d.json',{presetId:'slash-2d',label:'Slash 2D',posePreset:'combat',directions:rows,
+  variant:{kind:'2d',sourcePresetId:'slash',sourcePresetHash:'a'.repeat(64)}});
+ const server=createLocalProjectPageServer({root,requestQueue:queue});
+ t.after(async()=>{await new Promise(resolve=>server.close(resolve));queue.close();await rm(temp,{recursive:true,force:true});});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const origin='http://127.0.0.1:'+server.address().port;
+ const session=await fetch(origin+'/__npcgen_session'),cookie=session.headers.get('set-cookie').split(';')[0],s=await session.json();
+ const headers={cookie,origin,'content-type':'application/json','x-npcgen-csrf':s.csrfToken,'x-npcgen-frontend-context':s.contextId};
+ const post=preset=>fetch(origin+'/api/requests',{method:'POST',headers,body:JSON.stringify({
+  requestType:'npc.workflow',idempotencyKey:'fixture-'+preset,payload:{schemaVersion:'ngs.npc-one-stop.v1',projectId:'binari',
+   character:{npcId:'npc.fixture',slug:'fixture',name:'Fixture',role:'Test',actId:'act1',chapterId:'ch1'},
+   intent:'Fixture',sourceRefs:['Test'],includeCombat:true,combatMotionPresets:[preset]},
+ })});
+ const denied=await post('slash-2d');
+ assert.equal(denied.status,400);assert.deepEqual(await denied.json(),{error:'ONE_STOP_COMBAT_PRESETS_REQUIRED'});
+ assert.equal(queue.list().requests.length,0);
+ const original=await post('slash');assert.equal(original.status,202,JSON.stringify(await original.json()));
 });

@@ -48,7 +48,7 @@ export function npcReplacementTarget(npc){
 
 export function readyCombatPreset(id,detail){
  const record=detail?.motionPreset,rows=record?.directions;
- if(typeof id!=='string'||!presetId.test(id)||detail?.item?.id!==id||record?.presetId!==id||record.posePreset!=='combat'||
+ if(typeof id!=='string'||!presetId.test(id)||detail?.item?.id!==id||record?.presetId!==id||record.posePreset!=='combat'||Object.hasOwn(record,'variant')||
     !Array.isArray(rows)||rows.length!==directions.length)return null;
  const published=new Set();
  for(const row of rows){

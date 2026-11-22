@@ -551,10 +551,12 @@ async function loadWorkspace(search){
    card.append(nodeOf('figcaption','',name),stage);
    compass.append(card);
   }
-  const form=motionConversionForm({projectId,preset: preset?.presetId===selected.id?preset:null,
+  const variant=preset?.variant?.kind==='2d'?preset.variant:null;
+  const form=variant?null:motionConversionForm({projectId,preset:preset?.presetId===selected.id?preset:null,
    publishedIds:new Set((Array.isArray(itemRows)?itemRows:[]).map(row=>String(row.id).toLowerCase())),submit:motionSubmit,signal});
+  const marker=variant?nodeOf('p','meta','2D 마네킹 변환 결과 · 원본 프리셋: '+variant.sourcePresetId):null;
   detail.replaceChildren(nodeOf('h3','',selected.label),nodeOf('p','meta','Filex 사본 · 읽기 전용'),
-   ...(form?[form]:[]),compass);
+   ...(marker?[marker]:[]),...(form?[form]:[]),compass);
  }
  async function renderDetail(data){
   const selected=data.item;
