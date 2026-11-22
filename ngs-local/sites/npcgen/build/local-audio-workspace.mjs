@@ -17,7 +17,9 @@ function validText(value,max,multiline=true){
 
 export function validLocalAudioPayload(v){
  return v&&typeof v==='object'&&!Array.isArray(v)&&
-  Object.keys(v).sort().join(',')==='brief,conceptId,durationSeconds,kind,projectId,schemaVersion,text,title'&&
+  (Object.keys(v).sort().join(',')==='brief,conceptId,durationSeconds,kind,projectId,schemaVersion,text,title'||
+   (Object.keys(v).sort().join(',')==='brief,conceptId,durationSeconds,kind,projectId,schemaVersion,targetDurationSeconds,text,title'&&
+    v.durationSeconds===null&&v.targetDurationSeconds===60))&&
   v.schemaVersion===schemaVersion&&v.projectId==='binari'&&v.kind==='bgm'&&
   typeof v.conceptId==='string'&&id.test(v.conceptId)&&validText(v.title,limits.title,false)&&validText(v.brief,limits.brief)&&
   (v.durationSeconds===null?(v.text===''||validText(v.text,512)):
@@ -33,9 +35,10 @@ export function soundConceptOptions(index){
   found.add(row.id);return [{id:row.id,label:row.label}];
  });
 }
-export function makeAudioPayload({kind,title,conceptId,brief,duration},options){
+export function makeAudioPayload({kind,title,conceptId,brief,duration,targetFullLength=false},options){
  const v={schemaVersion,projectId:'binari',kind,title:title.trim(),conceptId,brief:brief.trim(),
   text:'',durationSeconds:duration===null||typeof duration==='string'&&!duration.trim()?null:Number(duration)};
+ if(targetFullLength)v.targetDurationSeconds=60;
  if(!options.some(row=>row.id===conceptId)||!validLocalAudioPayload(v))throw Error('AUDIO_FORM_INVALID');
  return v;
 }
@@ -370,7 +373,13 @@ export function mountAudioWorkspace({items,detail,concepts=[],loadConcepts,signa
  setConceptOptions();
  const brief=field('제작 설명','textarea',{required:true,maxLength:limits.brief});
  const duration=field('길이 (초, 선택)','input',{type:'number',min:10,max:30,step:'any',placeholder:'비우면 모델이 결정'});
- fields.append(name.wrapper,concept.wrapper,brief.wrapper,duration.wrapper);inputs.append(fields);
+ const full=field('완곡 (60초 이상 목표)','input',{type:'checkbox'});
+ full.input.title='최대 5번 작곡하고, 목표에 못 미치면 가장 긴 계획을 사용합니다.';
+ full.input.addEventListener('change',()=>{
+  if(full.input.checked)duration.input.value='';
+  duration.input.disabled=full.input.checked;
+ });
+ fields.append(name.wrapper,concept.wrapper,brief.wrapper,duration.wrapper,full.wrapper);inputs.append(fields);
  const send=node('button','concept-category-trigger','BGM 생성 요청');send.type='submit';form.append(inputs,send);
  const error=node('p','meta error'),notice=node('p','meta'),loading=node('p','meta');
  error.setAttribute('role','alert');notice.setAttribute('role','status');loading.setAttribute('role','status');
@@ -412,9 +421,10 @@ export function mountAudioWorkspace({items,detail,concepts=[],loadConcepts,signa
   working=true;error.textContent='';update();
   try{
    const result=await intake.send(()=>makeAudioPayload({kind:'bgm',title:name.input.value,conceptId:concept.input.value,
-    brief:brief.input.value,duration:duration.input.value},concepts));
+    brief:brief.input.value,duration:duration.input.value,targetFullLength:full.input.checked},concepts));
    if(result&&!signal.aborted){
     intake=createAudioIntake(submit);name.input.value='';concept.input.value='';brief.input.value='';duration.input.value='';
+    full.input.checked=false;duration.input.disabled=false;
     dialog.close();notice.textContent=result.status==='queued'?'NGS 대기열에 저장했습니다.':'요청을 접수했습니다. 요청 ID: '+result.officialRequestId;
     if(result.officialRequestId)onAccepted(result.officialRequestId);
    }

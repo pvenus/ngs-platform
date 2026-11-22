@@ -36,6 +36,16 @@ test('only sorted-wire audio fields, active sound selections and bounded status 
  assert.deepEqual(soundConceptOptions({...index,groups:[]}),[]);
 });
 
+test('full-length goal is opt-in, valid only with automatic length',()=>{
+ const goal={...payload,durationSeconds:null,targetDurationSeconds:60};
+ assert.deepEqual(makeAudioPayload({...values,duration:'',targetFullLength:true},[concept]),goal);
+ assert.equal(validLocalAudioPayload(goal),true);
+ assert.equal(validLocalAudioPayload({...goal,text:'음—'}),true);
+ assert.equal(validLocalAudioPayload({...goal,targetDurationSeconds:59}),false);
+ assert.equal(validLocalAudioPayload({...goal,targetDurationSeconds:'60'}),false);
+ assert.throws(()=>makeAudioPayload({...values,targetFullLength:true},[concept]),/AUDIO_FORM_INVALID/);
+});
+
 test('sound selector updates only concept root index before reading; unrelated group bytes stay untouched',async()=>{
  const calls=[],signal=new AbortController().signal;
  const result=await readAudioSoundConcepts({signal,post:async(kind,body)=>{
@@ -117,6 +127,15 @@ test('standalone playlist keeps BGM, opens a modal only on +, and uses standard 
  assert.equal(detail.all('p').find(x=>x.attrs.role==='status').textContent,'요청을 접수했습니다. 요청 ID: '+receipt.officialRequestId);
  assert.equal(dialog.open,false);assert.equal(label('제목').children[0].value,'');
  open.events.click();assert.equal(dialog.open,true);
+ const full=label('완곡 (60초 이상 목표)').children[0],duration=label('길이 (초, 선택)').children[0];
+ assert.equal(full.type,'checkbox');
+ duration.value='20';full.checked=true;full.events.change();
+ assert.equal(duration.disabled,true);assert.equal(duration.value,'');
+ for(const [name,value] of [['제목',payload.title],['사운드 컨셉',concept.id],['제작 설명',payload.brief]])
+  label(name).children[0].value=value;
+ await form.events.submit({preventDefault(){}});
+ assert.deepEqual(sent[1].payload,{...payload,durationSeconds:null,targetDurationSeconds:60});
+ assert.equal(full.checked,false);assert.equal(duration.disabled,false);
  assert.deepEqual(detail.all('audio'),[]);
 });
 
