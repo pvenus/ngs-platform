@@ -78,6 +78,10 @@ test('only authenticated active Binari participants can use the existing formal 
   {requestType:'audio.delete',payload:{...base,schemaVersion:'ngs.audio-delete.v1',officialRequestId:'request.official.'+'a'.repeat(64)}},
   {requestType:'npc.workflow',payload:{...base,schemaVersion:'ngs.npc-one-stop.v1',character:{
    npcId:'npc.sample',slug:'sample',name:'Fixture',role:'test',actId:'act1',chapterId:'ch1'},intent:'Fixture',sourceRefs:['Test'],includeCombat:false}},
+  {requestType:'npc.workflow',payload:{...base,schemaVersion:'ngs.npc-one-stop.selection.v1',character:{
+   npcId:'npc.sample',slug:'sample',name:'Fixture',role:'test',actId:'act1',chapterId:'ch1'},intent:'Fixture',sourceRefs:['Test'],
+   motionSelection:[{presetId:'run-2d',posePreset:'idle',assetSetSha256:'a'.repeat(64)},
+    {presetId:'sword-attack-flat',posePreset:'combat',assetSetSha256:'b'.repeat(64)}]}},
   {requestType:'npc.planning.add',payload:{...base,schemaVersion:'ngs.npc-planning-add.v1',npcId:'npc.sample',
    categoryId:'category.add.'+'a'.repeat(32),title:'Fixture',outline:'Test',requirements:'',requiredSections:['Test']}},
   {requestType:'npc.planning.update',payload:{...base,schemaVersion:'ngs.npc-planning-update.v1',npcId:'npc.sample',role:'overview',requirements:'Test'}},
@@ -100,6 +104,10 @@ test('only authenticated active Binari participants can use the existing formal 
  assert.equal((await write('viewer',owner)).status,403);
  assert.equal((await write('viewer',viewer,command,{Origin:'https://other.example'})).status,403);
  for(const bad of [
+  {...commands[4],idempotencyKey:'bad-motion-legacy-field',payload:{...commands[4].payload,includeCombat:false}},
+  {...commands[4],idempotencyKey:'bad-motion-hash',payload:{...commands[4].payload,
+   motionSelection:[{presetId:'run-2d',posePreset:'idle',assetSetSha256:'unverified'}]}},
+
   {requestType:'motion-preset.convert-2d',idempotencyKey:'bad-missing-target',payload:{projectId:'binari',schemaVersion:'ngs.motion-preset-convert-2d.v1',sourcePresetId:'walk',variantPresetId:'walk',label:'겹치는 원본'}},
   {...command,requestType:'site.deploy'},
   {...command,requestType:'project.member.add'},

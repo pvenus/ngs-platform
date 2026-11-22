@@ -282,3 +282,9 @@ ul{padding:0;list-style:none}
 .motion-preset-conversion label{display:grid;gap:.25rem}
 .motion-preset-conversion input{min-width:0;max-width:100%}
 .motion-preset-conversion button{justify-self:start}
+
+.one-stop-motion-quick{display:flex;flex-wrap:wrap;gap:.5rem}
+.one-stop-motion-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.45rem .85rem}
+.one-stop-motion-group{min-width:0;overflow-wrap:anywhere}
+.one-stop-motion-group label{display:flex;flex-direction:row;align-items:baseline;margin:.25rem 0;gap:.35rem}
+.one-stop-motion-group input{flex:none}

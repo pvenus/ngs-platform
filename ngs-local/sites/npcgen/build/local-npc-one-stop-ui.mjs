@@ -1,4 +1,6 @@
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
+import {motionCatalogSchema,motionLimit,motionSelectionOf,quickMotionSelection,sameMotionChoice,selectionReplaceSchemaVersion,
+ selectionSchemaVersion,validMotionChoice,validMotionSelection,validNpcMotionSelectionRequest} from './npc-motion-selection.mjs';
 /** The roster '+' creates a new NPC; the detail action targets the selected NPC ID. */
 const directions=['n','ne','e','se','s','sw','w','nw'];
 const identifier=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -15,10 +17,10 @@ const knownRejections=new Set([
  'COMMON_INVALID_IDENTIFIER','ORIGIN_OR_CSRF_REJECTED','CSRF_INVALID','PROJECT_OR_RESOURCE_DENIED',
  'LOCAL_SIGN_IN_REQUIRED','LOCAL_SESSION_EXPIRED_OR_REVOKED','FRONTEND_SESSION_CONTEXT_CHANGED',
  'REQUEST_SUBMIT_INVALID','NGS_ONE_STOP_PAYLOAD_INVALID','OFFICIAL_REQUEST_NPC_ALREADY_REGISTERED',
- 'ONE_STOP_REPLACE_TARGET_NOT_FOUND','ONE_STOP_REPLACE_IDENTITY_INVALID',
+ 'ONE_STOP_REPLACE_TARGET_NOT_FOUND','ONE_STOP_REPLACE_IDENTITY_INVALID','ONE_STOP_MOTION_SELECTION_STALE',
 ]);
 
-function oneStopRequest(values,combatCatalog,target){
+function oneStopRequest(values,motionCatalog,target){
  const {name,role,actId,chapterId}=values,slug=target?.slug??values.slug?.trim(),intent=values.intent?.trim();
  if(!text(name,60)||!text(role,300)||!validId(slug)||!slugPattern.test(slug)||!validId('npc.'+slug)||!validId(actId)||!validId(chapterId)){
   throw Error('이름, 식별 이름, 역할과 스토리 위치를 확인해 주세요.');
@@ -26,16 +28,18 @@ function oneStopRequest(values,combatCatalog,target){
  if(!text(intent,3500)||count(intent)<5)throw Error('기획 요청은 5~3,500자로 입력해 주세요.');
  const sourceRefs=typeof values.sourceRefs==='string'?values.sourceRefs.split('\n').map(s=>s.trim()).filter(Boolean):[];
  if(!sourceRefs.length||sourceRefs.length>64||sourceRefs.some(ref=>count(ref)>300))throw Error('근거 참조를 한 줄에 하나씩 입력해 주세요. 최대 64줄, 줄당 300자입니다.');
- const includeCombat=values.includeCombat===true,chosen=values.selectedCombat??[];
- if(includeCombat&&(!Array.isArray(chosen)||chosen.length<1||chosen.length>16||new Set(chosen).size!==chosen.length
-    ||chosen.some(id=>!combatCatalog.some(row=>row.presetId===id)))){
-  throw Error('게시된 전투 모션 프리셋을 1~16개 선택하세요.');
+ const chosen=values.motionSelection;
+ if(!validMotionSelection(chosen)||!chosen.every(choice=>motionCatalog.some(row=>sameMotionChoice(choice,row)))){
+  throw Error('게시된 모션 프리셋을 1~8개 선택하세요. 변경된 선택은 해제한 뒤 다시 골라 주세요.');
  }
- return {schemaVersion:target?'ngs.npc-one-stop.replace.v1':'ngs.npc-one-stop.v1',projectId:'binari',
-  character:{npcId:target?.npcId??'npc.'+slug,name:name.trim(),slug,role:role.trim(),actId,chapterId},intent,sourceRefs,includeCombat,
-  ...(includeCombat?{combatMotionPresets:[...chosen]}:{})};
+ const body={schemaVersion:target?selectionReplaceSchemaVersion:selectionSchemaVersion,projectId:'binari',
+  character:{npcId:target?.npcId??'npc.'+slug,name:name.trim(),slug,role:role.trim(),actId,chapterId},intent,sourceRefs,
+  motionSelection:chosen.map(motionSelectionOf)};
+ if(!validNpcMotionSelectionRequest(body))throw Error('요청 입력 내용을 확인해 주세요.');
+ return body;
 }
-export const newNpcOneStopRequest=(values,combatCatalog=[])=>oneStopRequest(values,combatCatalog,null);
+export const newNpcOneStopRequest=(values,motionCatalog=[])=>oneStopRequest(values,motionCatalog,null);
+
 export function npcReplacementTarget(npc){
  const npcId=npc?.id;
  if(!validId(npcId)||!npcId.startsWith('npc.'))return null;
@@ -58,26 +62,13 @@ export function readyCombatPreset(id,detail){
  }
  return {presetId:id,label:[record.label,detail.item.label].find(label=>typeof label==='string'&&label.trim())??id};
 }
-export async function readOneStopCombatPresets(request,signal){
- const api=values=>'/api/project-workspace?'+new URLSearchParams({projectId:'binari',tab:'motion-presets',...values});
- const index=await request(api({}),{signal});
- if(!Array.isArray(index?.items))throw Error('COMBAT_CATALOG_UNAVAILABLE');
- const output=Array(index.items.length);let cursor=0,anyRead=false;
- async function worker(){
-  while(cursor<index.items.length&&!signal.aborted){
-   const i=cursor++,id=index.items[i]?.id;
-   if(typeof id!=='string'||!presetId.test(id))continue;
-   try{
-    const detail=await request(api({item:id}),{signal});
-    if(detail?.item?.id!==id||detail.motionPreset?.presetId!==id||!Array.isArray(detail.motionPreset.directions))continue;
-    anyRead=true;output[i]=readyCombatPreset(id,detail);
-   }catch{/* Unverified entries are never offered as formal preset options. */}
-  }
- }
- await Promise.all(Array.from({length:Math.min(3,index.items.length)},worker));
- if(index.items.length&&!anyRead&&!signal.aborted)throw Error('COMBAT_CATALOG_UNAVAILABLE');
- const unique=new Set();
- return output.filter(row=>row&&!unique.has(row.presetId)&&unique.add(row.presetId));
+export async function readOneStopMotionPresets(request,signal){
+ const url='/api/project-workspace?'+new URLSearchParams({projectId:'binari',tab:'motion-presets',view:'selection'});
+ const catalog=await request(url,{signal});
+ if(catalog?.schemaVersion!==motionCatalogSchema||!Array.isArray(catalog.presets)||catalog.presets.length>4096||
+    !catalog.presets.every(validMotionChoice)||new Set(catalog.presets.map(row=>row.presetId.toLowerCase())).size!==catalog.presets.length)
+  throw Error('MOTION_SELECTION_CATALOG_UNAVAILABLE');
+ return catalog.presets;
 }
 
 export function createNpcOneStopIntake(submit,{key=()=>crypto.randomUUID()}={}){
@@ -123,6 +114,7 @@ function section(parent,title,className,fields){
  grid.append(...fields.map(field=>field.root));body.append(node('h3','',title),grid);parent.append(body);
 }
 const rejectMessage=(code,replacing)=>{
+ if(code==='ONE_STOP_MOTION_SELECTION_STALE')return '선택한 프리셋이 변경됐습니다. 선택을 해제한 뒤 다시 골라 주세요.';
  if(replacing&&code==='ONE_STOP_TARGET_ALREADY_ACTIVE')return '이 NPC의 요청이 이미 처리 중입니다.';
  if(replacing&&['ONE_STOP_REPLACE_TARGET_NOT_FOUND','ONE_STOP_REPLACE_IDENTITY_INVALID'].includes(code))
   return '기존 NPC 정보를 확인할 수 없습니다. 페이지를 다시 열어 주세요.';
@@ -183,62 +175,102 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   section(fields,'기본 정보','one-stop-basic',[name,slug,role]);
   section(fields,'스토리 위치','one-stop-location',[act,chapter]);
   section(fields,'기획 요청','one-stop-planning',[intent,refs]);
-  const options=node('section','one-stop-section one-stop-options'),combatLabel=node('label');
-  const combat=node('input');combat.type='checkbox';combatLabel.append(combat,document.createTextNode(' 전투 캐릭터'));
-  const presets=node('fieldset'),legend=node('legend','','전투 모션 프리셋 · 1~16개 선택');
-  const pick=node('div');presets.append(legend,pick);presets.hidden=true;
-  options.append(node('h3','','생성 옵션'),combatLabel,presets);fields.append(options);
+  const options=node('section','one-stop-section one-stop-options');
+  const presets=node('fieldset'),legend=node('legend','','모션 프리셋 · 1~8개 선택');
+  const quick=node('div','one-stop-motion-quick'),noncombat=node('button','','비전투 기본'),combat=node('button','','전투 기본');
+  noncombat.type=combat.type='button';quick.append(noncombat,combat);
+  const pick=node('div','one-stop-motion-choices'),motionInfo=node('p','meta'),selectionInfo=node('p','meta');
+  motionInfo.setAttribute('role','status');selectionInfo.setAttribute('role','status');
+  presets.append(legend,quick,motionInfo,pick,selectionInfo);
+  options.append(node('h3','','생성 옵션'),presets);fields.append(options);
   const send=node('button','npc-one-stop-submit',action+' 요청');send.type='submit';
   form.append(fields,send);modal.append(header,intro,form,error,notice);
 
   // Keep one immutable command for an ambiguous receipt, never send a second key.
   const carry=intake?.waitingConfirmation===true;
   if(!carry)intake=createNpcOneStopIntake(submit);
-  let pending=false,ended=false,combatLoad=null,combatCatalog=null,combatError=false;
-  const selected=new Set();
+  let pending=false,ended=false,motionCatalog=null,catalogError=false,pollTimer=null,catalogKey=null;
+  const catalogController=new AbortController(),selected=new Map(),checkBoxes=new Map();
   if(carry)error.textContent='앞서 보낸 요청의 접수를 먼저 확인해 주세요.';
+  const liveRow=choice=>motionCatalog?.find(row=>row.presetId===choice.presetId);
+  const staleChoice=choice=>!sameMotionChoice(choice,liveRow(choice));
   function updateControls(){
-   const frozen=intake.waitingConfirmation;
+   const frozen=intake.waitingConfirmation,stale=[...selected.values()].filter(staleChoice).length;
    fields.disabled=pending||frozen||intake.accepted;
    fields.hidden=carry&&frozen;
-   send.disabled=pending||intake.accepted||(!frozen&&combat.checked&&(!combatCatalog||!selected.size));
+   send.disabled=pending||intake.accepted||(!frozen&&(catalogError||!motionCatalog||!selected.size||stale>0));
    send.textContent=pending?'접수 중…':frozen?'같은 접수 다시 확인':action+' 요청';
    close.disabled=pending;
+   noncombat.disabled=!quickMotionSelection('noncombat',motionCatalog??[])||catalogError;
+   combat.disabled=!quickMotionSelection('combat',motionCatalog??[])||catalogError;
+   noncombat.title=noncombat.disabled?'walk-flat, run-flat이 모두 게시되면 선택할 수 있습니다.':'walk-flat, run-flat 선택';
+   combat.title=combat.disabled?'walk-flat, run-flat, sword-attack-flat이 모두 게시되면 선택할 수 있습니다.':'walk-flat, run-flat, sword-attack-flat 선택';
+   for(const [id,{check,label,row}] of checkBoxes){
+    const choice=selected.get(id);
+    check.checked=!!choice;check.disabled=(!choice&&selected.size>=motionLimit)||(!choice&&catalogError);
+    label.textContent=row?row.label+' · '+row.presetId+(choice&&staleChoice(choice)?' · 게시 내용 변경, 다시 선택 필요':''):
+     id+' · 현재 게시되지 않음, 선택 해제 필요';
+   }
+   selectionInfo.textContent=selected.size+' / '+motionLimit+'개 선택'+(stale?' · '+stale+'개 다시 선택 필요':'');
   }
-  function renderCombat(){
-   presets.hidden=!combat.checked;pick.replaceChildren();
-   if(!combat.checked){updateControls();return;}
-   if(combatError)pick.append(node('p','meta error','게시된 전투 프리셋을 확인하지 못했습니다.'));
-   else if(combatCatalog===null)pick.append(node('p','meta','등록된 전투 프리셋 확인 중…'));
-   else if(!combatCatalog.length)pick.append(node('p','meta','사용 가능한 8방향 전투 프리셋이 없습니다.'));
-   else for(const row of combatCatalog){
-    const label=node('label'),check=node('input');
-    check.type='checkbox';check.checked=selected.has(row.presetId);check.disabled=!check.checked&&selected.size>=16;
+  function renderMotions(){
+   pick.replaceChildren();checkBoxes.clear();
+   const add=(id,row,parent)=>{
+    const label=node('label'),check=node('input'),textLabel=node('span');
+    check.type='checkbox';
     check.addEventListener('change',()=>{
-     if(check.checked&&selected.size<16)selected.add(row.presetId);else selected.delete(row.presetId);
-     for(const input of pick.querySelectorAll('input'))input.disabled=!input.checked&&selected.size>=16;
+     if(!check.checked){selected.delete(id);if(!row){renderMotions();return;}}
+     else if(row&&!catalogError&&!selected.has(id)&&selected.size<motionLimit)selected.set(id,motionSelectionOf(row));
      updateControls();
     });
-    label.append(check,document.createTextNode(' '+row.label+' · '+row.presetId));pick.append(label);
+    label.append(check,textLabel);parent.append(label);checkBoxes.set(id,{check,label:textLabel,row});
+   };
+   for(const [pose,title] of [['idle','아이들'],['combat','전투']]){
+    const rows=(motionCatalog??[]).filter(row=>row.posePreset===pose);
+    if(!rows.length)continue;
+    const group=node('div','one-stop-motion-group');group.append(node('strong','',title));
+    for(const row of rows)add(row.presetId,row,group);
+    pick.append(group);
+   }
+   const removed=[...selected.keys()].filter(id=>!checkBoxes.has(id));
+   if(removed.length){
+    const group=node('div','one-stop-motion-group');group.append(node('strong','','재선택 필요'));
+    for(const id of removed)add(id,null,group);
+    pick.append(group);
    }
    updateControls();
   }
-  combat.addEventListener('change',()=>{
-   combatLoad?.abort();combatLoad=null;
-   if(combat.checked&&combatCatalog===null){
-    const controller=new AbortController();combatLoad=controller;combatError=false;
-    void readOneStopCombatPresets(request,controller.signal).then(rows=>{
-     if(controller.signal.aborted||ended)return;
-     combatCatalog=rows;renderCombat();
-    }).catch(()=>{
-     if(!controller.signal.aborted&&!ended){combatError=true;renderCombat();}
-    });
+  function prefill(kind){
+   if(ended||catalogError)return;
+   const rows=quickMotionSelection(kind,motionCatalog??[]);
+   if(!rows)return;
+   selected.clear();
+   for(const row of rows)selected.set(row.presetId,row);
+   renderMotions();
+  }
+  noncombat.addEventListener('click',()=>prefill('noncombat'));
+  combat.addEventListener('click',()=>prefill('combat'));
+  async function pollCatalog(){
+   if(ended||catalogController.signal.aborted||intake.accepted)return;
+   if(!pending&&!intake.waitingConfirmation){
+    try{
+     const rows=await readOneStopMotionPresets(request,catalogController.signal);
+     if(ended||catalogController.signal.aborted)return;
+     catalogError=false;motionCatalog=rows;
+     motionInfo.textContent=rows.length?'필요한 동작과 스타일을 함께 고를 수 있습니다. 기본 버튼은 선택을 채울 뿐입니다.':'게시된 8방향 모션이 없습니다.';
+     const key=JSON.stringify(rows);
+     if(key!==catalogKey){catalogKey=key;renderMotions();}else updateControls();
+    }catch{
+     if(ended||catalogController.signal.aborted)return;
+     catalogError=true;motionInfo.textContent='게시된 모션을 확인하지 못했습니다. 다시 확인하고 있습니다.';updateControls();
+    }
    }
-   renderCombat();
-  });
+   if(!ended&&!intake.accepted)pollTimer=setTimeout(pollCatalog,4000);
+  }
+  motionInfo.textContent='게시된 8방향 모션을 확인하고 있습니다.';
   function leave(force=false){
    if(ended||pending&&!force)return;
-   ended=true;combatLoad?.abort();
+   ended=true;catalogController.abort();clearTimeout(pollTimer);
    if(modal.open)modal.close();
    modal.remove();dialog=null;
    if(!intake.waitingConfirmation)intake=null;
@@ -255,8 +287,8 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
     if(intake.waitingConfirmation)requestBuilt=true;
     const receipt=await intake.send(()=>{
      const body=oneStopRequest({name:name.input.value,slug:slug.input.value,role:role.input.value,actId:act.input.value,
-      chapterId:chapter.input.value,intent:intent.input.value,sourceRefs:refs.input.value,includeCombat:combat.checked,
-      selectedCombat:[...selected]},combatCatalog??[],target);
+      chapterId:chapter.input.value,intent:intent.input.value,sourceRefs:refs.input.value,
+      motionSelection:[...selected.values()]},motionCatalog??[],target);
      requestBuilt=true;return body;
     });
     if(receipt&&!ended){
@@ -268,7 +300,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
      :'접수 응답을 확인하지 못했습니다. 같은 접수를 다시 확인해 주세요.';
    }finally{if(!ended){pending=false;updateControls();if(intake.accepted)close.focus({preventScroll:true});}}
   });
-  updateControls();modalOwner.append(modal);modal.showModal();
+  updateControls();modalOwner.append(modal);modal.showModal();void pollCatalog();
   if(carry)send.focus();else name.input.focus();
  }
  trigger.addEventListener('click',open);

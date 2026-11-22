@@ -1,5 +1,6 @@
 /** Portable project workspace DTOs. The selected store is injected by the frontend. */
 import {validConceptGroupId} from './local-concept-category-contract.mjs';
+import {motionCatalogSchema,publishedMotionChoice} from './npc-motion-selection.mjs';
 import {validWorkspacePath,workspaceItemId as itemId,workspaceItemIds,readReplicaObject,hashReplicaBytes,replicaUnavailable as unavailable} from './workspace-read-storage.mjs';
 
 const error=(code,status)=>Object.assign(Error(code),{status});
@@ -151,14 +152,37 @@ async function visibleFiles(root,tab,{item,path,meta,markdown,folder}){
  }
  return rows;
 }
+async function motionSelectionCatalog(project){
+ const prefix='motion-presets/presets';
+ const ids=project?await workspaceItemIds(project,prefix,false):[];
+ const seen=new Map();
+ for(const id of ids)seen.set(id.toLowerCase(),(seen.get(id.toLowerCase())??0)+1);
+ const out=Array(ids.length);let cursor=0,unreadable=0;
+ async function scan(){
+  while(cursor<ids.length){
+   const index=cursor++,id=ids[index];
+   if(seen.get(id.toLowerCase())!==1)continue;
+   try{
+    const meta=await readReplicaObject(project,prefix+'/'+id+'.json',16*1024);
+    if(!meta||Object.hasOwn(meta,'variant')&&!motionVariant(meta,id))continue;
+    out[index]=await publishedMotionChoice(id,meta,label(meta.label,id));
+   }catch{unreadable++;}
+  }
+ }
+ await Promise.all(Array.from({length:Math.min(4,ids.length)},scan));
+ if(ids.length&&unreadable===ids.length)throw unavailable();
+ return {schemaVersion:motionCatalogSchema,presets:out.filter(Boolean)};
+}
 export async function workspaceRead({openProject,query,authorize}){
- const projectId=query.get('projectId'),tab=query.get('tab'),id=query.get('item'),file=query.get('file');
+ const projectId=query.get('projectId'),tab=query.get('tab'),id=query.get('item'),file=query.get('file'),view=query.get('view');
  const keys=[...query.keys()];
- if(keys.length!==new Set(keys).size||keys.some(k=>!['projectId','tab','item','file'].includes(k))
-    ||!projectId||!tabs.has(tab)||id!==null&&!itemId(id)||file!==null&&(!id||!validWorkspacePath(file)))throw invalid();
+ if(keys.length!==new Set(keys).size||keys.some(k=>!['projectId','tab','item','file','view'].includes(k))
+    ||!projectId||!tabs.has(tab)||view!==null&&(view!=='selection'||tab!=='motion-presets'||id!==null||file!==null)||id!==null&&!itemId(id)||file!==null&&(!id||!validWorkspacePath(file)))throw invalid();
  await authorize(projectId);
  if(projectId!=='binari')throw missing();
- const project=await openProject(projectId),conceptIndex=project&&tab==='concept'?await readReplicaObject(project,'concept/metadata.json'):null;
+ const project=await openProject(projectId);
+ if(view==='selection')return {json:await motionSelectionCatalog(project)};
+ const conceptIndex=project&&tab==='concept'?await readReplicaObject(project,'concept/metadata.json'):null;
  if(conceptIndex&&(!Array.isArray(conceptIndex.sectionIds)||conceptIndex.sectionIds.some(id=>!itemId(id))||
     new Set(conceptIndex.sectionIds).size!==conceptIndex.sectionIds.length))throw unavailable();
  const conceptState=conceptHierarchy(conceptIndex);

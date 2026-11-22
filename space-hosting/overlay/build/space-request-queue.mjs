@@ -3,6 +3,7 @@ import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
 import {validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
+import {isSelectionSchema,validNpcMotionSelectionRequest} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 const table='ngs_space_request_queue_v1';
 const cap=128,maxList=16,receiptTTL=24*60*60*1000;
 const queuePattern=/^ngs\.space\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
@@ -30,6 +31,7 @@ function canonical(value,depth=0){
  return '{'+Object.keys(value).sort().map(k=>json(k)+':'+canonical(value[k],depth+1)).join(',')+'}';
 }
 function validOneStop(v){
+ if(isSelectionSchema(v.schemaVersion))return validNpcMotionSelectionRequest(v);
  const fields=['schemaVersion','projectId','character','intent','sourceRefs','includeCombat'];
  if(v.includeCombat===true)fields.push('combatMotionPresets');
  const c=v.character,text=(x,n)=>typeof x==='string'&&x.trim()===x&&x.length>0&&x.length<=n,

@@ -3,6 +3,7 @@ import css from "../ngs-local/sites/npcgen/build/local-project-page.css?raw";
 import page from "../ngs-local/sites/npcgen/build/local-project-page.js?raw";
 import workspace from "../ngs-local/sites/npcgen/build/local-npc-workspace-ui.mjs?raw";
 import oneStop from "../ngs-local/sites/npcgen/build/local-npc-one-stop-ui.mjs?raw";
+import motionSelection from "../ngs-local/sites/npcgen/build/npc-motion-selection.mjs?raw";
 import concept from "../ngs-local/sites/npcgen/build/local-concept-category-ui.mjs?raw";
 import contract from "../ngs-local/sites/npcgen/build/local-concept-category-contract.mjs?raw";
 import planning from "../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs?raw";
@@ -22,6 +23,7 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/local-project-page.js", {type: javascript, body: page}],
  ["/local-npc-workspace-ui.mjs", {type: javascript, body: workspace}],
  ["/local-npc-one-stop-ui.mjs", {type: javascript, body: oneStop}],
+ ["/npc-motion-selection.mjs", {type: javascript, body: motionSelection}],
  ["/local-concept-category-ui.mjs", {type: javascript, body: concept}],
  ["/local-concept-category-contract.mjs", {type: javascript, body: contract}],
  ["/local-npc-planning-ui.mjs", {type: javascript, body: planning}],

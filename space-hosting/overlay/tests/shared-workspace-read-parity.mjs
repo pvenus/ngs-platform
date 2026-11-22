@@ -33,11 +33,11 @@ function fixture(t){
  add('motion-presets/assets/'+mediaName,Buffer.from('1234ftyp...'));
  const variantMarker={kind:'2d',sourcePresetId:motionId,sourcePresetHash:'f'.repeat(64)};
  const variantDirections=['n','ne','e','se','s','sw','w','nw'].map(direction=>{
-  const raw=Buffer.from('1234ftyp-'+direction),sha256=hash(raw),assetId=sha256+'.mp4';
+  const raw=Buffer.from('1234ftyp-clip-'+direction),sha256=hash(raw),assetId=sha256+'.mp4';
   add('motion-presets/assets/'+assetId,raw);
-  return {direction,assetId,sha256};
+  return {direction,assetId,sha256,bytes:raw.length,frameCount:25,fps:24,cycleCount:1};
  });
- add('motion-presets/presets/walk-2d.json',{presetId:'walk-2d',label:'Walk 2D',posePreset:'idle',variant:variantMarker,directions:variantDirections});
+ add('motion-presets/presets/walk-2d.json',{schemaVersion:'ngs.motion-preset.v1',presetId:'walk-2d',label:'Walk 2D',posePreset:'idle',variant:variantMarker,directions:variantDirections});
  for(const [id,variant] of Object.entries({
   'bad-extra':{...variantMarker,wrong:'unexpected'},'bad-hash':{...variantMarker,sourcePresetHash:'x'.repeat(64)},
   'bad-path':{...variantMarker,sourcePresetId:'../walk'},'bad-null':null,
@@ -47,15 +47,15 @@ function fixture(t){
  }
 
  add('audio/'+official+'/metadata.json',{private:'not visible from any workspace tab'});
- const metric={list:0,head:0,get:0},prefixes=[];
+ const metric={list:0,head:0,get:0},prefixes=[],touches=[];
  const space={
   async list(prefix=''){metric.list++;prefixes.push(prefix);return [...files].filter(([p])=>!prefix||p.startsWith(prefix+'/')).map(([path,x])=>({path,sha256:hash(x)}));},
-  async head(path){metric.head++;const x=files.get(path);return x?{size:x.length,etag:hash(x),customMetadata:{sha256:hash(x)}}:null;},
-  async get(path,{onlyIf}){metric.get++;const x=files.get(path);return x&&onlyIf.etagMatches===hash(x)?{
+  async head(path){touches.push(path);metric.head++;const x=files.get(path);return x?{size:x.length,etag:hash(x),customMetadata:{sha256:hash(x)}}:null;},
+  async get(path,{onlyIf}){touches.push(path);metric.get++;const x=files.get(path);return x&&onlyIf.etagMatches===hash(x)?{
    size:x.length,etag:hash(x),customMetadata:{sha256:hash(x)},arrayBuffer:async()=>new Uint8Array(x).buffer,
   }:null;},
  };
- return {root,space,metric,prefixes,asset:'npcs/da/assets/'+name,clip:'motion-presets/assets/'+mediaName};
+ return {root,space,metric,prefixes,touches,asset:'npcs/da/assets/'+name,clip:'motion-presets/assets/'+mediaName};
 }
 const request=(query,auth=true)=>new Request('https://fixture.invalid/api/project-workspace?'+query,{headers:auth?{
  'oai-authenticated-user-id':'fixture','oai-authenticated-user-email':'fixture@example.invalid',
@@ -130,4 +130,15 @@ test('strict canonical 2D lineage retains all previews on both hosts; corrupt ma
   await assert.rejects(local(base+'&item='+id),e=>e.status===404);
   assert.equal((await hosted(base+'&item='+id)).status,404);
  }
+});
+
+test('Local and Space selection manifests match; neither probes MP4 assets',async t=>{
+ const {root,space,touches,prefixes}=fixture(t),query='projectId=binari&tab=motion-presets&view=selection';
+ const local=await localProjectWorkspace({root,query:new URLSearchParams(query),authorize:()=>true});
+ const r=await spaceWorkspaceReadResponse(request(query),space,{authorize:async()=>true});
+ assert.equal(r.status,200);
+ assert.deepEqual(await r.json(),local.json);
+ assert.deepEqual(local.json.presets.map(row=>row.presetId),['walk-2d']);
+ assert.ok(touches.every(path=>path.startsWith('motion-presets/presets/')&&path.endsWith('.json')));
+ assert.deepEqual(prefixes,['motion-presets/presets']);
 });

@@ -49,7 +49,7 @@ test('hosted bundling uses the single authored Local source tree, with no parall
  const paths=[...imports.matchAll(/from "\.\.\/ngs-local\/sites\/npcgen\/(.+?)\?(?:raw|inline)";/g)].map(m=>m[1]);
  assert.deepEqual(paths,[
   'build/local-project-page.html','build/local-project-page.css','build/local-project-page.js','build/local-npc-workspace-ui.mjs',
-  'build/local-npc-one-stop-ui.mjs','build/local-concept-category-ui.mjs','build/local-concept-category-contract.mjs',
+  'build/local-npc-one-stop-ui.mjs','build/npc-motion-selection.mjs','build/local-concept-category-ui.mjs','build/local-concept-category-contract.mjs',
   'build/local-npc-planning-ui.mjs','build/local-audio-workspace.mjs','build/local-request-queue-browser.mjs',
   'build/motion-preset-convert-2d.mjs',
  ]);
