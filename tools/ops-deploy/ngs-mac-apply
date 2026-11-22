@@ -20,6 +20,7 @@ import time
 SHA = re.compile(r"[0-9a-f]{40}")
 DIGEST = re.compile(r"[0-9a-f]{64}")
 ID = re.compile(r"[1-9][0-9]{0,19}")
+ATTEMPT_ID = re.compile(r"(?!0{32})[0-9a-f]{32}")
 LABEL = "com.vinus.ngs.local-mcp"
 LEGACY = "com.vinus.ngs.project-page"
 ENTRY = Path("sites/npcgen/build/local-miniflare-app.mjs")
@@ -76,6 +77,8 @@ KNOWN_CODES = HEALTH_CODES | {
     "NATIVE_SSD_DRIFT", "NATIVE_PLIST_DRIFT", "RELEASE_ALREADY_ATTEMPTED_RECONCILE",
     "PRIOR_RELEASE_DRIFT", "OLD_NATIVE_PORTS_BUSY", "NATIVE_STORAGE_IDENTITY_DRIFT",
     "ROLLBACK_SELECTOR_DRIFT", "ROLLBACK_STORAGE_IDENTITY_DRIFT", "MAC_RELEASE_INTERRUPTED",
+    "MAC_RETRY_ID_INVALID", "MAC_RETRY_HISTORY_INVALID", "MAC_RETRY_ATTEMPT_EXISTS",
+    "MAC_RETRY_PARENT_DRIFT", "MAC_RETRY_ROLLBACK_REQUIRED", "MAC_RETRY_PRIOR_DRIFT",
 }
 
 
@@ -125,6 +128,14 @@ def private(path, directory=False):
     return path
 
 
+def sync_directory(path):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def atom(path, data, create=False):
     fd, temp = tempfile.mkstemp(prefix=".deploy-", dir=path.parent)
     try:
@@ -136,11 +147,7 @@ def atom(path, data, create=False):
             os.link(temp, path)  # O_EXCL semantics
         else:
             os.replace(temp, path)
-        dfd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(dfd)
-        finally:
-            os.close(dfd)
+        sync_directory(path.parent)
     finally:
         try:
             os.unlink(temp)
@@ -372,25 +379,114 @@ class Mac:
                 time.sleep(0.25)
 
 
-def apply(sha, control, host):
+
+def valid_attempt(value):
+    return type(value) is str and ATTEMPT_ID.fullmatch(value) is not None
+
+
+def present(path):
+    return path.exists() or path.is_symlink()
+
+
+def retry_history(folder):
+    """Read under the same lock as launchctl; fail closed on torn reservations."""
+    history = folder / "attempts"
+    if not present(history):
+        return history, []
+    private(history, True)
+    ledger = history / "current.json"
+    require(present(ledger), "MAC_RETRY_HISTORY_INVALID")
+    try:
+        ledger_data = json.loads(private(ledger).read_bytes())
+    except (UnicodeError, ValueError):
+        raise Refused("MAC_RETRY_HISTORY_INVALID") from None
+    require(type(ledger_data) is dict and set(ledger_data) == {"attemptIds"},
+            "MAC_RETRY_HISTORY_INVALID")
+    ids = ledger_data["attemptIds"]
+    require(type(ids) is list and ids and all(valid_attempt(value) for value in ids)
+            and len(set(ids)) == len(ids)
+            and set(p.name for p in history.iterdir()) == {"current.json", *ids},
+            "MAC_RETRY_HISTORY_INVALID")
+    for value in ids:
+        private(history / value, True)
+    return history, ids
+
+
+def is_verified_rollback(receipt, legacy):
+    if legacy and receipt == {"state": "rolled-back"}:
+        return True
+    if (type(receipt) is not dict or set(receipt) != {"state", "failure"}
+            or receipt["state"] != "rolled-back"):
+        return False
+    failure = receipt["failure"]
+    return (type(failure) is dict and set(failure) == {"stage", "code"}
+            and type(failure["stage"]) is str and failure["stage"] in PHASE_CODES
+            and type(failure["code"]) is str and failure["code"] in KNOWN_CODES | set(PHASE_CODES.values()))
+
+
+def authorize_retry(folder, attempt, previous, prior):
+    history, ids = retry_history(folder)
+    require(attempt not in ids, "MAC_RETRY_ATTEMPT_EXISTS")
+    latest = ids[-1] if ids else "initial"
+    require(previous == latest, "MAC_RETRY_PARENT_DRIFT")
+    previous_folder = history / latest if ids else folder
+    previous_status = previous_folder / "result.json"
+    require(present(previous_status), "MAC_RETRY_ROLLBACK_REQUIRED")
+    try:
+        receipt = json.loads(private(previous_status).read_bytes())
+    except (UnicodeError, ValueError):
+        raise Refused("MAC_RETRY_ROLLBACK_REQUIRED") from None
+    require(is_verified_rollback(receipt, legacy=not ids), "MAC_RETRY_ROLLBACK_REQUIRED")
+    previous_prior = previous_folder / "prior.plist"
+    require(present(previous_prior) and private(previous_prior).read_bytes() == prior,
+            "MAC_RETRY_PRIOR_DRIFT")
+    return history, ids
+
+
+def reserve_retry(history, ids, attempt):
+    if not ids:
+        history.mkdir(mode=0o700)
+        sync_directory(history.parent)
+    attempt_folder = history / attempt
+    attempt_folder.mkdir(mode=0o700)
+    # A crash anywhere before result.json leaves an incomplete latest attempt,
+    # or an orphan detected by retry_history. Neither permits another retry.
+    ledger = history / "current.json"
+    atom(ledger, (json.dumps({"attemptIds": [*ids, attempt]}, separators=(",", ":")) + "\n").encode(),
+         create=not ids)
+    return attempt_folder
+
+
+def apply(sha, control, host, attempt=None, previous=None):
     stage = "validate_candidate"
     fd = None
     try:
-        folder, spec, release, workdir = load_plan(sha, control, host.releases, host.scratch)
-        # Lock only the known directory, including distinct releases.
+        require(type(sha) is str and SHA.fullmatch(sha), "INVALID_RELEASE_SHA")
+        retry = attempt is not None or previous is not None
+        require(not retry or valid_attempt(attempt) and (previous == "initial" or valid_attempt(previous)),
+                "MAC_RETRY_ID_INVALID")
+        private(control, True)
+        # Lock before validating the archived candidate and reading attempt history.
         stage = "check_current"
         fd = os.open(control, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        armed = folder / "prior.plist"
-        status = folder / "result.json"
+        stage = "validate_candidate"
+        folder, spec, release, workdir = load_plan(sha, control, host.releases, host.scratch)
+        stage = "check_current"
         prior = host.read_plist()
         old, new, env = select(prior, release, workdir, host.releases, host.scratch, host.queue, sha)
-        require(not armed.exists() and not armed.is_symlink() and not status.exists() and not status.is_symlink(),
-                "RELEASE_ALREADY_ATTEMPTED_RECONCILE")
+        if not retry:
+            require(not any(present(folder / name) for name in ("prior.plist", "result.json", "attempts")),
+                    "RELEASE_ALREADY_ATTEMPTED_RECONCILE")
         require(old != release and digest(prior) == spec["expectedPriorPlistSha256"], "PRIOR_RELEASE_DRIFT")
+        if retry:
+            history, ids = authorize_retry(folder, attempt, previous, prior)
         pins = host.unchanged(env)
         pid = host.healthy(old, wait=0)
         stage = "record_result"
+        attempt_folder = reserve_retry(history, ids, attempt) if retry else folder
+        armed = attempt_folder / "prior.plist"
+        status = attempt_folder / "result.json"
         atom(armed, prior, create=True)
         advanced = False
         stopped = False
@@ -461,8 +557,10 @@ def main():
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         raise Refused("MAC_RELEASE_INTERRUPTED")
     signal.signal(signal.SIGTERM, interrupt)
-    require(len(sys.argv) == 2 and SHA.fullmatch(sys.argv[1]), "INVALID_RELEASE_SHA")
-    print(json.dumps(apply(sys.argv[1], CONTROL, Mac()), separators=(",", ":")), flush=True)
+    require(len(sys.argv) >= 2 and SHA.fullmatch(sys.argv[1]), "INVALID_RELEASE_SHA")
+    require(len(sys.argv) in (2, 4), "MAC_RETRY_ID_INVALID")
+    print(json.dumps(apply(sys.argv[1], CONTROL, Mac(), *sys.argv[2:]),
+                     separators=(",", ":")), flush=True)
 
 
 if __name__ == "__main__":
