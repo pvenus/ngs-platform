@@ -187,10 +187,35 @@ class Apply(unittest.TestCase):
             "schemaVersion": "ops.ngs-mac-apply-error.v1", "failure": failure})
         self.assertEqual(self.host.read_plist(), self.host.prior)
 
-    def test_ports_busy_is_a_distinct_rollback_reason(self):
-        with patch.object(self.host, "listener", return_value={222}):
+    def test_delayed_release_waits_for_both_ports_before_switching(self):
+        old_pid = self.host.current
+        with patch.object(self.host, "listener", side_effect=[
+            {old_pid}, {old_pid}, set(), {old_pid}, set(), set(),
+        ]) as listener, patch.object(m.time, "monotonic", side_effect=[0, 0, 0.25]), \
+                patch.object(m.time, "sleep") as sleep:
+            sleep.side_effect = lambda _seconds: self.assertEqual(self.host.calls, ["stop"])
+            self.run_apply()
+        self.assertEqual([call.args[0] for call in listener.call_args_list], [5274, 5275] * 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.25, 0.25])
+        self.assertEqual(self.host.calls, ["stop", "replace", "start"])
+
+    def test_old_listener_still_bound_at_deadline_rolls_back_without_switching(self):
+        with patch.object(self.host, "listener", return_value={self.host.current}), \
+                patch.object(m.time, "monotonic", side_effect=[0, 9.9, 10]), \
+                patch.object(m.time, "sleep") as sleep:
             with self.assertRaises(m.ApplyFailed):
                 self.run_apply()
+        self.assertAlmostEqual(sleep.call_args.args[0], 0.1)
+        self.assertEqual(self.host.calls, ["stop", "start"])
+        self.assertEqual(self.host.read_plist(), self.host.prior)
+        self.assertEqual(self.status(), {"state": "rolled-back", "failure": {
+            "stage": "wait_ports", "code": "OLD_NATIVE_PORTS_BUSY"}})
+
+    def test_ports_busy_is_a_distinct_rollback_reason(self):
+        with patch.object(self.host, "listener", return_value={222}), patch.object(m.time, "sleep") as sleep:
+            with self.assertRaises(m.ApplyFailed):
+                self.run_apply()
+        sleep.assert_not_called()
         self.assertEqual(self.status(), {"state": "rolled-back", "failure": {
             "stage": "wait_ports", "code": "OLD_NATIVE_PORTS_BUSY"}})
 

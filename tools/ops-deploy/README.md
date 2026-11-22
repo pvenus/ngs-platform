@@ -30,7 +30,7 @@ This prototype intentionally refuses changes to native Miniflare startup, curren
 
 ## Outcomes
 
-The single global private lock serializes role changes. The runner first saves `prior.plist` exclusively (sensitive, never exposed), then bootouts the fixed role, atomically replaces the selector, bootstraps, and verifies both sockets belong to the selected exact release; positive authenticated browser/progress and read-only MCP route/queue health must pass. Only private `result.json` on verified deployment includes UTC `deployedAt` (the stdout shape is unchanged). Ordinary failure attempts verified rollback to those exact prior plist bytes. A hard kill/reboot can leave a durable prior with no final `result.json`; do not retry automatically or remove the marker. Report reconciliation needed and independently inspect selector and health. Never present an unverified rollback as success.
+The single global private lock serializes role changes. The runner first saves `prior.plist` exclusively (sensitive, never exposed), then bootouts the fixed role, waits up to 10 seconds for its two listeners to close, and atomically replaces the selector, bootstraps, and verifies both sockets belong to the selected exact release; positive authenticated browser/progress and read-only MCP route/queue health must pass. Only private `result.json` on verified deployment includes UTC `deployedAt` (the stdout shape is unchanged). Ordinary failure attempts verified rollback to those exact prior plist bytes. A hard kill/reboot can leave a durable prior with no final `result.json`; do not retry automatically or remove the marker. Report reconciliation needed and independently inspect selector and health. Never present an unverified rollback as success.
 
 
 The runner emits a single diagnostic JSON line on stderr:
@@ -96,3 +96,5 @@ Isolated assembly tests:
 A real offline Node/npm assembly can use a dedicated owner-only test cache
 warmed from previously vetted official npm cache data; it never needs to share
 production queue or Workerd data.
+
+A foreign listener never gets the shutdown grace period. The runner reports the existing port-busy diagnostic and does not stop unrelated processes.

@@ -27,6 +27,8 @@ jobs:
         run: npm ci --prefix ngs-local/local-miniflare --ignore-scripts --no-audit --no-fund
       - name: Validate Local and checked-in Space source contracts
         run: bash tools/release/validate-ngs-source.sh
+      - name: Test the fixed Mac deploy runner with an isolated fake host
+        run: python3 -B tools/ops-deploy/test_mac_apply.py
       - name: Prepare the source-only candidate
         run: python3 tools/release/prepare-ngs-release.py "$RUNNER_TEMP/ngs-candidate"
       - name: Publish immutable candidate for OPS review
