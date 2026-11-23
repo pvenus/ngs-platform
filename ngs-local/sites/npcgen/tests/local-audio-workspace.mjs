@@ -5,7 +5,7 @@ import {mkdirSync,mkdtempSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join} from 'node:path';
 import test from 'node:test';
-import {createAudioIntake,followAcceptedAudioResult,followDeletedAudioResults,makeAudioPayload,mountAudioWorkspace,readAudioSoundConcepts,showAudioResults,soundConceptOptions,validLocalAudioPayload}
+import {audioSeparationType,validAudioSeparationPayload,createAudioIntake,followAcceptedAudioResult,followDeletedAudioResults,makeAudioPayload,mountAudioWorkspace,readAudioSoundConcepts,showAudioResults,soundConceptOptions,validLocalAudioPayload}
  from '../build/local-audio-workspace.mjs';
 import {configuration,createLocalProjectPageServer} from '../build/local-project-page-server.mjs';
 
@@ -488,4 +488,76 @@ test('accepted BGM checks are bounded, canceled on navigation, and never sync an
  assert.equal(await followAcceptedAudioResult({id,signal:route.signal,display:()=>assert.fail(),request:()=>assert.fail(),
   post:()=>assert.fail(),wait:async()=>{route.abort();return true;}}),false);
  assert.equal(await followAcceptedAudioResult({id:'../outside',signal,wait:()=>assert.fail()}),false);
+});
+
+
+test('one per-track action reuses an uncertain queue ticket and excludes derived or invalid rows',async t=>{
+ const Element=installDOM(t),host=new Element('section'),signal=new AbortController().signal,calls=[],received=[];
+ const sourceId='request.official.'+'a'.repeat(64),wavHash='b'.repeat(64);
+ const row={title:'원곡',durationSeconds:30,url:'/api/audio-workspace?projectId=binari&id='+sourceId+'&sha256='+wavHash};
+ const rows=[row,{...row,title:'반주',separated:true,url:row.url.replace(sourceId,'request.official.'+'c'.repeat(64))},
+  {...row,title:'변조',url:row.url+'&extra=1'}];
+ showAudioResults(host,rows,signal,{submitSeparation:async command=>{
+  calls.push(command);
+  if(calls.length===1)throw Error('lost ACK');
+  return Response.json({queueId:'ngs.local.00000000-0000-4000-8000-000000000000',status:'queued'},{status:202});
+ },onSeparationAccepted:receipt=>received.push(receipt)});
+ const buttons=host.all('button').filter(b=>b.textContent==='반주 만들기');
+ assert.equal(buttons.length,1);
+ await buttons[0].events.click();
+ assert.equal(buttons[0].textContent,'같은 접수 다시 확인');
+ await buttons[0].events.click();
+ await buttons[0].events.click();
+ assert.deepEqual(calls[1],calls[0]);assert.equal(calls.length,2);
+ assert.equal(calls[0].requestType,audioSeparationType);
+ assert.deepEqual(calls[0].payload,{schemaVersion:'ngs.audio-separate.v1',projectId:'binari',
+  sourceOfficialRequestId:sourceId,sourceSha256:wavHash});
+ assert.equal(validAudioSeparationPayload({...calls[0].payload,prompt:'cannot override'}),false);
+ assert.equal(received.length,1);assert.equal(buttons[0].disabled,true);
+ assert.deepEqual(host.all('li').map(x=>x.all('button')[1].textContent),rows.map(x=>x.title));
+});
+
+test('Local separation gates authenticated exact original receipt and projects derived result without shifting existing storage',async t=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'ngs-audio-separate-fixture-')));
+ const queue=openLocalRequestQueue(join(root,'queue.sqlite'));
+ t.after(()=>{queue.close();rmSync(root,{recursive:true,force:true});});
+ const id='request.official.'+'9'.repeat(64),derived='request.official.'+'f'.repeat(64);
+ const hash=b=>createHash('sha256').update(b).digest('hex');
+ const data=Buffer.alloc(46);data.write('RIFF');data.write('WAVE',8);
+ const digest=hash(data);
+ const source={sourceOfficialRequestId:id,sourceSha256:digest};
+ for(const [current,isDerived] of [[id,false],[derived,true]]){
+  const loc=join(root,'binari','audio',current);mkdirSync(loc,{recursive:true,mode:0o700});
+  writeFileSync(join(loc,'audio.wav'),data,{mode:0o600});
+  const row={schemaVersion:'workflow.audio-result.v1',officialRequestId:current,projectId:'binari',kind:'bgm',
+   taskId:'workflow.task.'+hash(JSON.stringify([current,isDerived?'audio_separate':'audio_generate'])),
+   payloadSha256:'0'.repeat(64),conceptId:'sound',source:{conceptId:'sound',sectionSha256:'1'.repeat(64)},
+   title:isDerived?'원곡 (반주)':'원곡',generatedAt:isDerived?2:1,
+   audio:{path:'audio.wav',mimeType:'audio/wav',sha256:digest,bytes:data.length,channels:1,bitsPerSample:16,
+    sampleRate:8000,frames:1,durationSeconds:1/8000},...(isDerived?{separation:source}:{})};
+  writeFileSync(join(loc,'metadata.json'),JSON.stringify(row),{mode:0o600});
+ }
+ const argv={root,requestQueue:queue,audioWorkspaceEnabled:true};
+ const session=async enabled=>{
+  const origin=await listen(t,createLocalProjectPageServer({...argv,audioSeparationEnabled:enabled}));
+  const response=await fetch(origin+'/__npcgen_session'),value=await response.json();
+  const cookie=response.headers.get('set-cookie').split(';')[0];
+  const headers={cookie,origin,'content-type':'application/json','x-npcgen-csrf':value.csrfToken,'x-npcgen-frontend-context':value.contextId};
+  return {origin,cookie,value,
+   send:(change={},override={})=>fetch(origin+'/api/requests',{method:'POST',headers:{...headers,...override},
+    body:JSON.stringify({requestType:audioSeparationType,idempotencyKey:'separate-once',payload:{
+     schemaVersion:'ngs.audio-separate.v1',projectId:'binari',...source,...change}})})};
+ };
+ const off=await session(false);assert.equal(off.value.audioSeparationEnabled,undefined);assert.equal((await off.send()).status,404);
+ const on=await session(true);assert.equal(on.value.audioSeparationEnabled,true);
+ assert.equal((await on.send({},{cookie:''})).status,401);
+ assert.equal((await on.send({sourceSha256:'0'.repeat(64)})).status,404);
+ assert.equal((await on.send({sourceOfficialRequestId:derived})).status,404);
+ assert.equal((await on.send({prompt:'must be rejected'})).status,400);
+ assert.equal(queue.list().requests.length,0);
+ const first=await on.send();assert.equal(first.status,202);assert.deepEqual(await (await on.send()).json(),await first.json());
+ assert.equal(queue.list().requests.length,1);
+ const results=await (await fetch(on.origin+'/api/audio-workspace?projectId=binari',{headers:{cookie:on.cookie}})).json();
+ assert.deepEqual(results.results.map(({title,separated})=>[title,separated]),[['원곡',undefined],['원곡 (반주)',true]]);
+ assert.deepEqual(Buffer.from(await (await fetch(on.origin+results.results[1].url,{headers:{cookie:on.cookie}})).arrayBuffer()),data);
 });

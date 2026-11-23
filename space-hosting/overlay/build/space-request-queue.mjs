@@ -1,7 +1,7 @@
 /** Site-owned transit only. The Mac Request Service owns durable official state. */
 import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local-concept-category-contract.mjs';
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
-import {validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
+import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
 import {isSelectionSchema,validNpcMotionSelectionRequest,validNpcWorkflowIdentity,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 const table='ngs_space_request_queue_v1';
@@ -49,6 +49,7 @@ function commandOK(cmd){
  const p=cmd.payload;
  switch(cmd.requestType){
  case 'audio.generate':return validLocalAudioPayload(p);
+ case audioSeparationType:return validAudioSeparationPayload(p);
  case 'audio.delete':return exact(p,['schemaVersion','projectId','officialRequestId'])&&p.schemaVersion==='ngs.audio-delete.v1'&&
   typeof p.officialRequestId==='string'&&p.officialRequestId.length===81&&officialPattern.test(p.officialRequestId);
  case motionPresetConvertType:return validMotionPresetConvert(p);

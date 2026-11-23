@@ -1,6 +1,7 @@
 /** Explicit Site routes for one project. Native visitors and Mac relay have separate identities. */
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
 import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from '../ngs-local/sites/npcgen/build/replica-whole-file-wire.mjs';
+import {audioSeparationType,validAudioSeparationPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
 import {isNpcWorkflowReplaceSchema,validNpcWorkflowIdentity} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 export const machineTokenConfigured=validMachineToken;
 // Only call with the server-resolved participant, never browser-supplied roles.
@@ -131,7 +132,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,hasPublishedNpc}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,hasPublishedNpc,hasAudioSeparationSource}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -145,7 +146,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
    const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...tokens});
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));
@@ -159,6 +160,11 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   need(await sameToken(request.headers.get('X-NPCGen-Csrf'),tokens.csrfToken)&&
     request.headers.get('X-NPCGen-Frontend-Context')===tokens.contextId,403,'CSRF_INVALID');
   const {value}=await body(request,small);
+  if(value?.requestType===audioSeparationType){
+   need(replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function',404,'AUDIO_SEPARATION_UNAVAILABLE');
+   need(validAudioSeparationPayload(value.payload),400,'NGS_AUDIO_SEPARATE_PAYLOAD_INVALID');
+   need(await hasAudioSeparationSource(value.payload),404,'AUDIO_SEPARATION_SOURCE_NOT_FOUND');
+  }
   if(value?.requestType==='npc.workflow'&&isNpcWorkflowReplaceSchema(value.payload?.schemaVersion)){
    const {character,projectId,schemaVersion}=value.payload;
    need(projectId==='binari'&&validNpcWorkflowIdentity(character,schemaVersion),400,'ONE_STOP_REPLACE_IDENTITY_INVALID');

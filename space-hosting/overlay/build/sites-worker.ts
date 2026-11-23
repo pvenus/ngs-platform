@@ -4,6 +4,7 @@ import { replicaSyncProgressPath,readReplicaSyncProgress } from "../ngs-local/si
 import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catalog.mjs";
 import { appProject, siteAppMaster } from "../lib/app-master";
 import { masterPrincipal } from "../lib/master-concept-transport";
+import { objectAudioSeparationSource } from "../ngs-local/sites/npcgen/build/object-replica-view.mjs";
 import { spaceReplicaView } from "./space-replica-view.mjs";
 import { dispatchWorkspaceRead } from "../ngs-local/sites/npcgen/build/workspace-read-registry.mjs";
 import { openSpaceWorkspaceProject } from "./space-workspace-read-storage.mjs";
@@ -74,6 +75,8 @@ export default {
       return result.npcs.some((npc:{id:string})=>npc.id===npcId);
     } : undefined;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
+      hasAudioSeparationSource:replicaReads&&env.NPCGEN_AUDIO_SEPARATION_ENABLED==="1"
+        ?payload=>objectAudioSeparationSource(fileReplica!,payload):undefined,
       // A trusted roster entry or the single configured exception is required in
       // addition to Sites authentication/admission and the active Binari grant.
       authorizeWrite:user=>authorizeSpaceQueueWrite(user,masterPrincipal,env.NPCGEN_SPACE_QUEUE_EXTRA_EMAIL_SHA256),

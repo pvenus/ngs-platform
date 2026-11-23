@@ -7,5 +7,6 @@ declare namespace Cloudflare {
   /** Explicit read-projection cutover; machine tools alone do not enable it. */
   NPCGEN_SPACE_REPLICA_READ_ENABLED?: string;
   NPCGEN_SPACE_MAINTENANCE?: string;
+  NPCGEN_AUDIO_SEPARATION_ENABLED?: string;
  }
 }

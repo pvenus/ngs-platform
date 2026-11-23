@@ -309,3 +309,29 @@ test('Space only queues a replacement for the exact published legacy ID and reta
  assert.equal(legacyReceipt.status,202);
  assert.deepEqual((await new SpaceRequestQueue(db).get({queueId:(await legacyReceipt.json()).queueId})).payload,legacyRegen);
 });
+
+
+test('Space separation is opt-in and binds one exact authorized original source through the existing queue',async t=>{
+ const db=store(t),seen=[];
+ const sourceOfficialRequestId='request.official.'+'a'.repeat(64),sourceSha256='b'.repeat(64);
+ const payload={schemaVersion:'ngs.audio-separate.v1',projectId:'binari',sourceOfficialRequestId,sourceSha256};
+ const options={db,secret:token,authorize:async()=>true,authorizeWrite:async u=>u.userId==='editor',replicaReads:true,workspaceReady:true};
+ const session=async (user,enabled)=>{
+  const auth=headers(user),env={...options,hasAudioSeparationSource:enabled?async p=>{seen.push(p);return p.sourceSha256===sourceSha256;}:undefined};
+  const send=(path,method,headers,body)=>browserQueueResponse(request(path,method,headers,body),env);
+  const capability=await (await send('/__npcgen_session','GET',auth)).json();
+  const post=p=>send('/api/requests','POST',{...auth,Origin:origin,'X-NPCGen-Csrf':capability.csrfToken,
+   'X-NPCGen-Frontend-Context':capability.contextId},{requestType:'audio.separate',idempotencyKey:'one',payload:p});
+  return {capability,post};
+ };
+ const readonly=await session('viewer',true);assert.equal(readonly.capability.audioSeparationEnabled,undefined);
+ assert.equal((await readonly.post(payload)).status,403);
+ const off=await session('editor',false);assert.equal(off.capability.audioSeparationEnabled,undefined);
+ assert.equal((await off.post(payload)).status,404);
+ const on=await session('editor',true);assert.equal(on.capability.audioSeparationEnabled,true);
+ assert.equal((await on.post({...payload,prompt:'cannot override'})).status,400);
+ assert.equal((await on.post({...payload,sourceSha256:'c'.repeat(64)})).status,404);
+ const accepted=await on.post(payload);assert.equal(accepted.status,202);
+ const {queueId}=await accepted.json();assert.deepEqual((await new SpaceRequestQueue(db).get({queueId})).payload,payload);
+ assert.equal(seen.length,2);
+});

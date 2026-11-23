@@ -13,7 +13,7 @@ let run;
 const queuePanel=document.querySelector('#local-request-queue');
 const queueLabel={
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
- 'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제',
+ 'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제','audio.separate':'BGM 반주 만들기',
  [motionPresetConvertType]:'2D 마네킹 프리셋 변환',
 };
 const queueTime=new Intl.DateTimeFormat('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
@@ -209,7 +209,9 @@ const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=session=>session?.state==='authenticated'&&session.backend==='space'&&
  (exact(session,'backend,readOnly,state')&&session.readOnly===true||
-  (exact(session,queueSpaceSession)||exact(session,queueSpaceSession+',workspaceReady')&&session.workspaceReady===true&&session.readOnly===false)&&
+  (exact(session,queueSpaceSession)||
+   (exact(session,queueSpaceSession+',workspaceReady')||exact(session,'audioSeparationEnabled,'+queueSpaceSession+',workspaceReady')&&
+    session.audioSeparationEnabled===true&&session.requestWritable===true)&&session.workspaceReady===true&&session.readOnly===false)&&
   session.queueEnabled===true&&typeof session.readOnly==='boolean'&&typeof session.requestWritable==='boolean'&&
   /^space\.[a-f0-9]{64}$/.test(session.contextId)&&/^[a-f0-9]{64}$/.test(session.csrfToken));
 const spaceWorkspaceReady=session=>spaceSession(session)&&session.workspaceReady===true;
@@ -653,7 +655,10 @@ async function loadWorkspace(search){
   if(tab==='audio'){
    let visible=null,busy=false;
    const display=rows=>{visible=rows;showAudioResults(library,rows,signal,submit?{
-    submitDelete:submit,onDeleteAccepted:ids=>{void followDeletedAudioResults({ids,post,request,signal,display});}}:undefined);};
+    submitDelete:submit,onDeleteAccepted:ids=>{void followDeletedAudioResults({ids,post,request,signal,display});},
+    ...(session.audioSeparationEnabled===true?{submitSeparation:submit,onSeparationAccepted:receipt=>{
+     if(receipt.officialRequestId)void followAcceptedAudioResult({id:receipt.officialRequestId,post,request,signal,display,visible:()=>visible});
+    }}:{})}:undefined);};
    const library=mountAudioWorkspace({items,detail,signal,allowFullLength:!hosted,...(submit?{submit,
     loadConcepts:legacySpace?async()=>(await request('/api/space/audio-concepts')).concepts:
      ()=>readAudioSoundConcepts({post,request,signal}),
@@ -667,7 +672,7 @@ async function loadWorkspace(search){
     finally{busy=false;}
    }
    await readAudio();
-   if(hosted&&!signal.aborted){
+   if((hosted||session.audioSeparationEnabled===true)&&!signal.aborted){
     const timer=setInterval(readAudio,60_000);
     signal.addEventListener('abort',()=>clearInterval(timer),{once:true});
    }

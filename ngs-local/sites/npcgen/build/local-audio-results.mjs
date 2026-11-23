@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {lstatSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {localWorkspaceReplica as fs} from './local-project-workspace.mjs';
+import {audioResultTaskKey} from './local-audio-workspace.mjs';
 
 const official=/^request\.official\.[a-f0-9]{64}$/;
 const sha=/^[a-f0-9]{64}$/;
@@ -16,9 +17,9 @@ const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 
 function record(root,id){
  const directory='audio/'+id,meta=fs.readObject(root,directory+'/metadata.json');
- const a=meta?.audio;
+ const a=meta?.audio,task=meta&&audioResultTaskKey(meta,id);
  if(meta?.schemaVersion!=='workflow.audio-result.v1'||meta.officialRequestId!==id||meta.projectId!=='binari'||meta.kind!=='bgm'||
-    meta.taskId!=='workflow.task.'+hash(JSON.stringify([id,'audio_generate']))||
+    !task||meta.taskId!=='workflow.task.'+hash(JSON.stringify([id,task]))||
     typeof meta.payloadSha256!=='string'||!sha.test(meta.payloadSha256)||typeof meta.conceptId!=='string'||!sourceId.test(meta.conceptId)||
     meta.source?.conceptId!==meta.conceptId||typeof meta.source.sectionSha256!=='string'||!sha.test(meta.source.sectionSha256)||
     typeof meta.title!=='string'||!meta.title.trim()||[...meta.title].length>120||
@@ -32,11 +33,16 @@ function record(root,id){
  let st;
  try{st=lstatSync(join(physical,'audio.wav'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
  if(!st.isFile()||st.uid!==process.getuid()||st.mode&0o077||st.nlink!==1||st.size!==a.bytes)return null;
- return {meta,a,relative};
+ return {meta,a,relative,separated:task==='audio_separate'};
 }
-function userResult({meta,a}){
+export function localAudioSeparationSource(root,{sourceOfficialRequestId,sourceSha256}){
+ const project=fs.safeDirectory(root,'binari'),row=project&&record(project,sourceOfficialRequestId);
+ return Boolean(row&&!row.separated&&row.a.sha256===sourceSha256);
+}
+function userResult({meta,a,separated}){
  const bpm=meta.bpmBasis==='model'&&Number.isInteger(meta.bpm)&&meta.bpm>=30&&meta.bpm<=300?meta.bpm:null;
  return {title:meta.title,bpm,bpmBasis:bpm===null?'unavailable':'model',durationSeconds:a.durationSeconds,
+  ...(separated?{separated:true}:{}),
   url:'/api/audio-workspace?'+new URLSearchParams({projectId:'binari',id:meta.officialRequestId,sha256:a.sha256})};
 }
 

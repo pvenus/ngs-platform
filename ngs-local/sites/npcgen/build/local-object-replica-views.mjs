@@ -1,5 +1,5 @@
 /** Mac session route adapters for the same R2/S3 object view projections. */
-import {audioFile,playlist,projectRow,projectIcon} from './object-replica-view.mjs';
+import {audioFile,objectAudioSeparationSource,playlist,projectRow,projectIcon} from './object-replica-view.mjs';
 import {openObjectWorkspaceProject} from './object-workspace-read-storage.mjs';
 
 const binari='binari';
@@ -27,6 +27,7 @@ export function localObjectReplicaViews(replica){
  };
  return {
   catalog,
+  audioSeparationSource:payload=>objectAudioSeparationSource(replica,payload),
   openProject:projectId=>openObjectWorkspaceProject(replica,projectId),
   async audio({query,range,authorize}){
    const id=query.get('id'),projectId=query.get('projectId'),params=[...query.keys()].sort().join(',');

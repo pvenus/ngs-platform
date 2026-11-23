@@ -10,7 +10,7 @@ import {createSpaceMachineMcp,spaceMachineConfiguration} from './space-machine-m
 const rsTool='request_submit',spaceRsTool='request_submit_space';
 const projectId='binari',limit=16;
 const storedStatuses=new Set(['registered','planned','completed','failed','cancelled']);
-const kinds=new Set(['npc.workflow','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','motion-preset.convert-2d']);
+const kinds=new Set(['npc.workflow','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const queueId=(v,source)=>typeof v==='string'&&v.length===46&&v.startsWith('ngs.'+source+'.')&&uuid.test(v.slice(10));

@@ -19,7 +19,9 @@ const mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityD
    .then(response=>response??new Response(null,{status:404}));
  }};
  `},mod('build/space-file-replica.mjs','../build/space-file-replica.mjs'),mod('build/space-replica-view.mjs','../build/space-replica-view.mjs'),
- mod(shared+'object-replica-view.mjs',sharedRoot+shared+'object-replica-view.mjs'),mod(shared+'object-replica.mjs',sharedRoot+shared+'object-replica.mjs'),mod(shared+'replica-whole-file-wire.mjs',sharedRoot+shared+'replica-whole-file-wire.mjs')],
+ mod(shared+'object-replica-view.mjs',sharedRoot+shared+'object-replica-view.mjs'),
+ mod(shared+'local-audio-workspace.mjs',sharedRoot+shared+'local-audio-workspace.mjs'),
+ mod(shared+'local-request-queue-browser.mjs',sharedRoot+shared+'local-request-queue-browser.mjs'),mod(shared+'object-replica.mjs',sharedRoot+shared+'object-replica.mjs'),mod(shared+'replica-whole-file-wire.mjs',sharedRoot+shared+'replica-whole-file-wire.mjs')],
 });
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const auth={'oai-authenticated-user-id':'owner-fixture','oai-authenticated-user-email':'owner@example.invalid'};
@@ -50,6 +52,13 @@ try{
   await publish('audio/'+id+'/metadata.json',meta(id,when,t));
   if(id!==missing)await publish('audio/'+id+'/audio.wav',data);
  }
+ const derived='request.official.'+'f'.repeat(64),invalid='request.official.'+'d'.repeat(64);
+ for(const id of [derived,invalid]){
+  await publish('audio/'+id+'/metadata.json',{...meta(id,300,'Fixture BGM (반주)'),
+   taskId:'workflow.task.'+hash(JSON.stringify([id,id===derived?'audio_separate':'audio_generate'])),
+   separation:{sourceOfficialRequestId:one,sourceSha256:sha256},bpm:null,bpmBasis:'unavailable'});
+  await publish('audio/'+id+'/audio.wav',data);
+ }
  await bucket.put('legacy/private.json','not a replica');
  const markdown=Buffer.from('# Sound fixture');
  await publish('concept/sections/category.audio/content.md',markdown);
@@ -77,7 +86,9 @@ try{
   {id:'category.audio',label:'Sound fixture'},{id:'category.legacy',label:'Legacy sound fixture'},
  ]});
  const results=await (await send(path)).json();
- assert.deepEqual(results.results.map(r=>r.title),['Earlier fixture',title]);
+ assert.deepEqual(results.results.map(r=>r.title),['Earlier fixture',title,'Fixture BGM (반주)']);
+ assert.equal(results.results[2].separated,true);
+ assert.deepEqual(Buffer.from(await (await send(results.results[2].url)).arrayBuffer()),data);
  assert.equal(results.results[1].bpm,83);assert.equal(results.results[1].durationSeconds,0.1);
  const url=results.results[1].url;
  const partial=await send(url,{...auth,Range:'bytes=10-13'});

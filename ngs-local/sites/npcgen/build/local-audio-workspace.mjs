@@ -1,10 +1,30 @@
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const audioRequestType='audio.generate',schemaVersion='ngs.audio-generate.v1';
+export const audioSeparationType='audio.separate',audioSeparationSchema='ngs.audio-separate.v1';
+const officialAudioId=/^request\.official\.[a-f0-9]{64}$/u;
+const audioSha256=/^[a-f0-9]{64}$/u;
+export function validAudioSeparationPayload(value){
+ return value&&typeof value==='object'&&!Array.isArray(value)&&
+  Object.keys(value).sort().join(',')==='projectId,schemaVersion,sourceOfficialRequestId,sourceSha256'&&
+  value.schemaVersion===audioSeparationSchema&&value.projectId==='binari'&&
+  typeof value.sourceOfficialRequestId==='string'&&value.sourceOfficialRequestId.length===81&&officialAudioId.test(value.sourceOfficialRequestId)&&
+  typeof value.sourceSha256==='string'&&value.sourceSha256.length===64&&audioSha256.test(value.sourceSha256);
+}
+export function audioResultTaskKey(meta,id){
+ if(!Object.hasOwn(meta,'separation'))return 'audio_generate';
+ const source=meta.separation;
+ if(!source||typeof source!=='object'||Array.isArray(source)||
+   Object.keys(source).sort().join(',')!=='sourceOfficialRequestId,sourceSha256'||
+   source.sourceOfficialRequestId===id||
+   !validAudioSeparationPayload({schemaVersion:audioSeparationSchema,projectId:'binari',...source}))return null;
+ return 'audio_separate';
+}
 const kinds=[['bgm','BGM'],['effect','효과음'],['tts','TTS']];
 const id=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const receiptId=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const definite=new Set(['REQUEST_SUBMIT_INVALID','NGS_AUDIO_GENERATE_PAYLOAD_INVALID',
- 'NGS_AUDIO_DELETE_PAYLOAD_INVALID','AUDIO_WORKSPACE_UNAVAILABLE','OFFICIAL_REQUEST_IDEMPOTENCY_CONFLICT','PROJECT_OR_RESOURCE_DENIED',
+ 'NGS_AUDIO_DELETE_PAYLOAD_INVALID','NGS_AUDIO_SEPARATE_PAYLOAD_INVALID','AUDIO_SEPARATION_UNAVAILABLE',
+ 'AUDIO_SEPARATION_SOURCE_NOT_FOUND','SPACE_QUEUE_WRITE_NOT_GRANTED','AUDIO_WORKSPACE_UNAVAILABLE','OFFICIAL_REQUEST_IDEMPOTENCY_CONFLICT','PROJECT_OR_RESOURCE_DENIED',
  'LOCAL_SIGN_IN_REQUIRED','LOCAL_SESSION_EXPIRED_OR_REVOKED','FRONTEND_SESSION_CONTEXT_CHANGED',
  'CSRF_INVALID','ORIGIN_OR_CSRF_REJECTED']);
 const limits=Object.freeze({title:120,brief:4000,conceptText:4000,lyrics:4000});
@@ -107,7 +127,7 @@ function field(label,tag,options){
 const audioIndex='/api/audio-workspace?projectId=binari';
 const formatter=new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2});
 const playlists=new WeakMap(),audioPageSize=30;
-function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}){
+function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{},submitSeparation,onSeparationAccepted=()=>{}}={}){
  const list=node('ol','audio-results-list'),empty=node('p','meta','아직 게시된 BGM이 없습니다.');
  const actions=node('div','audio-playlist-actions'),playSelected=node('button','concept-category-trigger','선택 재생');
  const selectAll=node('button','concept-category-trigger','전체 곡 선택'),selectionCount=node('span','meta');
@@ -126,6 +146,7 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
  container.replaceChildren(actions,head,list,nav,empty,now);
  const checked=new Set();
  let selected=null,allRows=new Map(),activeButtons=new Map(),page=0,queued=[],playAttempt=0,deleting=false;
+ const separations=new Map();
  const deletions=new Map(),deleteButton=node('button','concept-category-trigger audio-delete','선택 삭제 요청'),
   deleteSummary=node('p','meta'),dialog=node('dialog','npc-one-stop-dialog audio-dialog'),
   heading=node('h2','','선택한 BGM 삭제'),description=node('p'),targets=node('ul'),
@@ -216,7 +237,7 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
   }
  }
  function paint(){
-  for(const [url,{button,item,title,audioId,deleteStatus,check}] of activeButtons){
+  for(const [url,{button,item,title,audioId,deleteStatus,separate,separateStatus,check}] of activeButtons){
    const current=selected===url,playing=current&&!player.paused&&!player.ended;
    item.classList.toggle('audio-result-current',current);
    button.textContent=playing?'❚❚':'▶';
@@ -226,6 +247,14 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
    if(deleteStatus){
     deleteStatus.textContent={registered:'삭제 요청 저장됨',rejected:'삭제 접수 실패',uncertain:'접수 확인 필요'}[deletion]??'';
     deleteStatus.hidden=!deleteStatus.textContent;
+   }
+   if(separate){
+    const state=separations.get(url)?.state;
+    separate.disabled=state==='pending'||state==='queued';
+    separate.textContent=state==='uncertain'?'같은 접수 다시 확인':'반주 만들기';
+    separateStatus.textContent={pending:'반주 요청 접수 중…',queued:'반주 요청 저장됨',rejected:'반주 요청을 접수하지 못했습니다.',
+     uncertain:'접수 확인 필요'}[state]??'';
+    separateStatus.hidden=!separateStatus.textContent;
    }
    check.checked=checked.has(url);
   }
@@ -271,10 +300,34 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{}}={}
    const duration=node('span','audio-duration',formatter.format(row.durationSeconds)+'초');
    duration.setAttribute('aria-label','총길이 '+duration.textContent);
    const deleteStatus=submitDelete?node('span','audio-delete-status'):null;
+   const source=submitSeparation&&row.separated!==true?audioSeparationSource(row):null;
+   const separate=source?node('button','concept-category-trigger audio-separate','반주 만들기'):null;
+   const separateStatus=separate?node('span','audio-delete-status'):null;
+   if(separate){
+    separate.type='button';separate.setAttribute('aria-label',row.title+' 반주 만들기');
+    separateStatus.setAttribute('role','status');separateStatus.hidden=true;
+    separate.addEventListener('click',async()=>{
+     if(signal?.aborted||!allRows.has(row.url))return;
+     let op=separations.get(row.url);
+     if(op?.state==='pending'||op?.state==='queued')return;
+     if(!op){op={intake:createAudioIntake(submitSeparation,{requestType:audioSeparationType})};separations.set(row.url,op);}
+     op.state='pending';paint();
+     let receipt;
+     try {receipt=await op.intake.send(()=>source);op.state='queued';}
+     catch(error){op.state=error.definitive?'rejected':'uncertain';}
+     if(signal?.aborted)return;
+     paint();
+     if(receipt)onSeparationAccepted(receipt);
+    });
+   }
    let song=title;
-   if(deleteStatus){song=node('span','audio-track-song');song.append(title,deleteStatus);}
+   if(deleteStatus||separate){
+    song=node('span','audio-track-song');song.append(title);
+    if(deleteStatus)song.append(deleteStatus);
+    if(separate)song.append(separate,separateStatus);
+   }
    item.append(check,button,song,bpm,duration);
-   nextButtons.set(row.url,{button,item,title:row.title,row,audioId,deleteStatus,check});entries.push(item);
+   nextButtons.set(row.url,{button,item,title:row.title,row,audioId,deleteStatus,separate,separateStatus,check});entries.push(item);
   }
   activeButtons=nextButtons;
   list.replaceChildren(...entries);
@@ -322,7 +375,6 @@ export async function refreshAudioResults({post,request,signal,display}){
 }
 
 const refreshDelay=60_000,maxAcceptedChecks=10;
-const officialAudioId=/^request\.official\.[a-f0-9]{64}$/;
 function untilNextAudioCheck(signal,ms){
  if(signal.aborted)return Promise.resolve(false);
  return new Promise(resolve=>{
@@ -333,11 +385,13 @@ function untilNextAudioCheck(signal,ms){
   signal.addEventListener('abort',aborted,{once:true});
  });
 }
-function publishedAudioId(row){
+function audioSeparationSource(row){
  if(typeof row?.url!=='string'||!row.url.startsWith(audioIndex+'&id='))return null;
- const parts=row.url.slice((audioIndex+'&id=').length).split('&sha256=');
- return parts.length===2&&officialAudioId.test(parts[0])&&/^[a-f0-9]{64}$/.test(parts[1])?parts[0]:null;
+ const [sourceOfficialRequestId,sourceSha256,...extra]=row.url.slice((audioIndex+'&id=').length).split('&sha256=');
+ const payload={schemaVersion:audioSeparationSchema,projectId:'binari',sourceOfficialRequestId,sourceSha256};
+ return !extra.length&&validAudioSeparationPayload(payload)?payload:null;
 }
+const publishedAudioId=row=>audioSeparationSource(row)?.sourceOfficialRequestId??null;
 function acceptedAudioPresent(rows,id){return Array.isArray(rows)&&rows.some(row=>publishedAudioId(row)===id);}
 export async function followDeletedAudioResults({ids,post,request,signal,display,wait=untilNextAudioCheck}){
  const pending=new Set(ids.filter(id=>typeof id==='string'&&officialAudioId.test(id)));

@@ -20,8 +20,8 @@ import {parseRequestSubmission} from './local-request-submission.mjs';
 import {openLocalRequestQueue} from './local-request-queue.mjs';
 import {conceptCategoryRequestType,validConceptCategoryRequest} from './local-concept-category-contract.mjs';
 import {npcPlanningAddType,npcPlanningRequestType,validNpcPlanningAdd,validNpcPlanningUpdate} from './local-npc-planning-ui.mjs';
-import {audioResponseRange,localAudioResults} from './local-audio-results.mjs';
-import {validLocalAudioPayload} from './local-audio-workspace.mjs';
+import {audioResponseRange,localAudioResults,localAudioSeparationSource} from './local-audio-results.mjs';
+import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from './local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from './motion-preset-convert-2d.mjs';
 import {isSelectionSchema,isNpcWorkflowReplaceSchema,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate} from './npc-motion-selection.mjs';
 
@@ -89,10 +89,10 @@ export function configuration(env=process.env){
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
-  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
+  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,brandMarkPath}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,audioSeparationEnabled=false,brandMarkPath}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -158,6 +158,13 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      if(audioWorkspaceEnabled!==true)throw failure('AUDIO_WORKSPACE_UNAVAILABLE',404);
      if(!validLocalAudioPayload(command.payload))throw failure('NGS_AUDIO_GENERATE_PAYLOAD_INVALID',400);
     }
+    if(command.requestType===audioSeparationType){
+     if(audioWorkspaceEnabled!==true||audioSeparationEnabled!==true)throw failure('AUDIO_SEPARATION_UNAVAILABLE',404);
+     if(!validAudioSeparationPayload(command.payload))throw failure('NGS_AUDIO_SEPARATE_PAYLOAD_INVALID',400);
+     const found=object?await object.audioSeparationSource(command.payload):localAudioSeparationSource(root,command.payload);
+     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+     if(!found)throw failure('AUDIO_SEPARATION_SOURCE_NOT_FOUND',404);
+    }
     if(command.requestType==='audio.delete'){
      if(audioWorkspaceEnabled!==true)throw failure('AUDIO_WORKSPACE_UNAVAILABLE',404);
      const target=command.payload;
@@ -219,7 +226,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const session=auth.bootstrap(req);
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
-    return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken});
+    return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
+     ...(queue&&audioWorkspaceEnabled===true&&audioSeparationEnabled===true?{audioSeparationEnabled:true}:{})});
    }
    if(url.pathname===replicaSyncProgressPath){
     const session=auth.read(req);

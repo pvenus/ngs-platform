@@ -1,4 +1,5 @@
 /** Verified-object projections reused by Mac S3 and Space R2. Callers enforce their own session policy. */
+import {audioResultTaskKey} from './local-audio-workspace.mjs';
 const projectId='binari',icon='/api/project-folders/icon',audio='/api/audio-workspace';
 const limit=24*1024*1024,metadataLimit=64*1024,iconLimit=2*1024*1024;
 const official=/^request\.official\.[a-f0-9]{64}$/u,sha=/^[a-f0-9]{64}$/u,sourceId=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -56,9 +57,9 @@ export async function projectIcon(request,replica,q){
 }
 async function audioRecord(replica,id,wavSha){
  const folder='audio/'+id,wav=folder+'/audio.wav';
- const meta=await recordObject(replica,folder+'/metadata.json'),a=meta?.audio;
+ const meta=await recordObject(replica,folder+'/metadata.json'),a=meta?.audio,task=meta&&audioResultTaskKey(meta,id);
  if(meta?.schemaVersion!=='workflow.audio-result.v1'||meta.officialRequestId!==id||meta.projectId!==projectId||meta.kind!=='bgm'||
-    typeof meta.taskId!=='string'||meta.taskId!=='workflow.task.'+await hash(encoder.encode(JSON.stringify([id,'audio_generate'])))||
+    !task||meta.taskId!=='workflow.task.'+await hash(encoder.encode(JSON.stringify([id,task])))||
     !digest(meta.payloadSha256)||typeof meta.conceptId!=='string'||!sourceId.test(meta.conceptId)||
     meta.source?.conceptId!==meta.conceptId||!digest(meta.source.sectionSha256)||
     typeof meta.title!=='string'||!meta.title.isWellFormed()||!meta.title.trim()||[...meta.title].length>120||
@@ -66,7 +67,11 @@ async function audioRecord(replica,id,wavSha){
     ![1,2].includes(a.channels)||a.bitsPerSample!==16||!integers(a.sampleRate,8000,96000)||
     !integers(a.frames,1,limit)||a.bytes!==44+a.frames*a.channels*2||a.durationSeconds!==a.frames/a.sampleRate||
     (wavSha!==undefined&&a.sha256!==wavSha))return null;
- return {meta,a,wav};
+ return {meta,a,wav,separated:task==='audio_separate'};
+}
+export async function objectAudioSeparationSource(replica,{sourceOfficialRequestId,sourceSha256}){
+ const row=await audioRecord(replica,sourceOfficialRequestId,sourceSha256);
+ return Boolean(row&&!row.separated&&proof(await replica.head(row.wav),sourceSha256,row.a.bytes));
 }
 export async function playlist(replica){
  const inventory=await replica.list();
@@ -87,9 +92,10 @@ export async function playlist(replica){
  }
  const when=r=>integers(r.meta.generatedAt,1,Number.MAX_SAFE_INTEGER)?r.meta.generatedAt:0;
  rows.sort((a,b)=>when(a)-when(b)||a.meta.officialRequestId.localeCompare(b.meta.officialRequestId));
- return {projectId,results:rows.map(({meta,a})=>{
+ return {projectId,results:rows.map(({meta,a,separated})=>{
   const bpm=meta.bpmBasis==='model'&&integers(meta.bpm,30,300)?meta.bpm:null;
   return {title:meta.title,bpm,bpmBasis:bpm===null?'unavailable':'model',durationSeconds:a.durationSeconds,
+   ...(separated?{separated:true}:{}),
    url:audio+'?'+new URLSearchParams({projectId,id:meta.officialRequestId,sha256:a.sha256})};
  })};
 }
