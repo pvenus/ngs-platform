@@ -501,12 +501,12 @@ test('one per-track action reuses an uncertain queue ticket and excludes derived
  const row={title:'원곡',durationSeconds:30,url:'/api/audio-workspace?projectId=binari&id='+sourceId+'&sha256='+wavHash};
  const rows=[row,{...row,title:'반주',separated:true,url:row.url.replace(sourceId,'request.official.'+'c'.repeat(64))},
   {...row,title:'변조',url:row.url+'&extra=1'}];
- showAudioResults(host,rows,signal,{submitSeparation:async command=>{
+ showAudioResults(host,page(rows),signal,{submitSeparation:async command=>{
   calls.push(command);
   if(calls.length===1)throw Error('lost ACK');
   return Response.json({queueId:'ngs.local.00000000-0000-4000-8000-000000000000',status:'queued'},{status:202});
  },onSeparationAccepted:receipt=>received.push(receipt)});
- const buttons=host.all('button').filter(b=>b.textContent==='반주 만들기');
+ const buttons=host.all('button').filter(b=>b.textContent==='분리 요청');
  assert.equal(buttons.length,1);
  await buttons[0].events.click();
  assert.equal(buttons[0].textContent,'같은 접수 다시 확인');

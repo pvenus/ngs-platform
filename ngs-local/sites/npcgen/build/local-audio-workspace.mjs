@@ -282,7 +282,7 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
    if(separate){
     const state=separations.get(url)?.state;
     separate.disabled=state==='pending'||state==='queued';
-    separate.textContent=state==='uncertain'?'같은 접수 다시 확인':'반주 만들기';
+    separate.textContent=state==='uncertain'?'같은 접수 다시 확인':'분리 요청';
     separateStatus.textContent={pending:'반주 요청 접수 중…',queued:'반주 요청 저장됨',rejected:'반주 요청을 접수하지 못했습니다.',
      uncertain:'접수 확인 필요'}[state]??'';
     separateStatus.hidden=!separateStatus.textContent;
@@ -331,10 +331,10 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
    duration.setAttribute('aria-label','총길이 '+duration.textContent);
    const deleteStatus=submitDelete?node('span','audio-delete-status'):null;
    const source=submitSeparation&&row.separated!==true?audioSeparationSource(row):null;
-   const separate=source?node('button','concept-category-trigger audio-separate','반주 만들기'):null;
+   const separate=source?node('button','concept-category-trigger audio-separate','분리 요청'):null;
    const separateStatus=separate?node('span','audio-delete-status'):null;
    if(separate){
-    separate.type='button';separate.setAttribute('aria-label',row.title+' 반주 만들기');
+    separate.type='button';separate.setAttribute('aria-label',row.title+' 분리 요청');
     separateStatus.setAttribute('role','status');separateStatus.hidden=true;
     separate.addEventListener('click',async()=>{
      if(signal?.aborted||!allRows.has(row.url))return;
