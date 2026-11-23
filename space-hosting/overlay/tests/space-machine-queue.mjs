@@ -298,8 +298,14 @@ test('Space only queues a replacement for the exact published legacy ID and reta
   character:{...legacy.character,npcId:'character.yeonwoo',slug:'yeonwoo',name:'연우'}};
  assert.equal((await submit('legacy-wire',old)).status,202);
  assert.deepEqual(seen,[['a','character.missing'],['a','character.seojin'],['a','character.seojin'],['a','character.yeonwoo']]);
- const regen={schemaVersion:'ngs.npc-animation.regenerate.v1',projectId:'binari',npcId:'character.seojin',motionSelection};
+ const regen={schemaVersion:'ngs.npc-animation.regenerate.v2',projectId:'binari',npcId:'character.seojin',
+  motionSelection:[...motionSelection,{presetId:'sword-attack-flat',posePreset:'combat',assetSetSha256:'b'.repeat(64)}]};
  const receipt=await browser('/api/requests','POST',auth,{requestType:'npc.animation.regenerate',idempotencyKey:'regen-many',payload:regen});
  assert.equal(receipt.status,202);
  assert.deepEqual((await new SpaceRequestQueue(db).get({queueId:(await receipt.json()).queueId})).payload,regen);
+ const legacyRegen={...regen,schemaVersion:'ngs.npc-animation.regenerate.v1'};
+ const legacyReceipt=await browser('/api/requests','POST',auth,{requestType:'npc.animation.regenerate',
+  idempotencyKey:'regen-legacy',payload:legacyRegen});
+ assert.equal(legacyReceipt.status,202);
+ assert.deepEqual((await new SpaceRequestQueue(db).get({queueId:(await legacyReceipt.json()).queueId})).payload,legacyRegen);
 });

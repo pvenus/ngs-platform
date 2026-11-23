@@ -190,7 +190,13 @@ test('Local browser queue validates selected publication hashes without reading 
  assert.equal((await sendRegen('no-npc',{...regen,npcId:'npc.nonexistent'})).status,404);
  assert.equal((await sendRegen('stale-npc-motion',{...regen,motionSelection:staleMotionPins(regen)})).status,409);
  const accepted=await sendRegen('npc-motion-only',regen);assert.equal(accepted.status,202,JSON.stringify(await accepted.json()));
+ assert.equal(regen.schemaVersion,'ngs.npc-animation.regenerate.v2');
  assert.deepEqual(queue.list().requests.find(row=>row.requestType===animationRegenerateType).payload,regen);
+ const legacyRegen={...regen,schemaVersion:'ngs.npc-animation.regenerate.v1'};
+ assert.equal((await sendRegen('legacy-npc-motion-only',legacyRegen)).status,202);
+ assert.deepEqual(queue.list().requests.filter(row=>row.requestType===animationRegenerateType).at(-1).payload,legacyRegen);
+ const wrongPose={...regen,motionSelection:regen.motionSelection.map(row=>row.posePreset==='combat'?{...row,posePreset:'idle'}:row)};
+ assert.equal((await sendRegen('wrong-preset-pose',wrongPose)).status,409);
 
 });
 
@@ -220,7 +226,7 @@ test('animation tab picks exact registered variants and queues only those for th
  all(owner,'button')[0].events.click();await Promise.resolve();await Promise.resolve();
  const dialog=all(owner,'dialog')[0],form=all(dialog,'form')[0];
  const send=all(form,'button')[0];assert.ok(send.disabled);
- const chosen=['run-flat','run-flat-2d',...extra.map(row=>row.presetId)];
+ const chosen=['run-flat','run-flat-2d',attack.presetId,...extra.map(row=>row.presetId)];
  for(const id of chosen){
   const item=all(form,'label').find(el=>el.children[1].textContent.endsWith(' · '+id));
   item.children[0].checked=true;
@@ -230,6 +236,8 @@ test('animation tab picks exact registered variants and queues only those for th
  assert.equal(seen.length,1);assert.equal(seen[0].requestType,animationRegenerateType);
  const pick=catalog.filter(row=>chosen.includes(row.presetId)).map(motionSelectionOf);
  assert.deepEqual(seen[0].payload,motionSelectionPayload(pick));
+ assert.equal(seen[0].payload.schemaVersion,'ngs.npc-animation.regenerate.v2');
+ assert.equal(seen[0].payload.motionSelection.find(row=>row.presetId===attack.presetId).posePreset,'combat');
  assert.equal(validNpcAnimationRegenerate({...seen[0].payload,intent:'whole NPC'}),false);
  assert.throws(()=>npcAnimationRegenerateRequest('npc.ch1_dajeong',pick.map(row=>({...row,assetSetSha256:'f'.repeat(64)})),catalog));
  dispose();assert.equal(dialog.isConnected,false);

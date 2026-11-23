@@ -27,12 +27,14 @@ export function sameMotionChoice(a,b){
  return a?.presetId===b?.presetId&&a?.posePreset===b?.posePreset&&a?.assetSetSha256===b?.assetSetSha256;
 }
 export const animationRegenerateType='npc.animation.regenerate';
-export const animationRegenerateSchema='ngs.npc-animation.regenerate.v1';
+// v2 uses only already-published direction views of each preset's pinned pose.
+export const animationRegenerateSchema='ngs.npc-animation.regenerate.v2';
+const animationRegenerateLegacySchema='ngs.npc-animation.regenerate.v1';
 const npcIdPattern=/^(?:npc|character)\.[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/u;
 export function validNpcAnimationTarget(id){return typeof id==='string'&&id.length<=128&&id===id.trim()&&npcIdPattern.test(id);}
 export function validNpcAnimationRegenerate(value){
  return exact(value,['schemaVersion','projectId','npcId','motionSelection'])&&
-  value.schemaVersion===animationRegenerateSchema&&value.projectId==='binari'&&
+  (value.schemaVersion===animationRegenerateSchema||value.schemaVersion===animationRegenerateLegacySchema)&&value.projectId==='binari'&&
   validNpcAnimationTarget(value.npcId)&&validMotionSelection(value.motionSelection);
 }
 export function npcAnimationRegenerateRequest(npcId,selected,catalog){
