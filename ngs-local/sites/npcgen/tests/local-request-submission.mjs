@@ -49,11 +49,14 @@ test('generic POST queues exactly one request behind local auth; no direct RS or
   schemaVersion:'ngs.npc-one-stop.replace.v1',character:{...draft.payload.character,npcId:'npc.ch1_dajeong',slug:'ch1_dajeong'}}};
  const beforeReplace=queue.list().requests.length;
  assert.equal((await post({...npcReplace,payload:{...npcReplace.payload,schemaVersion:'ngs.npc-one-stop.v1'}})).status,409);
- assert.equal((await post({...npcReplace,payload:{...npcReplace.payload,character:{...npcReplace.payload.character,npcId:'npc.missing'}}})).status,404);
+ assert.equal((await post({...npcReplace,payload:{...npcReplace.payload,character:{...npcReplace.payload.character,npcId:'npc.missing',slug:'missing'}}})).status,404);
  assert.equal((await post({...npcReplace,payload:{...npcReplace.payload,character:{...npcReplace.payload.character,slug:'changed'}}})).status,400);
  assert.equal(queue.list().requests.length,beforeReplace);
  assert.equal((await post(npcReplace)).status,202);
  assert.deepEqual(queue.list().requests.at(-1).payload,npcReplace.payload);
+ const invalid={...npcReplace,idempotencyKey:'direct-mismatch',payload:{...npcReplace.payload,character:{
+  ...npcReplace.payload.character,npcId:'character.yeonwoo',slug:'seojin',actId:'act01'}}};
+ assert.throws(()=>queue.enqueue(invalid),/ONE_STOP_REPLACE_IDENTITY_INVALID/);
  assert.equal(existsSync(join(scratch,'provisional-requests')),false);
  assert.equal(existsSync(join(scratch,'official-requests.sqlite')),false);
 });

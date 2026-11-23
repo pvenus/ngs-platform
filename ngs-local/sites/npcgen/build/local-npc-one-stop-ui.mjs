@@ -1,5 +1,5 @@
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
-import {motionCatalogSchema,motionLimit,motionSelectionOf,quickMotionSelection,sameMotionChoice,selectionReplaceSchemaVersion,
+import {motionCatalogSchema,motionSelectionOf,npcReplacementSlug,quickMotionSelection,sameMotionChoice,selectionReplaceSchemaVersion,
  selectionSchemaVersion,validMotionChoice,validMotionSelection,validNpcMotionSelectionRequest} from './npc-motion-selection.mjs';
 /** The roster '+' creates a new NPC; the detail action targets the selected NPC ID. */
 const directions=['n','ne','e','se','s','sw','w','nw'];
@@ -16,6 +16,7 @@ const knownRejections=new Set([
  'ONE_STOP_COMBAT_PRESETS_REQUIRED','ONE_STOP_COMBAT_PRESETS_UNEXPECTED','ONE_STOP_COMBAT_PRESET_INVALID',
  'COMMON_INVALID_IDENTIFIER','ORIGIN_OR_CSRF_REJECTED','CSRF_INVALID','PROJECT_OR_RESOURCE_DENIED',
  'LOCAL_SIGN_IN_REQUIRED','LOCAL_SESSION_EXPIRED_OR_REVOKED','FRONTEND_SESSION_CONTEXT_CHANGED',
+ 'PAYLOAD_TOO_LARGE','NGS_REQUEST_QUEUE_INPUT_TOO_LARGE','SPACE_BODY_TOO_LARGE',
  'REQUEST_SUBMIT_INVALID','NGS_ONE_STOP_PAYLOAD_INVALID','OFFICIAL_REQUEST_NPC_ALREADY_REGISTERED',
  'ONE_STOP_REPLACE_TARGET_NOT_FOUND','ONE_STOP_REPLACE_IDENTITY_INVALID','ONE_STOP_MOTION_SELECTION_STALE',
  'NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID','NPC_ANIMATION_REGENERATE_TARGET_NOT_FOUND','NPC_ANIMATION_REGENERATE_PRESETS_STALE',
@@ -23,7 +24,7 @@ const knownRejections=new Set([
 
 function oneStopRequest(values,motionCatalog,target){
  const {name,role,actId,chapterId}=values,slug=target?.slug??values.slug?.trim(),intent=values.intent?.trim();
- if(!text(name,60)||!text(role,300)||!validId(slug)||!slugPattern.test(slug)||!validId('npc.'+slug)||!validId(actId)||!validId(chapterId)){
+ if(!text(name,60)||!text(role,300)||!validId(slug)||!slugPattern.test(slug)||(!target&&!validId('npc.'+slug))||!validId(actId)||!validId(chapterId)){
   throw Error('이름, 식별 이름, 역할과 스토리 위치를 확인해 주세요.');
  }
  if(!text(intent,3500)||count(intent)<5)throw Error('기획 요청은 5~3,500자로 입력해 주세요.');
@@ -31,7 +32,7 @@ function oneStopRequest(values,motionCatalog,target){
  if(!sourceRefs.length||sourceRefs.length>64||sourceRefs.some(ref=>count(ref)>300))throw Error('근거 참조를 한 줄에 하나씩 입력해 주세요. 최대 64줄, 줄당 300자입니다.');
  const chosen=values.motionSelection;
  if(!validMotionSelection(chosen)||!chosen.every(choice=>motionCatalog.some(row=>sameMotionChoice(choice,row)))){
-  throw Error('게시된 모션 프리셋을 1~8개 선택하세요. 변경된 선택은 해제한 뒤 다시 골라 주세요.');
+  throw Error('게시된 모션 프리셋을 한 개 이상 선택하세요. 변경된 선택은 해제한 뒤 다시 골라 주세요.');
  }
  const body={schemaVersion:target?selectionReplaceSchemaVersion:selectionSchemaVersion,projectId:'binari',
   character:{npcId:target?.npcId??'npc.'+slug,name:name.trim(),slug,role:role.trim(),actId,chapterId},intent,sourceRefs,
@@ -43,11 +44,11 @@ export const newNpcOneStopRequest=(values,motionCatalog=[])=>oneStopRequest(valu
 
 export function npcReplacementTarget(npc){
  const npcId=npc?.id;
- if(!validId(npcId)||!npcId.startsWith('npc.'))return null;
- const slug=npc.slug??npcId.slice(4);
- if(!validId(slug)||!slugPattern.test(slug)||!validId('npc.'+slug))return null;
+ const slug=npcReplacementSlug(npcId);
+ if(!slug||(npc.slug!==undefined&&npc.slug!==slug))return null;
+ const act=validId(npc.actId)?npc.actId:'story.main.act01';
  return {npcId,slug,name:typeof npc.name==='string'?npc.name:'',role:typeof npc.role==='string'?npc.role:'',
-  actId:validId(npc.actId)?npc.actId:'story.main.act01',
+  actId:npcId.startsWith('character.')&&act==='story.main.act01'?'act01':act,
   chapterId:Array.isArray(npc.chapters)?npc.chapters.find(validId)??'chapter01':'chapter01'};
 }
 
@@ -115,6 +116,8 @@ function section(parent,title,className,fields){
  grid.append(...fields.map(field=>field.root));body.append(node('h3','',title),grid);parent.append(body);
 }
 const rejectMessage=(code,replacing)=>{
+ if(['PAYLOAD_TOO_LARGE','NGS_REQUEST_QUEUE_INPUT_TOO_LARGE','SPACE_BODY_TOO_LARGE'].includes(code))
+  return '요청 용량이 너무 큽니다. 선택이나 입력 내용을 줄여 주세요.';
  if(code==='ONE_STOP_MOTION_SELECTION_STALE')return '선택한 프리셋이 변경됐습니다. 선택을 해제한 뒤 다시 골라 주세요.';
  if(replacing&&code==='ONE_STOP_TARGET_ALREADY_ACTIVE')return '이 NPC의 요청이 이미 처리 중입니다.';
  if(replacing&&['ONE_STOP_REPLACE_TARGET_NOT_FOUND','ONE_STOP_REPLACE_IDENTITY_INVALID'].includes(code))
@@ -177,7 +180,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   section(fields,'스토리 위치','one-stop-location',[act,chapter]);
   section(fields,'기획 요청','one-stop-planning',[intent,refs]);
   const options=node('section','one-stop-section one-stop-options');
-  const presets=node('fieldset'),legend=node('legend','','모션 프리셋 · 1~8개 선택');
+  const presets=node('fieldset'),legend=node('legend','','모션 프리셋 선택');
   const quick=node('div','one-stop-motion-quick'),noncombat=node('button','','비전투 기본'),combat=node('button','','전투 기본');
   noncombat.type=combat.type='button';quick.append(noncombat,combat);
   const pick=node('div','one-stop-motion-choices'),motionInfo=node('p','meta'),selectionInfo=node('p','meta');
@@ -208,11 +211,11 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
    combat.title=combat.disabled?'walk-flat, run-flat, sword-attack-flat이 모두 게시되면 선택할 수 있습니다.':'walk-flat, run-flat, sword-attack-flat 선택';
    for(const [id,{check,label,row}] of checkBoxes){
     const choice=selected.get(id);
-    check.checked=!!choice;check.disabled=(!choice&&selected.size>=motionLimit)||(!choice&&catalogError);
+    check.checked=!!choice;check.disabled=!choice&&catalogError;
     label.textContent=row?row.label+' · '+row.presetId+(choice&&staleChoice(choice)?' · 게시 내용 변경, 다시 선택 필요':''):
      id+' · 현재 게시되지 않음, 선택 해제 필요';
    }
-   selectionInfo.textContent=selected.size+' / '+motionLimit+'개 선택'+(stale?' · '+stale+'개 다시 선택 필요':'');
+   selectionInfo.textContent=selected.size+'개 선택'+(stale?' · '+stale+'개 다시 선택 필요':'');
   }
   function renderMotions(){
    pick.replaceChildren();checkBoxes.clear();
@@ -221,7 +224,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
     check.type='checkbox';
     check.addEventListener('change',()=>{
      if(!check.checked){selected.delete(id);if(!row){renderMotions();return;}}
-     else if(row&&!catalogError&&!selected.has(id)&&selected.size<motionLimit)selected.set(id,motionSelectionOf(row));
+     else if(row&&!catalogError&&!selected.has(id))selected.set(id,motionSelectionOf(row));
      updateControls();
     });
     label.append(check,textLabel);parent.append(label);checkBoxes.set(id,{check,label:textLabel,row});

@@ -36,3 +36,11 @@ optional HTTP response header `X-NGS-Commit-Sha`. The Mac launch selector
 sets `NGS_COMMIT_SHA` only from the verified immutable release. If no full
 lowercase canonical Git SHA is supplied, the header is omitted. The JSON-RPC
 envelope, queue contents, and other tools are unchanged.
+
+NPC full replacement keeps the exact published roster ID, including enrolled
+legacy `character.*` IDs. Its canonical slug remains tied to that ID. Local
+and Space both require the exact target before queuing a replacement; new
+creation uses the `npc.*` namespace only. The movement picker accepts any
+nonempty selection of different, currently published presets, subject to
+the existing transport payload size. The two default buttons only edit the
+visible selection.

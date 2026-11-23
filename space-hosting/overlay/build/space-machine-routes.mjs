@@ -1,6 +1,7 @@
 /** Explicit Site routes for one project. Native visitors and Mac relay have separate identities. */
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
 import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from '../ngs-local/sites/npcgen/build/replica-whole-file-wire.mjs';
+import {isNpcWorkflowReplaceSchema,validNpcWorkflowIdentity} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 export const machineTokenConfigured=validMachineToken;
 // Only call with the server-resolved participant, never browser-supplied roles.
 export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
@@ -130,7 +131,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,hasPublishedNpc}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -158,6 +159,12 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   need(await sameToken(request.headers.get('X-NPCGen-Csrf'),tokens.csrfToken)&&
     request.headers.get('X-NPCGen-Frontend-Context')===tokens.contextId,403,'CSRF_INVALID');
   const {value}=await body(request,small);
+  if(value?.requestType==='npc.workflow'&&isNpcWorkflowReplaceSchema(value.payload?.schemaVersion)){
+   const {character,projectId,schemaVersion}=value.payload;
+   need(projectId==='binari'&&validNpcWorkflowIdentity(character,schemaVersion),400,'ONE_STOP_REPLACE_IDENTITY_INVALID');
+   need(typeof hasPublishedNpc==='function',503,'SPACE_NPC_REPLICA_UNAVAILABLE');
+   need(await hasPublishedNpc({userId:id,email},character.npcId),404,'ONE_STOP_REPLACE_TARGET_NOT_FOUND');
+  }
   return json(await service.enqueue(actor,value),202);
  }catch(error){return responseError(error);}
 }

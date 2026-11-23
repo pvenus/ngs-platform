@@ -267,3 +267,33 @@ test('authenticated deployment status reports only the serving artifact and no i
  const malformed=await probe(sha,{}, {commitSha:forged});
  assert.equal((await malformed.json()).error.code,-32602);
 });
+
+test('Space only queues a replacement for the exact published legacy ID and retains any-sized selection within transport',async t=>{
+ const db=store(t),seen=[];
+ const options={db,secret:token,authorize:async()=>true,authorizeWrite:async()=>true,
+  hasPublishedNpc:async(user,id)=>{seen.push([user.userId,id]);return ['character.seojin','character.yeonwoo'].includes(id);}};
+ const browser=(...args)=>browserQueueResponse(request(...args),options);
+ const a=headers('a'),session=await (await browser('/__npcgen_session','GET',a)).json();
+ const auth={...a,Origin:origin,'X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId};
+ const inputs=Array.from({length:11},(_,i)=>({presetId:'preset-'+i,posePreset:'idle',assetSetSha256:'a'.repeat(64)}));
+ const payload={schemaVersion:'ngs.npc-one-stop.selection.replace.v1',projectId:'binari',intent:'기존 NPC의 전체 재생성',sourceRefs:['기획'],
+  character:{npcId:'character.seojin',slug:'seojin',name:'서진',role:'암행어사',actId:'act01',chapterId:'chapter01'},motionSelection:inputs};
+ const submit=(id,p)=>browser('/api/requests','POST',auth,{requestType:'npc.workflow',idempotencyKey:id,payload:p});
+ assert.equal((await submit('incorrect-slug',{...payload,character:{...payload.character,slug:'yeonwoo'}})).status,400);
+ assert.equal((await submit('cannot-create-character',{...payload,schemaVersion:'ngs.npc-one-stop.selection.v1'})).status,400);
+ assert.deepEqual(seen,[]);
+ assert.equal((await submit('matched-slug-absent-id',{...payload,character:{...payload.character,npcId:'character.missing',slug:'missing'}})).status,404);
+ const {queueId}=await (await submit('keep-exact-legacy-id',payload)).json();
+ assert.ok(queueId);
+ const stored=await new SpaceRequestQueue(db).get({queueId});
+ assert.deepEqual(stored.payload,payload);
+ const {motionSelection,...legacy}=payload;
+ const old={...legacy,schemaVersion:'ngs.npc-one-stop.replace.v1',includeCombat:false,
+  character:{...legacy.character,npcId:'character.yeonwoo',slug:'yeonwoo',name:'연우'}};
+ assert.equal((await submit('legacy-wire',old)).status,202);
+ assert.deepEqual(seen,[['a','character.missing'],['a','character.seojin'],['a','character.yeonwoo']]);
+ const regen={schemaVersion:'ngs.npc-animation.regenerate.v1',projectId:'binari',npcId:'character.seojin',motionSelection};
+ const receipt=await browser('/api/requests','POST',auth,{requestType:'npc.animation.regenerate',idempotencyKey:'regen-many',payload:regen});
+ assert.equal(receipt.status,202);
+ assert.deepEqual((await new SpaceRequestQueue(db).get({queueId:(await receipt.json()).queueId})).payload,regen);
+});

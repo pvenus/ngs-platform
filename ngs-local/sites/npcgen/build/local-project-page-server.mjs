@@ -23,7 +23,7 @@ import {npcPlanningAddType,npcPlanningRequestType,validNpcPlanningAdd,validNpcPl
 import {audioResponseRange,localAudioResults} from './local-audio-results.mjs';
 import {validLocalAudioPayload} from './local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from './motion-preset-convert-2d.mjs';
-import {isSelectionSchema,selectionReplaceSchemaVersion,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate} from './npc-motion-selection.mjs';
+import {isSelectionSchema,isNpcWorkflowReplaceSchema,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate} from './npc-motion-selection.mjs';
 
 const canonicalPolicy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const assets=new Map([
@@ -196,14 +196,12 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
        !((await Promise.all(combatMotionPresets.map(preset=>allowedCombat(preset).catch(()=>false)))).every(Boolean)))){
       throw failure('ONE_STOP_COMBAT_PRESETS_REQUIRED',400);
      }
-     const replace=schemaVersion==='ngs.npc-one-stop.replace.v1'||schemaVersion===selectionReplaceSchemaVersion;
+     const replace=isNpcWorkflowReplaceSchema(schemaVersion);
      if(replace||typeof character?.npcId==='string'){
       const roster=(await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId:command.payload.projectId}),()=>{})).json.npcs;
       if(replace){
        const target=roster.find(npc=>npc.id===character?.npcId);
        if(!target)throw failure('ONE_STOP_REPLACE_TARGET_NOT_FOUND',404);
-       const targetSlug=target.id.replace(/^(?:npc|character)\./,'').toLowerCase();
-       if(character.slug!==targetSlug)throw failure('ONE_STOP_REPLACE_IDENTITY_INVALID',400);
       }else if(roster.some(npc=>npc.id===character.npcId||npc.id==='character.'+character.slug)){
        throw failure('ONE_STOP_TARGET_ALREADY_ACTIVE',409);
       }

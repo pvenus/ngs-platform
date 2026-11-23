@@ -3,7 +3,6 @@ export const selectionSchemaVersion='ngs.npc-one-stop.selection.v1';
 export const selectionReplaceSchemaVersion='ngs.npc-one-stop.selection.replace.v1';
 export const motionCatalogSchema='ngs.motion-selection-catalog.v1';
 export const motionDirections=Object.freeze(['n','ne','e','se','s','sw','w','nw']);
-export const motionLimit=8;
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 export const isSelectionSchema=v=>v===selectionSchemaVersion||v===selectionReplaceSchemaVersion;
 export const isMotionPresetId=id=>typeof id==='string'&&id.trim()===id&&/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(id);
@@ -13,7 +12,7 @@ export const motionSelectionFields=['presetId','posePreset','assetSetSha256'];
 export const motionSelectionOf=({presetId,posePreset,assetSetSha256})=>({presetId,posePreset,assetSetSha256});
 const validFields=v=>isMotionPresetId(v.presetId)&&pose(v.posePreset)&&sha(v.assetSetSha256);
 export function validMotionSelection(value){
- return Array.isArray(value)&&value.length>=1&&value.length<=motionLimit&&
+ return Array.isArray(value)&&value.length>=1&&
   value.every(row=>exact(row,motionSelectionFields)&&validFields(row))&&
   new Set(value.map(row=>row.presetId.toLowerCase())).size===value.length;
 }
@@ -35,11 +34,32 @@ export function validNpcAnimationRegenerate(value){
 export function npcAnimationRegenerateRequest(npcId,selected,catalog){
  const payload={schemaVersion:animationRegenerateSchema,projectId:'binari',npcId,motionSelection:selected};
  if(!validNpcAnimationRegenerate(payload)||!selected.every(choice=>catalog.some(row=>sameMotionChoice(choice,row))))
-  throw Error('게시된 모션 프리셋을 1~8개 다시 골라 주세요.');
+  throw Error('게시된 모션 프리셋을 다시 골라 주세요.');
  return payload;
 }
 export function npcPublishedMotionLabel(posePreset,presetId,catalog=[]){
  return catalog.find(row=>row.posePreset===posePreset&&row.presetId===presetId)?.label??null;
+}
+
+const npcSlugPattern=/^[a-z0-9]+(?:[-._][a-z0-9]+)*$/u;
+const oneStopId=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const legacyCharacterId=/^character\.([a-z0-9][a-z0-9._-]{1,79})$/u;
+export const isNpcWorkflowReplaceSchema=schema=>schema===selectionReplaceSchemaVersion||schema==='ngs.npc-one-stop.replace.v1';
+
+export function npcReplacementSlug(id){
+ if(typeof id!=='string'||id!==id.trim()||!oneStopId.test(id))return null;
+ const value=id.startsWith('npc.')?id.slice(4).toLowerCase():legacyCharacterId.exec(id)?.[1];
+ return typeof value==='string'&&npcSlugPattern.test(value)?value:null;
+}
+
+export function validNpcWorkflowIdentity(character,schema){
+ if(typeof character?.slug!=='string'||!npcSlugPattern.test(character.slug))return false;
+ const id=character.npcId;
+ if(!isNpcWorkflowReplaceSchema(schema))
+  return typeof id==='string'&&id===id.trim()&&oneStopId.test(id)&&id==='npc.'+character.slug;
+ return npcReplacementSlug(id)===character.slug&&(!id.startsWith('character.')||
+  ['act1','act01'].includes(character.actId)&&typeof character.chapterId==='string'&&
+  character.chapterId===character.chapterId.trim()&&/^(?:ch|chapter0)[1-5]$/u.test(character.chapterId));
 }
 
 export function validNpcMotionSelectionRequest(value){
@@ -50,7 +70,7 @@ export function validNpcMotionSelectionRequest(value){
  return exact(value,['schemaVersion','projectId','intent','character','sourceRefs','motionSelection'])&&
   value.projectId==='binari'&&isSelectionSchema(value.schemaVersion)&&text(value.intent,3500)&&[...value.intent].length>=5&&
   exact(character,['npcId','name','slug','role','actId','chapterId'])&&id(character.npcId)&&id(character.slug)&&
-  /^[a-z0-9]+(?:[-._][a-z0-9]+)*$/u.test(character.slug)&&character.npcId==='npc.'+character.slug&&
+  validNpcWorkflowIdentity(character,value.schemaVersion)&&
   text(character.name,60)&&text(character.role,300)&&id(character.actId)&&id(character.chapterId)&&
   Array.isArray(value.sourceRefs)&&value.sourceRefs.length>=1&&value.sourceRefs.length<=64&&value.sourceRefs.every(ref=>text(ref,300))&&
   validMotionSelection(value.motionSelection);

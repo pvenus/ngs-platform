@@ -5,6 +5,8 @@ import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catal
 import { appProject, siteAppMaster } from "../lib/app-master";
 import { masterPrincipal } from "../lib/master-concept-transport";
 import { spaceReplicaView } from "./space-replica-view.mjs";
+import { dispatchWorkspaceRead } from "../ngs-local/sites/npcgen/build/workspace-read-registry.mjs";
+import { openSpaceWorkspaceProject } from "./space-workspace-read-storage.mjs";
 import { spaceWorkspaceReadResponse } from "./space-workspace-read-response.mjs";
 import { PromptService } from "../lib/prompt-service";
 import { createSpaceFileReplica, spaceFileSyncTools } from "./space-file-replica.mjs";
@@ -50,21 +52,35 @@ export default {
     }
     const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools,commitSha:ngsCommitSha});
     if (machine) return machine;
-    const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,
+    const workspaceAuthorize = async (user:{userId:string,email:string},projectId:string,resource:string|undefined) => {
+      if (projectId !== "binari" || !await authorize(user) || !resource) return false;
+      try {
+        await new PromptService(db!,user.userId,undefined,siteAppMaster(user)).resourcePolicy(projectId,resource);
+        return true;
+      } catch { return false; }
+    };
+    const hasPublishedNpc = replicaReads ? async (user:{userId:string,email:string},npcId:string) => {
+      // The hosted queue must prove the same exact ID from the existing
+      // authenticated roster, never trust an ID or alias from the browser.
+      const {json:result} = await dispatchWorkspaceRead({
+        pathname:"/api/npc-workspace",query:new URLSearchParams({projectId:"binari"}),
+        openProject:projectId=>openSpaceWorkspaceProject(fileReplica,projectId),
+        authorize:async projectId=>{
+          if (!await workspaceAuthorize(user,projectId,"npcs"))
+            throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
+        },
+      });
+      if (!Array.isArray(result?.npcs)) throw Object.assign(Error("SPACE_NPC_REPLICA_UNAVAILABLE"),{status:503});
+      return result.npcs.some((npc:{id:string})=>npc.id===npcId);
+    } : undefined;
+    const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
       // A trusted roster entry or the single configured exception is required in
       // addition to Sites authentication/admission and the active Binari grant.
       authorizeWrite:user=>authorizeSpaceQueueWrite(user,masterPrincipal,env.NPCGEN_SPACE_QUEUE_EXTRA_EMAIL_SHA256),
     });
     if (browserQueue) return browserQueue;
     if (replicaReads) {
-      const workspace = await spaceWorkspaceReadResponse(request,fileReplica,{authorize:async (user,projectId,resource)=>{
-        if (projectId !== "binari" || !await authorize(user)) return false;
-        if(!resource) return false;
-        try {
-          await new PromptService(db!,user.userId,undefined,siteAppMaster(user)).resourcePolicy(projectId,resource);
-          return true;
-        } catch { return false; }
-      }});
+      const workspace = await spaceWorkspaceReadResponse(request,fileReplica,{authorize:workspaceAuthorize});
       if(workspace) return workspace;
       const view = await spaceReplicaView(request,fileReplica,{authorize:async (user,projectId)=>{
         if (projectId !== "binari" || !await authorize(user)) return false;

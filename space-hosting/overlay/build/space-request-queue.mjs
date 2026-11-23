@@ -3,7 +3,7 @@ import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
 import {validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
-import {isSelectionSchema,validNpcMotionSelectionRequest,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
+import {isSelectionSchema,validNpcMotionSelectionRequest,validNpcWorkflowIdentity,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 const table='ngs_space_request_queue_v1';
 const cap=128,maxList=16,receiptTTL=24*60*60*1000;
 const queuePattern=/^ngs\.space\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
@@ -37,7 +37,7 @@ function validOneStop(v){
  const c=v.character,text=(x,n)=>typeof x==='string'&&x.trim()===x&&x.length>0&&x.length<=n,
   ids=(x,n)=>typeof x==='string'&&x.length<=n&&clientPattern.test(x);
  return ['ngs.npc-one-stop.v1','ngs.npc-one-stop.replace.v1'].includes(v.schemaVersion)&&exact(v,fields)&&
-   exact(c,['npcId','name','slug','role','actId','chapterId'])&&ids(c.npcId,128)&&ids(c.slug,128)&&c.npcId==='npc.'+c.slug&&
+   exact(c,['npcId','name','slug','role','actId','chapterId'])&&ids(c.npcId,128)&&ids(c.slug,128)&&validNpcWorkflowIdentity(c,v.schemaVersion)&&
    text(c.name,120)&&text(c.role,600)&&ids(c.actId,128)&&ids(c.chapterId,128)&&text(v.intent,7000)&&
    Array.isArray(v.sourceRefs)&&v.sourceRefs.length>=1&&v.sourceRefs.length<=64&&v.sourceRefs.every(x=>text(x,600))&&
    (v.includeCombat===false||v.includeCombat===true&&Array.isArray(v.combatMotionPresets)&&

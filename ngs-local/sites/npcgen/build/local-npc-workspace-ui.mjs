@@ -1,6 +1,6 @@
 import {createNpcPlanningEditor,editableNpcPlanningDocument,npcPlanningSelection,renderNpcPlanningDocument} from './local-npc-planning-ui.mjs';
 import {createNpcOneStopIntake,mountNpcOneStop,readOneStopMotionPresets} from './local-npc-one-stop-ui.mjs';
-import {animationRegenerateType,motionLimit,motionSelectionOf,npcAnimationRegenerateRequest,
+import {animationRegenerateType,motionSelectionOf,npcAnimationRegenerateRequest,
  npcPublishedMotionLabel,validNpcAnimationTarget} from './npc-motion-selection.mjs';
 
 /* Only the typed NPC read model is used here; no generic files or legacy transport. */
@@ -337,13 +337,12 @@ export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,mo
   const send=nodeOf('button','npc-one-stop-submit','재생성 요청');send.type='submit';
   status.setAttribute('role','status');fields.append(legend,choices,count);form.append(fields,send);
   modal.append(head,intro,form,status);
-  const selected=new Map(),checks=new Map();let rows=null,busy=false,closed=false;
+  const selected=new Map();let rows=null,busy=false,closed=false;
   function update(){
    fields.hidden=intake.waitingConfirmation;fields.disabled=busy||intake.waitingConfirmation;
    close.disabled=busy;send.disabled=busy||intake.accepted||(!intake.waitingConfirmation&&!selected.size);
    send.textContent=busy?'접수 중…':intake.waitingConfirmation?'같은 접수 다시 확인':'재생성 요청';
-   count.textContent=selected.size+' / '+motionLimit+'개 선택';
-   for(const [id,box] of checks)box.disabled=!selected.has(id)&&selected.size>=motionLimit;
+   count.textContent=selected.size+'개 선택';
   }
   function dismiss(restore=true){
    if(closed)return;closed=true;controller.abort();if(modal.open)modal.close();modal.remove();
@@ -380,10 +379,10 @@ export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,mo
     const matches=rows.filter(row=>row.posePreset===pose);if(!matches.length)continue;
     const group=nodeOf('div','one-stop-motion-group');group.append(nodeOf('strong','',label));choices.append(group);
     for(const row of matches){
-     const item=nodeOf('label'),box=nodeOf('input');box.type='checkbox';checks.set(row.presetId,box);
+     const item=nodeOf('label'),box=nodeOf('input');box.type='checkbox';
      box.addEventListener('change',()=>{
       if(!box.checked)selected.delete(row.presetId);
-      else if(selected.size<motionLimit)selected.set(row.presetId,motionSelectionOf(row));
+      else selected.set(row.presetId,motionSelectionOf(row));
       box.checked=selected.has(row.presetId);update();
      });
      item.append(box,nodeOf('span','',row.label+' · '+row.presetId));group.append(item);
