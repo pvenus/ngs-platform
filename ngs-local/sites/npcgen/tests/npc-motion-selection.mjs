@@ -202,9 +202,10 @@ test('Local browser queue validates selected publication hashes without reading 
 });
 
 test('Local denies v2 replacement and animation-by-pose before any source read when separate opt-in is absent',async t=>{
- const root=await mkdtemp(join(realpathSync(tmpdir()),'ngs-npc-pose-default-'));
+ const fixture=await mkdtemp(join(realpathSync(tmpdir()),'ngs-npc-pose-default-'));
+ const root=join(fixture,'projects');
  const server=createLocalProjectPageServer({root,audioWorkspaceEnabled:true,audioSeparationEnabled:true});
- t.after(async()=>{await new Promise(resolve=>server.close(resolve));await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{await new Promise(resolve=>server.close(resolve));await rm(fixture,{recursive:true,force:true});});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const origin='http://127.0.0.1:'+server.address().port,r=await fetch(origin+'/__npcgen_session');
  const cookie=r.headers.get('set-cookie').split(';')[0],session=await r.json();

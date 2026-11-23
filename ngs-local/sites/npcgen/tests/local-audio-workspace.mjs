@@ -522,9 +522,10 @@ test('one per-track action reuses an uncertain queue ticket and excludes derived
 });
 
 test('Local separation gates authenticated exact original receipt and projects derived result without shifting existing storage',async t=>{
- const root=realpathSync(mkdtempSync(join(tmpdir(),'ngs-audio-separate-fixture-')));
- const queue=openLocalRequestQueue(join(root,'queue.sqlite'));
- t.after(()=>{queue.close();rmSync(root,{recursive:true,force:true});});
+ const fixture=realpathSync(mkdtempSync(join(tmpdir(),'ngs-audio-separate-fixture-')));
+ const root=join(fixture,'projects');
+ const queue=openLocalRequestQueue(join(fixture,'queue.sqlite'));
+ t.after(()=>{queue.close();rmSync(fixture,{recursive:true,force:true});});
  const id='request.official.'+'9'.repeat(64),derived='request.official.'+'f'.repeat(64);
  const hash=b=>createHash('sha256').update(b).digest('hex');
  const data=Buffer.alloc(46);data.write('RIFF');data.write('WAVE',8);
