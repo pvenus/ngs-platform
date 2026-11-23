@@ -68,7 +68,7 @@
     "sites/npcgen/build/space-machine-mcp.mjs": "c4476d46d01632066b101535cbfaee1f03fd6bdac37f874c4f4a47d6de5ee1df",
     "sites/npcgen/build/workspace-read-registry.mjs": "81595076a4dfc1f34b0993775e481d7a6e03bf0328e4e9eb930ce494ea2d7463",
     "sites/npcgen/build/workspace-read-storage.mjs": "3939889d63eb5b912fe61cd4c719cb5770a1477c9dfd22842eea5d121ef2c9fd",
-    "sites/npcgen/tests/audio-result-index.mjs": "04a38dd4794ccd5858f54692bfc1b188b661eabab471835338650124b41e91db",
+    "sites/npcgen/tests/audio-result-index.mjs": "d53ee5864154d7905614668a51d2c4f1328c6cda2e817220d8e88c1e37d0776d",
     "sites/npcgen/tests/local-audio-order.mjs": "650ec013fd9a6e73b9b88f3f5ef662ca202b665989d976cfde74b6d69820c490",
     "sites/npcgen/tests/local-audio-workspace.mjs": "c3106c616ea07710a9a63cb6d99cf8f79a5613f648d6f0a0d8302ea1b4f4a239",
     "sites/npcgen/tests/local-miniflare-runtime.mjs": "b3cc539c13763840a968fd8a3bc3ef5ab7edc0d2b1da4f116a5536cee9c44888",

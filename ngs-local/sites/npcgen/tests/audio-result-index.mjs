@@ -19,9 +19,11 @@ const metadata=(i,date=i,separated=false)=>Buffer.from(JSON.stringify({schemaVer
  audio:{path:'audio.wav',mimeType:'audio/wav',sha256:sha(wave),bytes:wave.length,channels:1,bitsPerSample:16,
  frames:800,sampleRate:8000,durationSeconds:.1}}));
 
-test('Local runtime: indexes native commit/tombstone, newest-first fixed pages without any provider reads',async t=>{
+const dependency=process.env.NGS_MINIFLARE_TEST_PACKAGE_JSON??process.env.SPACE_TEST_PACKAGE_JSON;
+test('Local runtime: indexes native commit/tombstone, newest-first fixed pages without any provider reads',
+ {skip:!dependency,timeout:30_000},async t=>{
  const root=await realpath(await mkdtemp(join(tmpdir(),'audio-result-index-')));
- const require=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??new URL('../../../local-miniflare/package.json',import.meta.url));
+ const require=createRequire(dependency);
  const {replica,close}=await openLocalMiniflareReplica({persistRoot:root,fixture:true,load:async()=>require('miniflare').Miniflare});t.after(async()=>{await close();await rm(root,{recursive:true,force:true});});
  const adapter=localObjectReplicaViews({...replica,head(){assert.fail('unexpected head');},get(){assert.fail('unexpected get');},
   list(){assert.fail('unexpected list');}});
