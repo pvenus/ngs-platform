@@ -22,11 +22,11 @@ test('object local composition explicit and fail-closed; web index read-only and
  const evidence=[],ports={
   async openLocalS3ReplicaBucket({configPath}){assert.equal(configPath,fixtureS3);return {close:()=>evidence.push('bucket closed')};},
   openReplicaSqlite({filename,readOnly}){assert.equal(filename,fixtureIndex);evidence.push(readOnly);return {close:()=>evidence.push('db closed')};},
-  createObjectReplica({db,bucket,writePart}){assert.ok(db&&bucket&&writePart);return {list(){},head(){},get(){},progress(){},call(){},npcCache:{version(){},read(){},store(){}}};},
+  createObjectReplica({db,bucket,writePart}){assert.ok(db&&bucket&&writePart);return {list(){},head(){},get(){},progress(){},audioIndex(){},call(){},npcCache:{version(){},read(){},store(){}}};},
   objectReplicaSyncTools:[{name:'fixture'}],
  };
  const web=await openLocalObjectReplicaFromEnv(env,{load:async()=>ports});
- assert.deepEqual(Object.keys(web.replica).sort(),['get','head','list','npcCache','progress']);
+ assert.deepEqual(Object.keys(web.replica).sort(),['audioIndex','get','head','list','npcCache','progress']);
  web.close();
  const write=await openLocalObjectReplicaFromEnv(env,{writer:true,load:async()=>ports});
  assert.equal(typeof write.replica.call,'function');
@@ -71,7 +71,14 @@ test('actual local HTTP serves the same private object projections with no files
     frames:10,sampleRate:8000,durationSeconds:10/8000}})],
   ['audio/'+id+'/audio.wav',wav],
  ]);
- const replica=objectMap(files),server=createLocalProjectPageServer({objectReplica:replica,audioWorkspaceEnabled:true});
+ const replica=objectMap(files),indexedArgs=[];
+ replica.audioIndex=async args=>{
+  indexedArgs.push(args);
+  const result={title:'Fixture score',durationSeconds:10/8000,bpm:null,bpmBasis:'unavailable',
+   url:'/api/audio-workspace?'+new URLSearchParams({projectId:'binari',id,sha256:hash(wav)})};
+  return {projectId:'binari',results:[result],nextCursor:null};
+ };
+ const server=createLocalProjectPageServer({objectReplica:replica,audioWorkspaceEnabled:true});
  const url=await listen(t,server);
  for(const path of ['/api/project-folders','/api/project-workspace?projectId=binari&tab=concept','/api/audio-workspace?projectId=binari'])
   assert.equal((await fetch(url+path)).status,401);
@@ -87,8 +94,10 @@ test('actual local HTTP serves the same private object projections with no files
  assert.equal(motion.status,200);assert.equal((await motion.json()).items[0].id,'walk');
  const n=await get('/api/npc-workspace?projectId=binari&npcId='+npc);
  assert.equal(n.status,200);assert.equal((await n.json()).npc.id,npc);
- const playlist=await (await get('/api/audio-workspace?projectId=binari')).json();
+ const priorCounts={...replica.counts},playlist=await (await get('/api/audio-workspace?projectId=binari')).json();
  assert.equal(playlist.results[0].title,'Fixture score');
+ assert.equal(playlist.nextCursor,null);
+ assert.deepEqual(indexedArgs,[{projectId:'binari'}]);assert.deepEqual(replica.counts,priorCounts);
  const part=await get(playlist.results[0].url,{Range:'bytes=8-12'});
  assert.equal(part.status,206);assert.equal(part.headers.get('content-range'),'bytes 8-12/64');
  assert.deepEqual(Buffer.from(await part.arrayBuffer()),wav.subarray(8,13));
