@@ -1,5 +1,5 @@
 import {conceptDetailOperations,conceptMarkdown,createConceptCategoryActions,syncConceptDetail} from './local-concept-category-ui.mjs';
-import {followAcceptedAudioResult,followDeletedAudioResults,mountAudioWorkspace,readAudioSoundConcepts,refreshAudioResults,showAudioResults} from './local-audio-workspace.mjs';
+import {audioIndex,followAcceptedAudioResult,followDeletedAudioResults,mountAudioWorkspace,readAudioSoundConcepts,refreshAudioResults,showAudioResults} from './local-audio-workspace.mjs';
 import {loadNpcFolder} from './local-npc-workspace-ui.mjs';
 import {isQueuedRequest,submitQueuedRequest} from './local-request-queue-browser.mjs';
 import {motionConversionForm,motionPresetConvertType} from './motion-preset-convert-2d.mjs';
@@ -653,21 +653,38 @@ async function loadWorkspace(search){
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
   if(tab==='audio'){
-   let visible=null,busy=false;
-   const display=rows=>{visible=rows;showAudioResults(library,rows,signal,submit?{
-    submitDelete:submit,onDeleteAccepted:ids=>{void followDeletedAudioResults({ids,post,request,signal,display});},
-    ...(session.audioSeparationEnabled===true?{submitSeparation:submit,onSeparationAccepted:receipt=>{
-     if(receipt.officialRequestId)void followAcceptedAudioResult({id:receipt.officialRequestId,post,request,signal,display,visible:()=>visible});
-    }}:{})}:undefined);};
+   let busy=false,refreshEpoch=0;
+   const removedResults=new Set();
+   const options={request,refresh:()=>readAudio(true),...(submit?{submitDelete:submit,onDeleteAccepted:ids=>{
+    void followDeletedAudioResults({ids,post,request,signal,onChanged:refreshPublished});
+   },...(session.audioSeparationEnabled===true?{submitSeparation:submit,onSeparationAccepted:receipt=>{
+    if(receipt.officialRequestId)void followAcceptedAudioResult({id:receipt.officialRequestId,post,request,signal,onChanged:refreshPublished});
+   }}:{})}:{})};
+   const display=(data,refreshOptions={})=>{
+    if(data!==null&&removedResults.size){
+     refreshOptions={...refreshOptions,force:true,removed:[...removedResults]};
+     showAudioResults(library,data,signal,options,refreshOptions);
+     removedResults.clear();
+    }else showAudioResults(library,data,signal,options,refreshOptions);
+   };
+   async function refreshPublished(removed=[]){
+    for(const id of removed)removedResults.add(id);
+    const current=++refreshEpoch;
+    try{
+     const data=await request(audioIndex);
+     if(!signal.aborted&&current===refreshEpoch)display(data,{force:true});
+    }catch(error){if(!signal.aborted)note('게시된 BGM을 갱신하지 못했습니다.',true);throw error;}
+   }
    const library=mountAudioWorkspace({items,detail,signal,allowFullLength:!hosted,...(submit?{submit,
     loadConcepts:legacySpace?async()=>(await request('/api/space/audio-concepts')).concepts:
      ()=>readAudioSoundConcepts({post,request,signal}),
-    onAccepted:id=>{void followAcceptedAudioResult({id,post,request,signal,display,visible:()=>visible});}}:{})});
+    onAccepted:id=>{void followAcceptedAudioResult({id,post,request,signal,onChanged:refreshPublished});}}:{})});
    display(null);
-   async function readAudio(){
+   async function readAudio(force=false){
     if(busy||signal.aborted)return;
     busy=true;
-    try{await refreshAudioResults({post,request,signal,display});note('');}
+    const current=++refreshEpoch;
+    try{await refreshAudioResults({post,request,signal,display:data=>{if(current===refreshEpoch){display(data,{force});force=false;}}});if(current===refreshEpoch)note('');}
     catch{note('게시된 BGM을 갱신하지 못했습니다.',true);}
     finally{busy=false;}
    }

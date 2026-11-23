@@ -124,17 +124,25 @@ function node(tag,className='',label){
 function field(label,tag,options){
  const wrapper=node('label','',label),input=Object.assign(node(tag),options);wrapper.append(input);return {wrapper,input};
 }
-const audioIndex='/api/audio-workspace?projectId=binari';
+export const audioIndex='/api/audio-workspace?projectId=binari';
 const formatter=new Intl.NumberFormat('ko-KR',{maximumFractionDigits:2});
 const playlists=new WeakMap(),audioPageSize=30;
-function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{},submitSeparation,onSeparationAccepted=()=>{}}={}){
+function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAccepted=()=>{},submitSeparation,onSeparationAccepted=()=>{}}={}){
  const list=node('ol','audio-results-list'),empty=node('p','meta','아직 게시된 BGM이 없습니다.');
  const actions=node('div','audio-playlist-actions'),playSelected=node('button','concept-category-trigger','선택 재생');
- const selectAll=node('button','concept-category-trigger','전체 곡 선택'),selectionCount=node('span','meta');
+ const selectAll=node('button','concept-category-trigger','현재 페이지 전체 선택'),selectionCount=node('span','meta');
  const nav=node('nav','audio-playlist-pages'),previous=node('button','concept-category-trigger','이전'),
   pageStatus=node('span','meta'),next=node('button','concept-category-trigger','다음');
  for(const button of [playSelected,selectAll,previous,next])button.type='button';
  playSelected.disabled=true;actions.append(playSelected,selectAll,selectionCount);actions.hidden=true;
+ if(refresh){
+  const reload=node('button','concept-category-trigger','목록 새로고침');
+  reload.type='button';reload.addEventListener('click',async()=>{
+   if(signal?.aborted||reload.disabled)return;
+   reload.disabled=true;try{await refresh();}finally{reload.disabled=false;}
+  });
+  actions.append(reload);
+ }
  selectionCount.setAttribute('role','status');nav.setAttribute('aria-label','BGM 목록 페이지');
  pageStatus.setAttribute('role','status');nav.append(previous,pageStatus,next);nav.hidden=true;
  const head=node('div','audio-playlist-columns');
@@ -147,6 +155,7 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{},sub
  const checked=new Set();
  let selected=null,allRows=new Map(),activeButtons=new Map(),page=0,queued=[],playAttempt=0,deleting=false;
  const separations=new Map();
+ let pages=[],epoch=0,loading=false,firstSignature=null,pageError='';
  const deletions=new Map(),deleteButton=node('button','concept-category-trigger audio-delete','선택 삭제 요청'),
   deleteSummary=node('p','meta'),dialog=node('dialog','npc-one-stop-dialog audio-dialog'),
   heading=node('h2','','선택한 BGM 삭제'),description=node('p'),targets=node('ul'),
@@ -160,9 +169,10 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{},sub
  };
  const updateSelection=()=>{
   playSelected.disabled=checked.size===0;
-  selectAll.disabled=allRows.size===0;
-  selectAll.textContent=allRows.size>0&&checked.size===allRows.size?'전체 선택 해제':'전체 곡 선택';
-  selectionCount.textContent=checked.size+'곡 선택 / 전체 '+allRows.size+'곡';
+  const current=pages[page]?.rows??[];
+  selectAll.disabled=!current.length;
+  selectAll.textContent=current.length&&current.every(({row})=>checked.has(row.url))?'현재 페이지 선택 해제':'현재 페이지 전체 선택';
+  selectionCount.textContent=checked.size+'곡 선택';
   deleteButton.disabled=deleting||candidates().length===0;
  };
  if(submitDelete){
@@ -221,14 +231,35 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{},sub
   playNext();
  });
  selectAll.addEventListener('click',()=>{
-  if(signal?.aborted||!allRows.size)return;
-  if(checked.size===allRows.size)checked.clear();
-  else for(const url of allRows.keys())checked.add(url);
+  if(signal?.aborted)return;
+  const current=pages[page]?.rows??[];
+  const clear=current.every(({row})=>checked.has(row.url));
+  for(const {row} of current){if(clear)checked.delete(row.url);else checked.add(row.url);}
   updateSelection();paint();
  });
- const pageCount=()=>Math.max(1,Math.ceil(allRows.size/audioPageSize));
- previous.addEventListener('click',()=>{if(!signal?.aborted&&page>0){--page;renderPage();}});
- next.addEventListener('click',()=>{if(!signal?.aborted&&page+1<pageCount()){++page;renderPage();}});
+ previous.addEventListener('click',()=>{if(!signal?.aborted&&page>0){++epoch;loading=false;pageError='';--page;renderPage();}});
+ next.addEventListener('click',async()=>{
+  if(signal?.aborted||loading)return;
+  if(pages[page+1]){pageError='';++page;renderPage();return;}
+  const cursor=pages[page]?.nextCursor;
+  if(!cursor||typeof request!=='function')return;
+  const attempt=++epoch;
+  loading=true;pageError='';renderPage();
+  try{
+   const nextPage=normalizeAudioPage(await request(audioIndex+'&cursor='+encodeURIComponent(cursor)));
+   if(signal?.aborted||epoch!==attempt)return;
+   if(nextPage.nextCursor===cursor)throw Error('AUDIO_PAGE_INVALID');
+   if(nextPage.rows.length){
+    pages.push(nextPage);
+    for(const item of nextPage.rows)allRows.set(item.row.url,item);
+    ++page;
+   }else pages[page]={...pages[page],nextCursor:null};
+  }catch{
+   if(!signal?.aborted&&epoch===attempt)pageError='다음 페이지를 불러오지 못했습니다.';
+  }finally{
+   if(!signal?.aborted&&epoch===attempt){loading=false;renderPage();}
+  }
+ });
  function playNext(){
   if(signal?.aborted)return;
   while(queued.length){
@@ -283,8 +314,7 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{},sub
  }
  signal?.addEventListener('abort',()=>{queued=[];releasePlayer();},{once:true});
  function renderPage(){
-  const pages=pageCount();page=Math.min(page,pages-1);
-  const start=page*audioPageSize,rows=[...allRows.values()].slice(start,start+audioPageSize);
+  const start=page*audioPageSize,rows=pages[page]?.rows??[];
   const nextButtons=new Map(),entries=[];
   for(const {row,audioId} of rows){
    const item=node('li','audio-result'),button=node('button','audio-play', '▶'),check=node('input','audio-select');
@@ -332,36 +362,48 @@ function makePlaylist(container,signal,{submitDelete,onDeleteAccepted=()=>{},sub
   activeButtons=nextButtons;
   list.replaceChildren(...entries);
   updateSelection();
-  list.hidden=head.hidden=actions.hidden=entries.length===0;
+  list.hidden=head.hidden=entries.length===0;actions.hidden=entries.length===0&&!refresh;
   empty.hidden=entries.length!==0;empty.textContent='아직 게시된 BGM이 없습니다.';
-  nav.hidden=pages===1;previous.disabled=page===0;next.disabled=page+1>=pages;
-  pageStatus.textContent=entries.length?
-   (page+1)+' / '+pages+' 페이지 · '+(start+1)+'–'+(start+entries.length)+'곡 / 전체 '+allRows.size+'곡':'';
+  const more=!!pages[page+1]||!!pages[page]?.nextCursor;
+  nav.hidden=page===0&&!more&&!pageError;previous.disabled=page===0;next.disabled=loading||!more;
+  pageStatus.textContent=loading?'다음 페이지를 읽고 있습니다.':pageError||
+   (entries.length?(page+1)+' 페이지 · '+(start+1)+'–'+(start+entries.length)+'곡':'');
   paint();
  }
- return results=>{
+ return (data,{force=false,removed=[]}={})=>{
   if(signal?.aborted)return;
-  if(!Array.isArray(results)){empty.textContent='게시된 BGM을 읽고 있습니다.';return;}
-  const nextRows=new Map();
-  for(const row of results){
-   if(typeof row?.title!=='string'||typeof row.url!=='string'||!row.url.startsWith(audioIndex+'&id=')||
-      !Number.isFinite(row.durationSeconds)||row.durationSeconds<=0||nextRows.has(row.url))continue;
-   nextRows.set(row.url,{row,audioId:publishedAudioId(row)});
-  }
-  allRows=nextRows;
+  if(data===null){empty.textContent='게시된 BGM을 읽고 있습니다.';return;}
+  const first=normalizeAudioPage(data),signature=JSON.stringify(data);
+  if(!force&&firstSignature===signature)return;
+  firstSignature=signature;++epoch;loading=false;pageError='';page=0;pages=[first];
+  allRows=new Map(first.rows.map(item=>[item.row.url,item]));
   for(const url of checked)if(!allRows.has(url))checked.delete(url);
-  if(selected&&!allRows.has(selected)){queued=[];releasePlayer();}
+  queued=queued.filter(url=>allRows.has(url));
+  if(selected&&(removed.includes(publishedAudioId({url:selected}))||first.nextCursor===null&&!allRows.has(selected)))releasePlayer();
   renderPage();
  };
 }
-export function showAudioResults(container,results,signal,options){
+function normalizeAudioPage(data){
+ if(data?.projectId!=='binari'||!Array.isArray(data.results)||data.results.length>audioPageSize||
+    !(data.nextCursor===null||typeof data.nextCursor==='string'&&data.nextCursor.startsWith('a1')&&data.nextCursor.length<=2048))
+  throw Error('AUDIO_PAGE_INVALID');
+ const rows=new Map();
+ for(const row of data.results){
+  if(typeof row?.title!=='string'||typeof row.url!=='string'||!row.url.startsWith(audioIndex+'&id=')||
+     !Number.isFinite(row.durationSeconds)||row.durationSeconds<=0||rows.has(row.url))continue;
+  rows.set(row.url,{row,audioId:publishedAudioId(row)});
+ }
+ return {rows:[...rows.values()],nextCursor:data.nextCursor};
+}
+export function showAudioResults(container,data,signal,options,refreshOptions){
  let display=playlists.get(container);
  if(!display){display=makePlaylist(container,signal,options);playlists.set(container,display);}
- display(results);
+ display(data,refreshOptions);
 }
+
 export async function refreshAudioResults({post,request,signal,display}){
  const scope='binari/audio',read=()=>request(audioIndex);let available=false;
- try{const initial=await read();if(!signal.aborted){display(initial.results);available=true;}}catch{/* Try refreshing the exact audio scope. */}
+ try{const initial=await read();if(!signal.aborted){display(initial);available=true;}}catch{/* Try refreshing the exact audio scope. */}
  if(signal.aborted)return;
  const comparison=await post('compare',{scope});
  if(signal.aborted)return;
@@ -370,7 +412,7 @@ export async function refreshAudioResults({post,request,signal,display}){
   if(signal.aborted)return;
   try{await post('refresh',{scope,folder});applied=true;}catch{failed=true;}
  }
- if(!signal.aborted&&(applied||!available)){const next=await read();if(!signal.aborted)display(next.results);}
+ if(!signal.aborted&&(applied||!available)){const next=await read();if(!signal.aborted)display(next);}
  if(failed)throw Error('AUDIO_RESULT_SYNC_UNAVAILABLE');
 }
 
@@ -392,55 +434,54 @@ function audioSeparationSource(row){
  return !extra.length&&validAudioSeparationPayload(payload)?payload:null;
 }
 const publishedAudioId=row=>audioSeparationSource(row)?.sourceOfficialRequestId??null;
-function acceptedAudioPresent(rows,id){return Array.isArray(rows)&&rows.some(row=>publishedAudioId(row)===id);}
-export async function followDeletedAudioResults({ids,post,request,signal,display,wait=untilNextAudioCheck}){
+async function exactPublishedAudio(request,id){
+ const value=await request(audioIndex+'&resultId='+encodeURIComponent(id));
+ if(value?.projectId!=='binari'||!(value.result===null||publishedAudioId(value.result)===id))
+  throw Error('AUDIO_RESULT_INVALID');
+ return value.result;
+}
+export async function followDeletedAudioResults({ids,post,request,signal,onChanged,wait=untilNextAudioCheck}){
  const pending=new Set(ids.filter(id=>typeof id==='string'&&officialAudioId.test(id)));
  for(let check=0;pending.size&&check<maxAcceptedChecks;check++){
   if(!await wait(signal,check===0?5000:refreshDelay)||signal.aborted)return false;
-  // Compare from the existing parent: the target directory itself no longer
-  // exists remotely. Apply only groups corresponding to submitted tracks.
   try{
    const scope='binari/audio',comparison=await post('compare',{scope});
    for(const group of comparison.groups){
     if(signal.aborted)return false;
     if(pending.has(group.folder))await post('refresh',{scope,folder:group.folder});
    }
-  }catch{/* The official receipt does not imply source deletion or replica refresh. */}
-  if(signal.aborted)return false;
-  try{
-   const {results}=await request(audioIndex);
+  }catch{/* A receipt does not guarantee publication. */}
+  const removed=[];
+  for(const id of pending){
    if(signal.aborted)return false;
-   if(!Array.isArray(results))continue;
-   display(results);
-   for(const id of pending)if(!acceptedAudioPresent(results,id))pending.delete(id);
-  }catch{/* Keep the existing playlist when a sync read fails. */}
+   try{if(await exactPublishedAudio(request,id)===null&&!signal.aborted){pending.delete(id);removed.push(id);}}
+   catch{/* A failed exact read is not evidence of deletion. */}
+  }
+  if(removed.length&&!signal.aborted)try{await onChanged(removed);}catch{for(const id of removed)pending.add(id);}
  }
  return !pending.size;
 }
-export async function followAcceptedAudioResult({id,post,request,signal,display,visible=()=>null,wait=untilNextAudioCheck}){
+export async function followAcceptedAudioResult({id,post,request,signal,onChanged,wait=untilNextAudioCheck}){
  if(typeof id!=='string'||!officialAudioId.test(id)||signal.aborted)return false;
- if(acceptedAudioPresent(visible(),id))return true;
  const scope='binari/audio/'+id;
- async function showIfPresent(){
+ async function found(){
   try{
-   const {results}=await request(audioIndex);
-   if(!signal.aborted&&acceptedAudioPresent(results,id)){display(results);return true;}
-  }catch{/* Keep the published view as-is while the exact result is not verifiable. */}
+   const row=await exactPublishedAudio(request,id);
+   if(!signal.aborted&&row){await onChanged();return true;}
+  }catch{/* Keep the published view until the exact result is available. */}
   return false;
  }
  for(let check=0;check<maxAcceptedChecks;check++){
   if(!await wait(signal,refreshDelay)||signal.aborted)return false;
-  if(acceptedAudioPresent(visible(),id)||await showIfPresent())return true;
-  if(signal.aborted)return false;
+  if(await found())return true;
   try{
    const comparison=await post('compare',{scope});
    if(signal.aborted)return false;
-   // This result directory has only the metadata and WAV at its root.
    if(comparison.groups.some(row=>row.folder==='')){
     await post('refresh',{scope,folder:''});
-    if(!signal.aborted&&await showIfPresent())return true;
+    if(!signal.aborted&&await found())return true;
    }
-  }catch{/* A transient sync error does not change the official receipt or imply failure. */}
+  }catch{/* A transient sync error does not change the official receipt. */}
  }
  return false;
 }

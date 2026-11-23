@@ -16,6 +16,7 @@ const payload={schemaVersion:'ngs.audio-generate.v1',projectId:'binari',kind:'bg
 const speak={...payload,kind:'tts',text:'안녕하세요',durationSeconds:null};
 const receipt={officialRequestId:'request.audio.fixture',status:'registered'};
 
+const page=(results,nextCursor=null)=>({projectId:'binari',results,nextCursor});
 test('only sorted-wire audio fields, active sound selections and bounded status reach form',()=>{
  assert.deepEqual(makeAudioPayload(values,[concept]),payload);
  assert.throws(()=>makeAudioPayload({...values,kind:'tts',text:' 안녕하세요 ',duration:'outside'},[concept]),/AUDIO_FORM_INVALID/);
@@ -181,7 +182,7 @@ test('the song list is independent of lazy sound-concept loading and a failed lo
  const results=mountAudioWorkspace({items,detail,signal:new AbortController().signal,
   loadConcepts:async()=>{if(++calls===1)throw Error('unavailable');return [concept];},
   submit:async()=>assert.fail('no submission')});
- showAudioResults(results,[{title:'먼저 표시하는 곡',durationSeconds:30,url:'/api/audio-workspace?projectId=binari&id=track'}]);
+ showAudioResults(results,page([{title:'먼저 표시하는 곡',durationSeconds:30,url:'/api/audio-workspace?projectId=binari&id=track'}]));
  assert.equal(calls,0);
  const dialog=detail.all('dialog')[0],open=detail.all('button')[0],form=dialog.all('form')[0];
  await open.events.click();
@@ -252,7 +253,7 @@ test('playlist displays one row per song and uses a single player without interr
  showAudioResults(host,null,navigation.signal);
  assert.equal(host.all('audio').length,1);
  assert.equal(host.all('audio')[0].src,undefined);
- showAudioResults(host,[first,second]);
+ showAudioResults(host,page([first,second]));
  assert.deepEqual(host.all('li').map(x=>x.children.slice(2).map(c=>c.textContent)),
   [['첫 곡','80','30초'],['두 번째 곡','90','30초']]);
  const trackButton=(i,j)=>host.all('ol')[0].all('li')[i].all('button')[j];
@@ -264,7 +265,7 @@ test('playlist displays one row per song and uses a single player without interr
  assert.equal(player.src,second.url);assert.equal(player.paused,false);
  assert.equal(host.all('li')[0].classes.has('audio-result-current'),false);
  assert.equal(host.all('li')[1].classes.has('audio-result-current'),true);
- showAudioResults(host,[first,second,first]);
+ showAudioResults(host,page([first,second,first]));
  assert.equal(host.all('li').length,2);
  assert.equal(host.all('audio')[0],player);assert.equal(player.paused,false);
  trackButton(1,0).events.click();assert.equal(player.paused,true);
@@ -273,7 +274,7 @@ test('playlist displays one row per song and uses a single player without interr
  assert.equal(playSelection.disabled,false);
  playSelection.events.click();assert.equal(player.src,first.url);
  player.ended=true;player.events.ended();assert.equal(player.src,second.url);
- showAudioResults(host,[first]);
+ showAudioResults(host,page([first]));
  assert.equal(player.src,undefined);assert.equal(player.paused,true);
 });
 
@@ -284,7 +285,7 @@ const audioRow=(title,id)=>({title,durationSeconds:30,url:'/api/audio-workspace?
 test('selected deletes confirm the precise count, submit separately, and do not remove kept rows before sync',async t=>{
  const Element=installDOM(t),root=new Element('section'),signal=new AbortController().signal;
  const rows=['a','b','c'].map((hex,i)=>audioRow('곡 '+(i+1),audioId(hex))),calls=[],accepted=[];
- showAudioResults(root,rows,signal,{submitDelete:async command=>{
+ showAudioResults(root,page(rows),signal,{submitDelete:async command=>{
   calls.push(command);
   if(calls.length===2)return Response.json({}, {status:503});
   if(calls.length===3)return Response.json({error:'PROJECT_OR_RESOURCE_DENIED'},{status:403});
@@ -311,71 +312,75 @@ test('selected deletes confirm the precise count, submit separately, and do not 
  assert.deepEqual(calls.map(x=>x.payload.officialRequestId),['a','b','c','b','c'].map(audioId));
  assert.equal(calls[3].idempotencyKey,calls[1].idempotencyKey);
  assert.notEqual(calls[4].idempotencyKey,calls[2].idempotencyKey);
- showAudioResults(root,rows.slice(1));
+ showAudioResults(root,page(rows.slice(1)));
  assert.equal(root.all('ol')[0].all('li').length,2);
 });
 
-test('pagination renders at most thirty rows and select-all, playback and deletion span every page',async t=>{
+test('fetches cursor pages on demand, caches history and deletes only chosen tracks',async t=>{
  const Element=installDOM(t),root=new Element('section'),signal=new AbortController().signal;
  const rows=Array.from({length:65},(_,i)=>audioRow('곡 '+(i+1),'request.official.'+i.toString(16).padStart(64,'0')));
- const calls=[];
- showAudioResults(root,rows,signal,{submitDelete:async cmd=>{calls.push(cmd);return Response.json(receipt,{status:201});}});
+ const calls=[],reads=[];
+ showAudioResults(root,page(rows.slice(0,30),'a1.next'),signal,{
+  request:async route=>{
+   reads.push(route);
+   return route.endsWith('a1.next')?page(rows.slice(30,60),'a1.last'):page(rows.slice(60));
+  },
+  submitDelete:async cmd=>{calls.push(cmd);return Response.json(receipt,{status:201});}
+ });
  const button=title=>root.all('button').find(b=>b.textContent===title);
  const items=()=>root.all('ol')[0].all('li');
  const marks=()=>root.all('ol')[0].all('input');
- const nav=root.all('nav')[0],status=nav.all('span')[0],next=button('다음'),previous=button('이전');
- assert.equal(nav.hidden,false);
- assert.equal(previous.disabled,true);
+ const next=button('다음'),previous=button('이전');
+ assert.deepEqual(reads,[]);
  assert.equal(items().length,30);
- assert.match(status.textContent,/1–30곡 \/ 전체 65곡/);
  const mark=check=>{check.checked=true;check.events.change();};
- mark(marks()[29]);next.events.click();
- assert.match(status.textContent,/31–60곡/);
- assert.equal(items().length,30);
- mark(marks()[0]);next.events.click();
- assert.equal(items().length,5);
- assert.equal(next.disabled,true);
- button('선택 재생').events.click();
- const player=root.all('audio')[0];
- assert.equal(player.src,rows[29].url);
- player.ended=true;player.events.ended();assert.equal(player.src,rows[30].url);
- showAudioResults(root,rows.slice(0,61));
- assert.equal(items().length,1);
- assert.equal(player.src,rows[30].url);
- previous.events.click();assert.equal(marks()[0].checked,true);
- button('전체 곡 선택').events.click();
+ mark(marks()[29]);await next.events.click();
+ assert.equal(reads.length,1);
+ button('현재 페이지 전체 선택').events.click();
  assert.ok(marks().every(x=>x.checked));
- previous.events.click();assert.ok(marks().every(x=>x.checked));
- assert.match(root.all('span').find(x=>x.attrs.role==='status').textContent,/61곡 선택/);
- button('선택 삭제 요청').events.click();assert.equal(root.all('dialog')[0].all('li').length,61);
- button('취소').events.click();assert.deepEqual(calls,[]);
- button('전체 선택 해제').events.click();assert.ok(marks().every(x=>!x.checked));
- mark(marks()[0]);next.events.click();next.events.click();
+ previous.events.click();assert.equal(marks().filter(x=>x.checked).length,1);
+ await next.events.click();assert.equal(reads.length,1);
+ button('현재 페이지 선택 해제').events.click();
+ await next.events.click();assert.equal(items().length,5);assert.equal(reads.length,2);
  mark(marks()[0]);
+ button('선택 재생').events.click();
+ const player=root.all('audio')[0];assert.equal(player.src,rows[29].url);
+ player.ended=true;player.events.ended();assert.equal(player.src,rows[60].url);
  button('선택 삭제 요청').events.click();
- assert.deepEqual(root.all('dialog')[0].all('li').map(x=>x.textContent),['곡 1','곡 61']);
+ assert.deepEqual(root.all('dialog')[0].all('li').map(x=>x.textContent),['곡 30','곡 61']);
  await button('삭제 요청').events.click();
- assert.deepEqual(calls.map(x=>x.payload.officialRequestId),[rows[0],rows[60]].map(r=>new URL(r.url,'https://example.test').searchParams.get('id')));
- showAudioResults(root,rows.slice(0,29));
- assert.equal(nav.hidden,true);
- assert.equal(items().length,29);
- assert.equal(player.src,undefined);
+ assert.deepEqual(calls.map(x=>x.payload.officialRequestId),[rows[29],rows[60]].map(r=>new URL(r.url,'https://example.test').searchParams.get('id')));
+ showAudioResults(root,page(rows.slice(0,29)),signal,undefined,{force:true,removed:[audioId('f'),new URL(rows[60].url,'https://example.test').searchParams.get('id')]});
+ assert.equal(items().length,29);assert.equal(player.src,undefined);
+});
+
+test('late next result cannot replace refreshed first page',async t=>{
+ const Element=installDOM(t),root=new Element('section'),signal=new AbortController().signal;
+ const first=audioRow('First',audioId('a')),newer=audioRow('Newest',audioId('b')),obsolete=audioRow('Obsolete',audioId('c'));
+ let resolve;
+ showAudioResults(root,page([first],'a1.next'),signal,{request:()=>new Promise(r=>{resolve=r;})});
+ const next=root.all('button').find(b=>b.textContent==='다음');
+ const pending=next.events.click();
+ showAudioResults(root,page([newer]),signal,undefined,{force:true});
+ resolve(page([obsolete]));await pending;
+ const titles=root.all('ol')[0].all('button').map(b=>b.textContent);
+ assert.ok(titles.includes('Newest'));assert.ok(!titles.includes('Obsolete'));
 });
 
 test('accepted deletes compare the parent but refresh only their exact folders and render only data returned by the replica',async()=>{
  const id=audioId('a'),foreign=audioId('b'),target=audioRow('대상',id),other=audioRow('다른 곡',foreign);
  const calls=[],views=[],waits=[];
  const result=await followDeletedAudioResults({ids:[id,'invalid',id],signal:new AbortController().signal,
-  wait:async(_signal,ms)=>{waits.push(ms);return true;},display:rows=>views.push(rows),
+  wait:async(_signal,ms)=>{waits.push(ms);return true;},onChanged:ids=>views.push(ids),
   post:async(action,payload)=>{
    calls.push([action,payload]);
    return {groups:waits.length===2?[{folder:foreign},{folder:id}]:[]};
   },
-  request:async()=>({results:waits.length===1?[target,other]:[other]})});
+  request:async route=>{assert.match(route,/&resultId=/);return {projectId:'binari',result:waits.length===1?target:null};}});
  assert.equal(result,true);
  assert.deepEqual(calls,[['compare',{scope:'binari/audio'}],['compare',{scope:'binari/audio'}],
   ['refresh',{scope:'binari/audio',folder:id}]]);
- assert.deepEqual(views,[[target,other],[other]]);
+ assert.deepEqual(views,[[id]]);
  assert.deepEqual(waits,[5000,60_000]);
 });
 
@@ -459,11 +464,11 @@ test('accepted BGM refresh is minute-gated, only syncs the exact result and stop
  const signal=new AbortController().signal;
  let found=false,attempts=0;
  const otherResult={url:url(other)},expected={url:url(id)};
- const succeeded=await followAcceptedAudioResult({id,signal,display:rows=>published.push(rows),
+ const succeeded=await followAcceptedAudioResult({id,signal,onChanged:()=>published.push(id),
   wait:async(s,ms)=>{assert.equal(s,signal);delays.push(ms);return true;},
   request:async route=>{
-   assert.equal(route,'/api/audio-workspace?projectId=binari');
-   return {results:[otherResult,...(found?[expected]:[])]};
+   assert.equal(route,'/api/audio-workspace?projectId=binari&resultId='+id);
+   return {projectId:'binari',result:found?expected:null};
   },
   post:async(kind,body)=>{
    hits.push([kind,body]);
@@ -474,15 +479,14 @@ test('accepted BGM refresh is minute-gated, only syncs the exact result and stop
  assert.equal(succeeded,true);
  assert.deepEqual(delays,[60_000,60_000]);
  assert.deepEqual(hits,[['compare',{scope}],['compare',{scope}],['refresh',{scope,folder:''}]]);
- assert.deepEqual(published,[[otherResult,expected]]);
- assert.equal(await followAcceptedAudioResult({id,signal,visible:()=>[expected],wait:()=>assert.fail()}),true);
+ assert.deepEqual(published,[id]);
 });
 
 test('accepted BGM checks are bounded, canceled on navigation, and never sync an invalid receipt ID',async()=>{
  const id='request.official.'+'a'.repeat(64),signal=new AbortController().signal;
  let checks=0;
  assert.equal(await followAcceptedAudioResult({id,signal,wait:async()=>true,display:()=>assert.fail(),
-  request:async()=>({results:[]}),post:async()=>{checks++;throw Error('not yet visible');}}),false);
+  request:async()=>({projectId:'binari',result:null}),post:async()=>{checks++;throw Error('not yet visible');}}),false);
  assert.equal(checks,10);
  const route=new AbortController();
  assert.equal(await followAcceptedAudioResult({id,signal:route.signal,display:()=>assert.fail(),request:()=>assert.fail(),
