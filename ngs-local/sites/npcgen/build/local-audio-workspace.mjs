@@ -121,6 +121,14 @@ function node(tag,className='',label){
  if(label!==undefined)child.textContent=label;
  return child;
 }
+function separationIcon(){
+ const ns='http://www.w3.org/2000/svg';
+ const svg=document.createElementNS(ns,'svg'),path=document.createElementNS(ns,'path');
+ for(const [name,value] of Object.entries({class:'audio-separate-icon',viewBox:'0 0 24 24','aria-hidden':'true',
+  fill:'none',stroke:'currentColor','stroke-width':'2','stroke-linecap':'round','stroke-linejoin':'round'}))svg.setAttribute(name,value);
+ path.setAttribute('d','M4 12h5c5 0 4-6 9-6h2m-4-3 4 3-4 3M9 12c5 0 4 6 9 6h2m-4-3 4 3-4 3');
+ svg.append(path);return svg;
+}
 function field(label,tag,options){
  const wrapper=node('label','',label),input=Object.assign(node(tag),options);wrapper.append(input);return {wrapper,input};
 }
@@ -145,13 +153,14 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
  }
  selectionCount.setAttribute('role','status');nav.setAttribute('aria-label','BGM 목록 페이지');
  pageStatus.setAttribute('role','status');nav.append(previous,pageStatus,next);nav.hidden=true;
- const head=node('div','audio-playlist-columns');
+ const head=node('div','audio-playlist-columns'+(submitSeparation?' audio-with-separation':''));
  head.setAttribute('aria-hidden','true');
  head.append(node('span'),node('span'),node('span','','제목'),node('span','','BPM'),node('span','','총길이'));
+ if(submitSeparation)head.append(node('span'));
  const now=node('div','audio-now-playing'),label=node('p','audio-now-title'),player=node('audio'),error=node('p','meta error');
  player.controls=true;player.preload='none';now.hidden=true;list.hidden=true;head.hidden=true;
  error.setAttribute('role','status');now.append(label,player,error);
- container.replaceChildren(actions,head,list,nav,empty,now);
+ container.replaceChildren(now,actions,head,list,nav,empty);
  const checked=new Set();
  let selected=null,allRows=new Map(),activeButtons=new Map(),page=0,queued=[],playAttempt=0,deleting=false;
  const separations=new Map();
@@ -282,7 +291,8 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
    if(separate){
     const state=separations.get(url)?.state;
     separate.disabled=state==='pending'||state==='queued';
-    separate.textContent=state==='uncertain'?'같은 접수 다시 확인':'분리 요청';
+    const action=state==='uncertain'?'같은 접수 다시 확인':'보컬 분리 요청';
+    separate.title=action;separate.setAttribute('aria-label',title+' '+action);
     separateStatus.textContent={pending:'반주 요청 접수 중…',queued:'반주 요청 저장됨',rejected:'반주 요청을 접수하지 못했습니다.',
      uncertain:'접수 확인 필요'}[state]??'';
     separateStatus.hidden=!separateStatus.textContent;
@@ -317,7 +327,7 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
   const start=page*audioPageSize,rows=pages[page]?.rows??[];
   const nextButtons=new Map(),entries=[];
   for(const {row,audioId} of rows){
-   const item=node('li','audio-result'),button=node('button','audio-play', '▶'),check=node('input','audio-select');
+   const item=node('li','audio-result'+(submitSeparation?' audio-with-separation':'')),button=node('button','audio-play', '▶'),check=node('input','audio-select');
    check.type='checkbox';check.checked=checked.has(row.url);check.setAttribute('aria-label',row.title+' 선택');
    check.addEventListener('change',()=>{if(check.checked)checked.add(row.url);else checked.delete(row.url);updateSelection();});
    button.type='button';button.addEventListener('click',()=>select(row));
@@ -331,10 +341,12 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
    duration.setAttribute('aria-label','총길이 '+duration.textContent);
    const deleteStatus=submitDelete?node('span','audio-delete-status'):null;
    const source=submitSeparation&&row.separated!==true?audioSeparationSource(row):null;
-   const separate=source?node('button','concept-category-trigger audio-separate','분리 요청'):null;
-   const separateStatus=separate?node('span','audio-delete-status'):null;
+   const separate=source?node('button','audio-separate'):null;
+   const separateStatus=separate?node('span','audio-separate-status'):null;
+   const separateSlot=submitSeparation?node('span','audio-separate-slot'):null;
    if(separate){
-    separate.type='button';separate.setAttribute('aria-label',row.title+' 분리 요청');
+    separate.type='button';
+    separate.append(separationIcon());separateSlot.append(separate);
     separateStatus.setAttribute('role','status');separateStatus.hidden=true;
     separate.addEventListener('click',async()=>{
      if(signal?.aborted||!allRows.has(row.url))return;
@@ -352,11 +364,12 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
    }
    let song=title;
    if(deleteStatus||separate){
-    song=node('span','audio-track-song');song.append(title);
+    song=node('span','audio-track-song'+(separate?' audio-track-separable':''));song.append(title);
     if(deleteStatus)song.append(deleteStatus);
-    if(separate)song.append(separate,separateStatus);
+    if(separateStatus)song.append(separateStatus);
    }
    item.append(check,button,song,bpm,duration);
+   if(separateSlot)item.append(separateSlot);
    nextButtons.set(row.url,{button,item,title:row.title,row,audioId,deleteStatus,separate,separateStatus,check});entries.push(item);
   }
   activeButtons=nextButtons;

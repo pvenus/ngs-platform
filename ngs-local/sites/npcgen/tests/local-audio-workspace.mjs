@@ -113,7 +113,7 @@ function installDOM(t){
   close(){this.open=false;this.events.close();}
   focus(){globalThis.document.activeElement=this;}
  }
- const before=globalThis.document;globalThis.document={createElement:tag=>new Element(tag)};t.after(()=>{globalThis.document=before;});
+ const before=globalThis.document;globalThis.document={createElement:tag=>new Element(tag),createElementNS:(_ns,tag)=>new Element(tag)};t.after(()=>{globalThis.document=before;});
  return Element;
 }
 
@@ -252,6 +252,8 @@ test('playlist displays one row per song and uses a single player without interr
  const first=row('첫 곡',80),second=row('두 번째 곡',90);
  showAudioResults(host,null,navigation.signal);
  assert.equal(host.all('audio').length,1);
+ assert.equal(host.children[0].className,'audio-now-playing');
+ assert.equal(host.children[0].hidden,true);
  assert.equal(host.all('audio')[0].src,undefined);
  showAudioResults(host,page([first,second]));
  assert.deepEqual(host.all('li').map(x=>x.children.slice(2).map(c=>c.textContent)),
@@ -259,6 +261,7 @@ test('playlist displays one row per song and uses a single player without interr
  const trackButton=(i,j)=>host.all('ol')[0].all('li')[i].all('button')[j];
  trackButton(0,0).events.click();
  const player=host.all('audio')[0];
+ assert.equal(host.children[0].hidden,false);
  assert.equal(player.src,first.url);assert.equal(player.paused,false);
  assert.equal(host.all('li')[0].classes.has('audio-result-current'),true);
  trackButton(1,1).events.click();
@@ -506,10 +509,18 @@ test('one per-track action reuses an uncertain queue ticket and excludes derived
   if(calls.length===1)throw Error('lost ACK');
   return Response.json({queueId:'ngs.local.00000000-0000-4000-8000-000000000000',status:'queued'},{status:202});
  },onSeparationAccepted:receipt=>received.push(receipt)});
- const buttons=host.all('button').filter(b=>b.textContent==='분리 요청');
+ const buttons=host.all('button').filter(b=>b.className==='audio-separate');
  assert.equal(buttons.length,1);
+ assert.equal(buttons[0].textContent??'','');
+ assert.equal(buttons[0].title,'보컬 분리 요청');
+ assert.equal(buttons[0].attrs['aria-label'],'원곡 보컬 분리 요청');
+ assert.equal(buttons[0].all('svg')[0].attrs['aria-hidden'],'true');
+ const slots=host.all('li').map(row=>row.children.at(-1));
+ assert.deepEqual(slots.map(slot=>slot.className),rows.map(()=> 'audio-separate-slot'));
+ assert.deepEqual(slots.map(slot=>slot.children.length),[1,0,0]);
  await buttons[0].events.click();
- assert.equal(buttons[0].textContent,'같은 접수 다시 확인');
+ assert.equal(buttons[0].textContent??'','');
+ assert.equal(buttons[0].title,'같은 접수 다시 확인');
  await buttons[0].events.click();
  await buttons[0].events.click();
  assert.deepEqual(calls[1],calls[0]);assert.equal(calls.length,2);
