@@ -457,15 +457,16 @@ def reserve_retry(history, ids, attempt):
     return attempt_folder
 
 
-def wait_for_old_ports(host, old_pid, *, wait=10, interval=0.25):
+def wait_for_old_ports(host, old_pid, *, wait=10, interval=0.25, foreign_code="OLD_NATIVE_PORTS_BUSY"):
     """Wait only for the previously verified NGS listener, never for another owner."""
     deadline = time.monotonic() + wait
     while True:
         listeners = host.listener(5274) | host.listener(5275)
         if not listeners:
             return
+        require(listeners == {old_pid}, foreign_code)
         remaining = deadline - time.monotonic()
-        require(listeners == {old_pid} and remaining > 0, "OLD_NATIVE_PORTS_BUSY")
+        require(remaining > 0, "OLD_NATIVE_PORTS_BUSY")
         time.sleep(min(interval, remaining))
 
 
@@ -541,6 +542,10 @@ def apply(sha, control, host, attempt=None, previous=None):
                 if stopped:
                     stage = "rollback_stop"
                     host.stop_if_loaded()
+                    if failure["stage"] == "wait_ports" and actual == prior and not advanced:
+                        # bootout can return before the verified prior listener
+                        # exits. Do not bootstrap into either occupied port.
+                        wait_for_old_ports(host, pid, foreign_code="NATIVE_PORT_OWNER_DRIFT")
                     stage = "rollback_start"
                     host.bootstrap()
                 stage = "rollback_check"

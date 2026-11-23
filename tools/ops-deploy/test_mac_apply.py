@@ -199,25 +199,48 @@ class Apply(unittest.TestCase):
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [0.25, 0.25])
         self.assertEqual(self.host.calls, ["stop", "replace", "start"])
 
-    def test_old_listener_still_bound_at_deadline_rolls_back_without_switching(self):
-        with patch.object(self.host, "listener", return_value={self.host.current}), \
-                patch.object(m.time, "monotonic", side_effect=[0, 9.9, 10]), \
+    def test_rollback_waits_for_prior_pid_to_release_after_forward_deadline(self):
+        old = {self.host.current}
+        with patch.object(self.host, "listener", side_effect=[
+            old, old, old, old,  # forward wait reaches its deadline
+            old, set(), set(), set(),  # only the old PID remains, then both ports close
+        ]), patch.object(m.time, "monotonic", side_effect=[0, 9.9, 10, 10, 10.25]), \
                 patch.object(m.time, "sleep") as sleep:
+            sleep.side_effect = lambda _seconds: self.assertEqual(self.host.calls, ["stop"])
             with self.assertRaises(m.ApplyFailed):
                 self.run_apply()
-        self.assertAlmostEqual(sleep.call_args.args[0], 0.1)
+        self.assertAlmostEqual(sleep.call_args_list[0].args[0], 0.1)
+        self.assertEqual(sleep.call_args_list[1].args[0], 0.25)
         self.assertEqual(self.host.calls, ["stop", "start"])
         self.assertEqual(self.host.read_plist(), self.host.prior)
         self.assertEqual(self.status(), {"state": "rolled-back", "failure": {
             "stage": "wait_ports", "code": "OLD_NATIVE_PORTS_BUSY"}})
 
-    def test_ports_busy_is_a_distinct_rollback_reason(self):
-        with patch.object(self.host, "listener", return_value={222}), patch.object(m.time, "sleep") as sleep:
+    def test_prior_ports_still_busy_at_rollback_deadline_never_bootstraps(self):
+        with patch.object(self.host, "listener", return_value={self.host.current}), \
+                patch.object(m.time, "monotonic", side_effect=[0, 10, 10, 19.75, 20]), \
+                patch.object(m.time, "sleep") as sleep:
+            with self.assertRaises(m.ApplyFailed):
+                self.run_apply()
+        sleep.assert_called_once_with(0.25)
+        self.assertEqual(self.host.calls, ["stop"])
+        self.assertEqual(self.host.read_plist(), self.host.prior)
+        self.assertEqual(self.status(), {"state": "rollback-failed",
+            "failure": {"stage": "wait_ports", "code": "OLD_NATIVE_PORTS_BUSY"},
+            "rollbackFailure": {"stage": "rollback_stop", "code": "OLD_NATIVE_PORTS_BUSY"}})
+
+    def test_foreign_listener_refuses_rollback_without_wait_or_bootstrap(self):
+        with patch.object(self.host, "listener", side_effect=[
+            {self.host.current}, {222}, set(), {222},
+        ]), patch.object(m.time, "sleep") as sleep:
             with self.assertRaises(m.ApplyFailed):
                 self.run_apply()
         sleep.assert_not_called()
-        self.assertEqual(self.status(), {"state": "rolled-back", "failure": {
-            "stage": "wait_ports", "code": "OLD_NATIVE_PORTS_BUSY"}})
+        self.assertEqual(self.host.calls, ["stop"])
+        self.assertEqual(self.host.read_plist(), self.host.prior)
+        self.assertEqual(self.status(), {"state": "rollback-failed",
+            "failure": {"stage": "wait_ports", "code": "OLD_NATIVE_PORTS_BUSY"},
+            "rollbackFailure": {"stage": "rollback_stop", "code": "NATIVE_PORT_OWNER_DRIFT"}})
 
     def test_generic_rollback_error_is_selected_from_phase(self):
         with patch.object(self.host, "bootstrap", side_effect=OSError("/sensitive/path")):
