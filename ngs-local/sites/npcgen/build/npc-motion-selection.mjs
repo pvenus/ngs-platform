@@ -1,10 +1,14 @@
 /** Portable browser/Local/Space contract for explicit, immutable motion selections. */
-export const selectionSchemaVersion='ngs.npc-one-stop.selection.v1';
-export const selectionReplaceSchemaVersion='ngs.npc-one-stop.selection.replace.v1';
+// v2 requests derive a combat portrait branch from selected combat presets.
+export const selectionSchemaVersion='ngs.npc-one-stop.selection.v2';
+export const selectionReplaceSchemaVersion='ngs.npc-one-stop.selection.replace.v2';
+const selectionLegacySchemaVersion='ngs.npc-one-stop.selection.v1';
+const selectionLegacyReplaceSchemaVersion='ngs.npc-one-stop.selection.replace.v1';
 export const motionCatalogSchema='ngs.motion-selection-catalog.v1';
 export const motionDirections=Object.freeze(['n','ne','e','se','s','sw','w','nw']);
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
-export const isSelectionSchema=v=>v===selectionSchemaVersion||v===selectionReplaceSchemaVersion;
+export const isSelectionSchema=v=>v===selectionSchemaVersion||v===selectionReplaceSchemaVersion||
+ v===selectionLegacySchemaVersion||v===selectionLegacyReplaceSchemaVersion;
 export const isMotionPresetId=id=>typeof id==='string'&&id.trim()===id&&/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(id);
 const sha=v=>typeof v==='string'&&v.length===64&&/^[a-f0-9]{64}$/u.test(v);
 const pose=v=>v==='idle'||v==='combat';
@@ -44,7 +48,8 @@ export function npcPublishedMotionLabel(posePreset,presetId,catalog=[]){
 const npcSlugPattern=/^[a-z0-9]+(?:[-._][a-z0-9]+)*$/u;
 const oneStopId=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const legacyCharacterId=/^character\.([a-z0-9][a-z0-9._-]{1,79})$/u;
-export const isNpcWorkflowReplaceSchema=schema=>schema===selectionReplaceSchemaVersion||schema==='ngs.npc-one-stop.replace.v1';
+export const isNpcWorkflowReplaceSchema=schema=>schema===selectionReplaceSchemaVersion||
+ schema===selectionLegacyReplaceSchemaVersion||schema==='ngs.npc-one-stop.replace.v1';
 
 export function npcReplacementSlug(id){
  if(typeof id!=='string'||id!==id.trim()||!oneStopId.test(id))return null;

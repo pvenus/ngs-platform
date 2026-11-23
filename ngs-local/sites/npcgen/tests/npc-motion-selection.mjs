@@ -51,7 +51,10 @@ test('exact mixed selections and starter buttons never substitute or write hidde
  const catalog=[walk,run,run2d,attack],selected=[run2d,attack,run].map(motionSelectionOf);
  const body=newNpcOneStopRequest({...source,motionSelection:selected},catalog);
  assert.deepEqual(Object.keys(body).sort(),['character','intent','motionSelection','projectId','schemaVersion','sourceRefs']);
- assert.equal(body.schemaVersion,selectionSchemaVersion);assert.deepEqual(body.motionSelection,selected);
+ assert.equal(body.schemaVersion,'ngs.npc-one-stop.selection.v2');assert.deepEqual(body.motionSelection,selected);
+ assert.equal(selectionReplaceSchemaVersion,'ngs.npc-one-stop.selection.replace.v2');
+ assert.equal(newNpcOneStopRequest({...source,motionSelection:[motionSelectionOf(run)]},catalog).schemaVersion,selectionSchemaVersion);
+ assert.equal(validNpcMotionSelectionRequest({...body,schemaVersion:'ngs.npc-one-stop.selection.v1'}),true);
  assert.equal(validNpcMotionSelectionRequest({...body,schemaVersion:selectionReplaceSchemaVersion}),true);
  for(const [id,slug,ch] of [['character.seojin','seojin','ch1'],['character.yeonwoo','yeonwoo','chapter01']]){
   const target=npcReplacementTarget({id,name:'기존 인물',role:'역할',actId:'story.main.act01',chapters:[ch]});
@@ -130,6 +133,7 @@ test('open modal polls immediately, accepts mixed presets, and blocks stale unti
  areas[0].value=source.intent;areas[1].value=source.sourceRefs;
  await form.events.submit({preventDefault(){}});
  assert.equal(seen.length,1);
+ assert.equal(seen[0].payload.schemaVersion,'ngs.npc-one-stop.selection.v2');
  assert.deepEqual(seen[0].payload.motionSelection.map(row=>row.presetId),['walk-flat','sword-attack-flat','run-2d',...extra.map(r=>r.presetId)]);
  assert.equal(seen[0].payload.motionSelection[2].assetSetSha256,'2'.repeat(64));
  ac.abort();assert.equal(timers.size,0);
@@ -177,6 +181,9 @@ test('Local browser queue validates selected publication hashes without reading 
  assert.equal((await send('legacy-mismatch',{...existing,character:{...existing.character,slug:'new-id'}})).status,400);
  assert.equal((await send('legacy-exact',existing)).status,202);
  assert.deepEqual(queue.list().requests.at(-1).payload,existing);
+ const v1={...existing,schemaVersion:'ngs.npc-one-stop.selection.replace.v1'};
+ assert.equal((await send('old-selection-replace',v1)).status,202);
+ assert.deepEqual(queue.list().requests.at(-1).payload,v1,'older queued version is not rewritten');
  const regen=motionSelectionPayload(catalog.map(motionSelectionOf));
  const sendRegen=(id,payload)=>fetch(origin+'/api/requests',{method:'POST',headers,
   body:JSON.stringify({requestType:animationRegenerateType,idempotencyKey:id,payload})});

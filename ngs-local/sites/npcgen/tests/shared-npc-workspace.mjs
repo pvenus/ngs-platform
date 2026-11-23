@@ -6,6 +6,7 @@ import {dirname,join} from 'node:path';
 import test from 'node:test';
 import {npcWorkspaceRead} from '../build/npc-workspace.mjs';
 import {localNpcWorkspace} from '../build/local-npc-workspace.mjs';
+import {groupNpcPortraits} from '../build/local-npc-workspace-ui.mjs';
 
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const json=value=>Buffer.from(JSON.stringify(value));
@@ -43,6 +44,21 @@ test('shared NPC read parity over actual Local FS and asynchronous object replic
  const root=mkdtempSync(join(realpathSync(tmpdir()),'ngs-npc-parity-'));
  t.after(()=>rmSync(root,{recursive:true,force:true}));
  const data=new Map(initial);
+ const combat=Buffer.from([...png.subarray(0,8),2]),combatAsset=sha(combat)+'.png';
+ const npcMeta=JSON.parse(data.get(prefix+'metadata.json'));
+ npcMeta.portraitSets.combat={portraitAssetId:combatAsset,pixelAssetId:combatAsset};
+ npcMeta.poseViewKeys=['combat/portrait/sw','combat/pixel/sw'];
+ data.set(prefix+'metadata.json',json(npcMeta));
+ for(const ref of ['portrait','pixel']){
+  data.set(prefix+'assets/portraits/combat/'+ref+'.png',combat);
+  data.set(prefix+'assets/pose-views/combat/'+ref+'/sw/image.png',combat);
+  data.set(prefix+'pose-views/combat/'+ref+'/sw.json',json({
+   schemaVersion:'ngs.npc-pose-view.v1',posePreset:'combat',referenceType:ref,direction:'sw',
+   assetId:combatAsset,mimeType:'image/png',
+   ...(ref==='pixel'?{referenceArtifactId:combatAsset,sourceArtifactId:combatAsset,sourceHash:sha(combat)}
+    :{referenceArtifactId:combatAsset}),
+  }));
+ }
  for(const [name,body] of data){
   const file=join(root,'binari',name);
   mkdirSync(dirname(file),{mode:0o700,recursive:true});writeFileSync(file,body,{mode:0o600});
@@ -69,11 +85,18 @@ test('shared NPC read parity over actual Local FS and asynchronous object replic
  assert.equal(detail.json.planning[0].markdown,doc.toString());
  assert.equal(detail.json.planning[1].markdown,undefined);
  assert.equal(detail.json.planning[1].content,undefined);
- assert.equal(detail.json.portraits.length,1);
+ const combatViews=detail.json.portraits.filter(row=>row.posePreset==='combat');
+ assert.deepEqual(combatViews.map(row=>row.id),[
+  'portrait/combat/portrait','portrait/combat/pixel','pose/combat/portrait/sw','pose/combat/pixel/sw',
+ ]);
+ const groups=groupNpcPortraits(detail.json.portraits);
+ assert.deepEqual(groups.map(row=>[row.pose,row.defaultReference]),[['representative','portrait'],['combat','pixel']]);
+ assert.deepEqual([...groups[1].references[1].cells.keys()],['center','sw']);
  assert.equal(detail.json.animations.length,1);
  const native=detail.json.frameSets[0].directions[0].frames[0];
  assert.match(native.rawUrl,/native-frame/);assert.equal(native.alphaUrl,null);
  for(const [url,match,mime] of [[detail.json.portraits[0].url,png,'image/png'],
+  ...combatViews.map(row=>[row.url,combat,'image/png']),
   [detail.json.animations[0].url,mp4,'video/mp4'],[native.rawUrl,png,'image/png']]){
   const query=new URL(url,'http://localhost').searchParams;
   const h=await hosted(query),l=await local(query);
@@ -81,6 +104,8 @@ test('shared NPC read parity over actual Local FS and asynchronous object replic
   assert.deepEqual(Buffer.from(h.bytes),match);assert.deepEqual(Buffer.from(l.bytes),match);
  }
  await assert.rejects(hosted(path({npcId:hidden})),{status:404});
+ await assert.rejects(hosted(path({npcId:npc,media:'pose/idle/portrait/sw',sha256:sha(combat)})),{status:404});
+ await assert.rejects(hosted(path({npcId:npc,media:'pose/combat/pixel/sw',sha256:sha(png)})),{status:409});
  await assert.rejects(hosted(path({npcId:npc,media:'../project.json',sha256:sha(png)})),{status:400});
  await assert.rejects(hosted(path({npcId:npc,media:'portrait/representative/portrait',sha256:'f'.repeat(64)})),{status:409});
  data.set(prefix+'assets/portraits/representative/portrait.png',Buffer.from('tampered'));
