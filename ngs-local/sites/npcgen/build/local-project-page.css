@@ -300,3 +300,5 @@ ul{padding:0;list-style:none}
 .one-stop-motion-group input{flex:none}
 
 .npc-animation-request-actions{display:flex;justify-content:flex-end;margin:0 0 8px}
+
+.local-puzzle-frame{display:block;width:100%;height:clamp(36rem,78dvh,58rem);border:0;border-radius:.75rem;background:#101010}

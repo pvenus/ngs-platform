@@ -1,0 +1,26 @@
+*{box-sizing:border-box} [hidden]{display:none!important}
+:root{background:#101114;color:#e9e1d1;font:400 16px/1.5 system-ui,sans-serif;color-scheme:dark}
+body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:12px}
+main{width:min(100%,1080px);min-width:0}
+header,footer{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 1px;color:#c9bca7;font-size:.85rem}
+header span:first-child{letter-spacing:.3em} header span:last-child{opacity:.65}
+.scene-plane{isolation:isolate;position:relative;aspect-ratio:3/2;background:#101012;overflow:hidden;border:1px solid #474033;border-radius:3px;touch-action:manipulation}
+.scene-plane>img,.scene-plane>video,.targets,.shade,.overlay{position:absolute;inset:0;width:100%;height:100%}
+img,video{object-fit:contain}
+.shade,.targets{pointer-events:none}
+.shade{background:#08090b;opacity:0;transition:opacity .6s ease;z-index:4}
+.scene-plane.transition .shade{opacity:1}
+.overlay{display:grid;align-content:center;justify-items:center;gap:10px;background:#090a0bbb;z-index:5;text-align:center;padding:12px}
+.scene-plane h1{font-size:clamp(1.14rem,3.4vw,2.45rem);margin:0;font-weight:550}
+p{margin:0}
+.overlay p{font-size:clamp(.75rem,2.4vw,.96rem)}
+button{border:1px solid #675e4c;background:#19191d;color:#efe4d1;border-radius:4px;padding:.55rem .85rem;font:inherit;cursor:pointer;min-height:43px}
+button:hover,button:focus-visible{border-color:#ead8ab;background:#2b2926;outline-offset:4px}
+.marker{position:absolute;border:1px solid #e2cf94ae;border-radius:100%;width:12px;height:12px;transform:translate(-50%,-50%);box-shadow:0 0 14px #d6c49a88;opacity:.5;}
+#actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+#actions button.is-seen{opacity:.8}
+#hint{min-height:1.5em;max-width:67%;color:#d9cbb4}
+.utilities{display:flex;gap:6px;align-items:center}
+.utilities button{padding:.35rem .5rem;font-size:.78rem;min-height:36px;white-space:nowrap}
+@media(max-width:520px){header,footer{padding:7px 0}#actions button{font-size:.82rem}footer{flex-wrap:wrap}#hint{max-width:none;min-width:100%}.utilities button{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.shade{transition:none}}

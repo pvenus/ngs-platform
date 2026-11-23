@@ -430,7 +430,7 @@ async function load(){
 
 const areas=[
  ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',false],
- ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',false],
+ ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',document.documentElement?.dataset.puzzleWorkspace==='enabled'],
  ['resources','배경·프랍 설계',false],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
 ];
 const iconPaths={
@@ -476,7 +476,7 @@ async function loadWorkspace(search){
  const listToolbar=document.querySelector('#concept-category-tools');
  listToolbar.replaceChildren();listToolbar.hidden=true;
  let conceptActions=null,motionSubmit;
- const supported=(area,enabled)=>enabled&&(area!=='audio'||projectId==='binari');
+ const supported=(area,enabled)=>enabled&&(!['audio','production'].includes(area)||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
  document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':'항목';
  document.querySelector('#app').classList.remove('project-home');
@@ -656,6 +656,26 @@ async function loadWorkspace(search){
   // Same metadata and workspace routes in both environments; only the replica
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
+  if(tab==='production'){
+   // An independent Local puzzle, never an episode link or a legacy API.
+   if(hosted)return;
+   const id='binari.empty-veranda',title='빈 마루에 바람이 앉으면';
+   const entry=nodeOf('a','workspace-nav-item',title);
+   entry.href=next({item:id});
+   if(item===id)entry.setAttribute('aria-current','page');
+   items.replaceChildren(entry);
+   const heading=nodeOf('h3','',item===id?title:'퍼즐 설계');
+   const description=nodeOf('p','meta',item===id?'별도의 이야기 연결 없이 이 퍼즐을 플레이할 수 있습니다.':'퍼즐을 선택하세요.');
+   detail.replaceChildren(heading,description);
+   if(item===id){
+    const frame=nodeOf('iframe','local-puzzle-frame');
+    frame.title=title+' 플레이테스트';
+    frame.src='/local-puzzle/binari-empty-veranda/';
+    detail.append(frame);
+   }
+   note('');
+   return;
+  }
   if(tab==='audio'){
    let busy=false,refreshEpoch=0;
    const removedResults=new Set();

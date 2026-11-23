@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><link rel="stylesheet" href="play.css"><title>비나리 · 빈 마루</title></head>
+<body>
+<main class="ngs-host" data-core-node="home" data-core-sequence="0" data-encounter-revision="ending.v1">
+ <header><span>비나리</span><span aria-label="테스트 버전">퍼즐 플레이테스트</span></header>
+ <div class="scene-plane" aria-label="현재 장면">
+  <img id="image" alt="" src="assets/home.webp" draggable="false">
+  <video id="film" playsinline preload="auto" hidden></video>
+  <div class="targets"></div>
+  <div class="shade" aria-hidden="true"></div>
+  <section id="start" class="overlay"><h1>빈 마루에 바람이 앉으면</h1><p>장면 속에서 길을 찾고, 눈에 밟히는 것을 살펴보세요.</p><button type="button" id="begin">시작</button></section>
+  <section id="resume" class="overlay" hidden><p>이어서 봅니다.</p><button type="button" id="continue">재생</button></section>
+ </div>
+ <nav aria-label="현재 할 수 있는 행동" id="actions" hidden></nav>
+ <footer><p id="hint" aria-live="polite"></p><div class="utilities"><button id="mute" type="button" aria-pressed="false">소리 끄기</button><button id="reset" type="button">처음부터</button></div></footer>
+</main>
+<script src="v28-pointer-collector.js"></script>
+<script type="module" src="play.mjs"></script>
+</body></html>

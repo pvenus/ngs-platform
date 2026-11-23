@@ -21,6 +21,7 @@ import {openLocalRequestQueue} from './local-request-queue.mjs';
 import {conceptCategoryRequestType,validConceptCategoryRequest} from './local-concept-category-contract.mjs';
 import {npcPlanningAddType,npcPlanningRequestType,validNpcPlanningAdd,validNpcPlanningUpdate} from './local-npc-planning-ui.mjs';
 import {audioResponseRange,localAudioResults,localAudioSeparationSource} from './local-audio-results.mjs';
+import {openPuzzleBundle,puzzlePrefix} from './local-puzzle-media.mjs';
 import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from './local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from './motion-preset-convert-2d.mjs';
 import {isSelectionSchema,isPoseSelectionV2,isNpcWorkflowReplaceSchema,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate} from './npc-motion-selection.mjs';
@@ -39,6 +40,14 @@ const assets=new Map([
  ['/local-audio-workspace.mjs', ['text/javascript; charset=utf-8', new URL('./local-audio-workspace.mjs',import.meta.url)]],
  ['/motion-preset-convert-2d.mjs', ['text/javascript; charset=utf-8', new URL('./motion-preset-convert-2d.mjs',import.meta.url)]],
  ['/local-request-queue-browser.mjs', ['text/javascript; charset=utf-8', new URL('./local-request-queue-browser.mjs',import.meta.url)]],
+]);
+const puzzleCode=new Map([
+ ['', ['text/html; charset=utf-8','local-puzzle-empty-veranda.html']],
+ ['play.css', ['text/css; charset=utf-8','local-puzzle-play.css']],
+ ['play.mjs', ['text/javascript; charset=utf-8','local-puzzle-play.mjs']],
+ ['ending-state.mjs', ['text/javascript; charset=utf-8','local-puzzle-ending-state.mjs']],
+ ['scene-input.mjs', ['text/javascript; charset=utf-8','local-puzzle-scene-input.mjs']],
+ ['v28-pointer-collector.js', ['text/javascript; charset=utf-8','local-puzzle-v28-pointer.js']],
 ]);
 const failure=(code,status)=>Object.assign(Error(code),{status});
 
@@ -83,16 +92,23 @@ async function readSmallBody(req,limit){
  return Buffer.concat(chunks,n);
 }
 
-export function configuration(env=process.env){
+const nativeMacEntry=new URL('./local-miniflare-app.mjs',import.meta.url).href;
+function macPuzzleDefault(platform,entryPoint){
+ return platform==='darwin'&&typeof entryPoint==='string'&&pathToFileURL(entryPoint).href===nativeMacEntry
+  ?join(homedir(),'Workspaces','NGS','runtime','puzzle-design-assets','binari-bad-ending-v1')
+  :undefined;
+}
+export function configuration(env=process.env,{platform=process.platform,entryPoint=process.argv[1]}={}){
+
  const port=Number(env.NGS_PROJECT_LISTEN_PORT??'5274');
  if(!Number.isInteger(port)||port<1||port>65535)throw failure('LOCAL_PROJECT_PORT_INVALID',503);
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
-  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
+  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,brandMarkPath}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -119,10 +135,17 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  }
  const sourceAssets=new Map([...assets].map(([url,[type,path]])=>[url,{type,body:readFileSync(path)}]));
  sourceAssets.set('/assets/vinus-mark.png',{type:'image/png',body:brandMark(brandMarkPath)});
- if(audioWorkspaceEnabled===true){
+ const puzzle=openPuzzleBundle(localPuzzleMediaRoot);
+ const flags=[
+  ...(audioWorkspaceEnabled===true?['data-audio-workspace="enabled"']:[]),
+  ...(puzzle?['data-puzzle-workspace="enabled"']:[]),
+ ];
+ if(flags.length){
   const page=sourceAssets.get('/');
-  sourceAssets.set('/',{...page,body:Buffer.from(page.body.toString('utf8').replace('<html lang="ko">','<html lang="ko" data-audio-workspace="enabled">'))});
+  sourceAssets.set('/',{...page,body:Buffer.from(page.body.toString('utf8').replace('<html lang="ko">',`<html lang="ko" ${flags.join(' ')}>`))});
  }
+ const puzzleAssets=puzzle?new Map([...puzzleCode].map(([name,[type,file]])=>
+  [name,{type,body:readFileSync(new URL('./'+file,import.meta.url))}])):null;
  const server=createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -138,6 +161,27 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
    if(!req.url?.startsWith('/'))throw failure('NOT_FOUND',404);
    const url=new URL(req.url,origin);
    if(url.origin!==origin)throw failure('NOT_FOUND',404);
+   if(url.pathname.startsWith(puzzlePrefix)){
+    if(!puzzleAssets||req.url!==url.pathname)throw failure('NOT_FOUND',404);
+    if(req.method!=='GET'&&req.method!=='HEAD')throw failure('METHOD_NOT_ALLOWED',405);
+    if(req.headers['sec-fetch-site']&&!['same-origin','none'].includes(req.headers['sec-fetch-site']))
+     throw failure('LOCAL_IPV4_LOOPBACK_ORIGIN_REQUIRED',403);
+    const session=auth.read(req);
+    if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
+    projectPermission(session.principal,'binari',undefined,false);
+    const member=url.pathname.slice(puzzlePrefix.length);
+    if(member.startsWith('assets/'))return await puzzle.respond(member.slice(7),req,res);
+    const code=puzzleAssets.get(member);
+    if(!code)throw failure('NOT_FOUND',404);
+    if(member===''){
+     // Only this same-origin child can be framed by the in-app puzzle page.
+     res.setHeader('X-Frame-Options','SAMEORIGIN');
+     res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'");
+    }
+    res.setHeader('Content-Type',code.type);
+    res.setHeader('Content-Length',String(code.body.length));
+    return res.end(req.method==='HEAD'?undefined:code.body);
+   }
    if(url.pathname==='/api/requests'){
     const session=auth.read(req);
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
