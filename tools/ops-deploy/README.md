@@ -117,3 +117,32 @@ replica version rows, R2 objects, queue, or source files are restored or
 removed. Uncertain hold, storage identity, or schema leaves the service
 stopped and reports rollback unverified; operator intervention is required.
 A rollback of a successfully deployed new binary is not a new CLI mode.
+
+### Explicit Local-only audio-separation enable
+
+Release preparation and feature activation are separate. Provision the fixed
+reviewed assembler, its SHA-256 pin in the OPS preparer, and the matching
+fixed native runner from their independently reviewed sources. Provision the
+matching OPS Local adapter and its diagnostic allowlist; update the private
+retry-runner marker if retries remain enabled. Do not run a candidate with an
+older assembler/native pair or change the current launchd environment.
+
+After canonical main CI has produced the genuine candidate and OPS has
+prepared it against the **current** prior plist, the owner may provision
+exactly one additional 0600 regular file under the existing private
+`mac-releases/<sha>/audio-separation-enable.json`:
+
+    {"schemaVersion":"ops.ngs-local-audio-separation-enable.v1","sha":"<exact prepared sha>","expectedPriorPlistSha256":"<manifest value>","archiveSha256":"<manifest value>"}
+
+Only after Filex scoped writer, PDS, RS/Planner and the approved local audio
+provider are ready should the owner create that marker and run the normal
+OPS Local action. Missing marker preserves the previous setting. A malformed,
+stale or wrong-candidate marker fails before stop. On the approved candidate
+the runner adds only `NGS_AUDIO_SEPARATION_ENABLED=1` to the new Local plist;
+the old plist is archived/restored byte-for-byte. There is no global launchd
+environment toggle, Space activation, or pose workflow toggle in this release.
+
+The independent `NGS_POSE_SELECTION_V2_ENABLED` defaults off. Existing
+selected NPC full/replacement and animation-only forms then send v1; their
+server admission paths reject unapproved v2. Do not enable it merely to
+deploy audio features.

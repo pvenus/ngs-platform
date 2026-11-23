@@ -318,7 +318,7 @@ export async function refreshNpcScopes(scopes,{post,signal,onDownload=()=>{}}){
  return {changed,failed};
 }
 
-export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,modalOwner=owner}){
+export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,modalOwner=owner,poseSelectionV2Enabled=false}){
  if(!validNpcAnimationTarget(npc?.id)||typeof submit!=='function')return ()=>{};
  const actions=nodeOf('div','npc-animation-request-actions'),trigger=nodeOf('button','npc-one-stop-trigger','+');
  trigger.type='button';trigger.setAttribute('aria-label','애니메이션 재생성 요청');trigger.setAttribute('aria-haspopup','dialog');
@@ -355,7 +355,7 @@ export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,mo
    event.preventDefault();if(send.disabled||closed)return;
    busy=true;update();status.textContent='';
    try{
-    const receipt=await intake.send(()=>npcAnimationRegenerateRequest(npc.id,[...selected.values()],rows??[]));
+    const receipt=await intake.send(()=>npcAnimationRegenerateRequest(npc.id,[...selected.values()],rows??[],poseSelectionV2Enabled));
     if(receipt)intakes.delete(npc.id);
     if(closed)return;
     if(receipt){form.hidden=true;status.textContent=receipt.status==='queued'?'NGS 대기열에 저장했습니다.':'요청을 접수했습니다.';}
@@ -394,13 +394,13 @@ export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,mo
  return ()=>{mounted=false;disposeDialog();actions.remove();};
 }
 
-export async function loadNpcFolder({search,projectId,signal,request,post,submitOneStop,submitPlanning,note,items,detail,workspace}){
+export async function loadNpcFolder({search,projectId,signal,request,post,submitOneStop,submitPlanning,note,items,detail,workspace,poseSelectionV2Enabled=false}){
  const planEditor=projectId==='binari'&&typeof submitPlanning==='function'?createNpcPlanningEditor({owner:workspace,submit:submitPlanning,signal}):null;
  const listPane=items.parentElement;
  listPane.classList.add('npc-roster-list');
  detail.classList.add('npc-detail');
  listPane.querySelector('h3').textContent='NPC';
- if(projectId==='binari'&&typeof submitOneStop==='function')mountNpcOneStop(listPane,{submit:submitOneStop,request,signal});
+ if(projectId==='binari'&&typeof submitOneStop==='function')mountNpcOneStop(listPane,{submit:submitOneStop,request,signal,poseSelectionV2Enabled});
  const heading=workspace.querySelector('.project-content-heading');
  workspace.querySelector('.npc-hierarchy-nav')?.remove();
  listPane.querySelector('.npc-search-label')?.remove();
@@ -553,7 +553,7 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
     const controller=new AbortController(),holder=nodeOf('div','npc-replacement-action');
     const rosterNpc=data.npcs?.find(row=>row.id===npc.id);
     const target={...rosterNpc,...npc,actId:npc.actId??rosterNpc?.actId??data.actId};
-    const trigger=mountNpcOneStop(holder,{submit:submitOneStop,request,signal:controller.signal,replaceNpc:target,modalOwner:workspace});
+    const trigger=mountNpcOneStop(holder,{submit:submitOneStop,request,signal:controller.signal,replaceNpc:target,modalOwner:workspace,poseSelectionV2Enabled});
     replacementAction={npcId:npc.id,controller,holder,trigger};
    }
    if(replacementAction.trigger)header.append(replacementAction.holder);
@@ -579,7 +579,7 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
   else if(tab==='animations'){
    if(!animationSettings.has(npc.id))animationSettings.set(npc.id,{percent:100,intervalMs:null});
    const disposeRequest=projectId==='binari'?mountNpcAnimationRegenerate(panel,{npc,request,submit:submitOneStop,
-    intakes:animationIntakes,modalOwner:workspace}):()=>{};
+    intakes:animationIntakes,modalOwner:workspace,poseSelectionV2Enabled}):()=>{};
    const catalog=projectId==='binari'?readOneStopMotionPresets(request,signal).catch(()=>[]):Promise.resolve([]);
    const disposePlayback=renderNpcAnimations(data,panel,signal,animationSettings.get(npc.id),catalog);
    disposeMedia=()=>{disposeRequest();disposePlayback();};

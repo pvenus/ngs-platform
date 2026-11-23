@@ -33,6 +33,7 @@ SCHEMA_INPUTS = (ENTRY, ENTRY.with_name("local-miniflare-runtime.mjs"),
                  Path("local-miniflare/package-lock.json"))
 AUDIO_SQL = SCHEMA_INPUTS[-2]
 AUDIO_CORE = ENTRY.with_name("audio-result-index.mjs")
+AUDIO_OPT_IN = "audio-separation-enable.json"
 AUDIO_CHANGED = {
     SCHEMA_INPUTS[1]: ("ee6ecfd6d0b8686e8bb84d5173af7bf0c1ae6b7ae02c5bd5b08c66fc2a0b51e5",
                        "95e18083073c40b52090b969034b4a018dfba0959afcbd29b42e92ab2bcab944"),
@@ -86,7 +87,7 @@ HEALTH_CODES = {
     "NATIVE_QUEUE_UNAVAILABLE", "NATIVE_HEALTH_UNVERIFIED",
 }
 KNOWN_CODES = HEALTH_CODES | {
-    AUDIO_SHA, AUDIO_HELD,
+    AUDIO_SHA, AUDIO_HELD, "NATIVE_AUDIO_SEPARATION_ATTESTATION_INVALID",
     "INVALID_RELEASE_SHA", "PRIVATE_RELEASE_REQUIRED", "RELEASE_TREE_OWNER_DRIFT",
     "RELEASE_LINK_DRIFT", "RELEASE_TREE_MODE_DRIFT", "OPS_RELEASE_NOT_PREPARED",
     "OPS_PROVENANCE_INVALID", "RELEASE_PROVENANCE_INVALID", "GITHUB_WORKFLOW_NOT_VERIFIED",
@@ -344,7 +345,30 @@ def audio_schema_transaction(path, states, *, undo=False):
         db.close()
 
 
-def select(raw, release, workdir, releases, scratch, queue, sha):
+def approve_audio_separation(folder, spec, release):
+    marker = folder / AUDIO_OPT_IN
+    if not present(marker):
+        return False
+    try:
+        value = json.loads(private(marker).read_bytes(), object_pairs_hook=unique_json)
+        valid = value == {"schemaVersion": "ops.ngs-local-audio-separation-enable.v1", "sha": spec["sha"],
+                          "expectedPriorPlistSha256": spec["expectedPriorPlistSha256"], "archiveSha256": spec["archiveSha256"]}
+        require(valid and file_digest(release / AUDIO_CORE) == AUDIO_CHANGED[AUDIO_CORE][1] and
+                file_digest(release / AUDIO_SQL) == AUDIO_CHANGED[AUDIO_SQL][1],
+                "NATIVE_AUDIO_SEPARATION_ATTESTATION_INVALID")
+    except (OSError, ValueError, Refused):
+        raise Refused("NATIVE_AUDIO_SEPARATION_ATTESTATION_INVALID") from None
+    return True
+
+
+def unique_json(pairs):
+    value = dict(pairs)
+    if len(value) != len(pairs):
+        raise ValueError("duplicate")
+    return value
+
+
+def select(raw, release, workdir, releases, scratch, queue, sha, *, enable_audio_separation=False):
     plist = plistlib.loads(raw)
     args = plist["ProgramArguments"]
     env = plist["EnvironmentVariables"]
@@ -363,7 +387,10 @@ def select(raw, release, workdir, releases, scratch, queue, sha):
     plist["ProgramArguments"] = [args[0], str(release / ENTRY)]
     plist["WorkingDirectory"] = str(workdir)
     require(SHA.fullmatch(sha) and release.name == "project-page-github-" + sha, "NATIVE_RELEASE_SHA_DRIFT")
-    plist["EnvironmentVariables"] = {**env, "NGS_COMMIT_SHA": sha}
+    require(not enable_audio_separation or env.get("NGS_AUDIO_WORKSPACE_ENABLED") == "1",
+            "NATIVE_AUDIO_SEPARATION_ATTESTATION_INVALID")
+    flag = {"NGS_AUDIO_SEPARATION_ENABLED": "1"} if enable_audio_separation else {}
+    plist["EnvironmentVariables"] = {**env, **flag, "NGS_COMMIT_SHA": sha}
     return old, plistlib.dumps(plist), env, migrating
 
 
@@ -644,7 +671,9 @@ def apply(sha, control, host, attempt=None, previous=None):
         folder, spec, release, workdir = load_plan(sha, control, host.releases, host.scratch)
         stage = "check_current"
         prior = host.read_plist()
-        old, new, env, migrating = select(prior, release, workdir, host.releases, host.scratch, host.queue, sha)
+        enable_separation = approve_audio_separation(folder, spec, release)
+        old, new, env, migrating = select(prior, release, workdir, host.releases, host.scratch, host.queue, sha,
+                                           enable_audio_separation=enable_separation)
         if not retry:
             require(not any(present(folder / name) for name in ("prior.plist", "result.json", "attempts")),
                     "RELEASE_ALREADY_ATTEMPTED_RECONCILE")

@@ -51,9 +51,9 @@ test('exact mixed selections and starter buttons never substitute or write hidde
  const catalog=[walk,run,run2d,attack],selected=[run2d,attack,run].map(motionSelectionOf);
  const body=newNpcOneStopRequest({...source,motionSelection:selected},catalog);
  assert.deepEqual(Object.keys(body).sort(),['character','intent','motionSelection','projectId','schemaVersion','sourceRefs']);
- assert.equal(body.schemaVersion,'ngs.npc-one-stop.selection.v2');assert.deepEqual(body.motionSelection,selected);
+ assert.equal(body.schemaVersion,'ngs.npc-one-stop.selection.v1');assert.deepEqual(body.motionSelection,selected);
  assert.equal(selectionReplaceSchemaVersion,'ngs.npc-one-stop.selection.replace.v2');
- assert.equal(newNpcOneStopRequest({...source,motionSelection:[motionSelectionOf(run)]},catalog).schemaVersion,selectionSchemaVersion);
+ assert.equal(newNpcOneStopRequest({...source,motionSelection:[motionSelectionOf(run)]},catalog,true).schemaVersion,selectionSchemaVersion);
  assert.equal(validNpcMotionSelectionRequest({...body,schemaVersion:'ngs.npc-one-stop.selection.v1'}),true);
  assert.equal(validNpcMotionSelectionRequest({...body,schemaVersion:selectionReplaceSchemaVersion}),true);
  for(const [id,slug,ch] of [['character.seojin','seojin','ch1'],['character.yeonwoo','yeonwoo','chapter01']]){
@@ -133,7 +133,7 @@ test('open modal polls immediately, accepts mixed presets, and blocks stale unti
  areas[0].value=source.intent;areas[1].value=source.sourceRefs;
  await form.events.submit({preventDefault(){}});
  assert.equal(seen.length,1);
- assert.equal(seen[0].payload.schemaVersion,'ngs.npc-one-stop.selection.v2');
+ assert.equal(seen[0].payload.schemaVersion,'ngs.npc-one-stop.selection.v1');
  assert.deepEqual(seen[0].payload.motionSelection.map(row=>row.presetId),['walk-flat','sword-attack-flat','run-2d',...extra.map(r=>r.presetId)]);
  assert.equal(seen[0].payload.motionSelection[2].assetSetSha256,'2'.repeat(64));
  ac.abort();assert.equal(timers.size,0);
@@ -148,11 +148,12 @@ test('Local browser queue validates selected publication hashes without reading 
   const raw=manifest(selected.presetId,selected.posePreset,selected===run2d?{variant}:{});
   await writeFile(join(presets,selected.presetId+'.json'),JSON.stringify(raw),{mode:0o600});
  }
- const queue=openLocalRequestQueue(join(tmp,'queue.sqlite')),server=createLocalProjectPageServer({root,requestQueue:queue});
+ const queue=openLocalRequestQueue(join(tmp,'queue.sqlite')),server=createLocalProjectPageServer({root,requestQueue:queue,poseSelectionV2Enabled:true});
  t.after(async()=>{await new Promise(resolve=>server.close(resolve));queue.close();await rm(tmp,{recursive:true,force:true});});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const origin='http://127.0.0.1:'+server.address().port;
  const r=await fetch(origin+'/__npcgen_session'),cookie=r.headers.get('set-cookie').split(';')[0],session=await r.json();
+ assert.equal(session.poseSelectionV2Enabled,true);
  const headers={cookie,origin,'content-type':'application/json','x-npcgen-csrf':session.csrfToken,'x-npcgen-frontend-context':session.contextId};
  const npcPath=join(project,'npcs','npc.ch1_dajeong'),legacyPath=join(project,'npcs','character.seojin');
  await mkdir(npcPath,{mode:0o700,recursive:true});
@@ -200,6 +201,26 @@ test('Local browser queue validates selected publication hashes without reading 
 
 });
 
+test('Local denies v2 replacement and animation-by-pose before any source read when separate opt-in is absent',async t=>{
+ const root=await mkdtemp(join(realpathSync(tmpdir()),'ngs-npc-pose-default-'));
+ const server=createLocalProjectPageServer({root,audioWorkspaceEnabled:true,audioSeparationEnabled:true});
+ t.after(async()=>{await new Promise(resolve=>server.close(resolve));await rm(root,{recursive:true,force:true});});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const origin='http://127.0.0.1:'+server.address().port,r=await fetch(origin+'/__npcgen_session');
+ const cookie=r.headers.get('set-cookie').split(';')[0],session=await r.json();
+ assert.equal('poseSelectionV2Enabled' in session,false);
+ const headers={cookie,origin,'content-type':'application/json','x-npcgen-csrf':session.csrfToken,'x-npcgen-frontend-context':session.contextId};
+ const motionSelection=[motionSelectionOf(run)];
+ const v2=newNpcOneStopRequest({...source,motionSelection},[run],true);
+ const replace={...v2,schemaVersion:selectionReplaceSchemaVersion,character:{...v2.character,npcId:'character.seojin',slug:'seojin',actId:'act01',chapterId:'chapter01'}};
+ for(const [requestType,payload] of [['npc.workflow',v2],['npc.workflow',replace],[animationRegenerateType,motionSelectionPayload(motionSelection)]]){
+  const response=await fetch(origin+'/api/requests',{method:'POST',headers,
+   body:JSON.stringify({requestType,idempotencyKey:'exact-stage-fixture',payload})});
+  assert.equal(response.status,404);
+  assert.deepEqual(await response.json(),{error:'NPC_POSE_SELECTION_V2_UNAVAILABLE'});
+ }
+});
+
 test('animation tab picks exact registered variants and queues only those for the current NPC',async t=>{
  class Element{
   constructor(tag){this.tag=tag;this.children=[];this.events={};this.textContent='';this.isConnected=true;}
@@ -235,8 +256,8 @@ test('animation tab picks exact registered variants and queues only those for th
  await form.events.submit({preventDefault(){}});
  assert.equal(seen.length,1);assert.equal(seen[0].requestType,animationRegenerateType);
  const pick=catalog.filter(row=>chosen.includes(row.presetId)).map(motionSelectionOf);
- assert.deepEqual(seen[0].payload,motionSelectionPayload(pick));
- assert.equal(seen[0].payload.schemaVersion,'ngs.npc-animation.regenerate.v2');
+ assert.deepEqual(seen[0].payload,{...motionSelectionPayload(pick),schemaVersion:'ngs.npc-animation.regenerate.v1'});
+ assert.equal(seen[0].payload.schemaVersion,'ngs.npc-animation.regenerate.v1');
  assert.equal(seen[0].payload.motionSelection.find(row=>row.presetId===attack.presetId).posePreset,'combat');
  assert.equal(validNpcAnimationRegenerate({...seen[0].payload,intent:'whole NPC'}),false);
  assert.throws(()=>npcAnimationRegenerateRequest('npc.ch1_dajeong',pick.map(row=>({...row,assetSetSha256:'f'.repeat(64)})),catalog));
@@ -256,5 +277,5 @@ test('renaming a registered label keeps the source pin and existing output ident
  assert.equal(npcPublishedMotionLabel('idle','run-flat-2d',[changed]),'새 표시 이름');
  assert.equal(npcPublishedMotionLabel('idle','run-flat',[changed]),null);
  assert.deepEqual(npcAnimationRegenerateRequest('npc.ch1_dajeong',[motionSelectionOf(from)],[changed]),
-  motionSelectionPayload([motionSelectionOf(from)]));
+  {...motionSelectionPayload([motionSelectionOf(from)]),schemaVersion:'ngs.npc-animation.regenerate.v1'});
 });

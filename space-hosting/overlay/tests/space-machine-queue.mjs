@@ -95,7 +95,7 @@ test('only authenticated active Binari participants can use the existing formal 
 
  ];
  const oldSelection=commands.find(({payload})=>payload.schemaVersion==='ngs.npc-one-stop.selection.v1');
- commands.push({...oldSelection,payload:{...oldSelection.payload,schemaVersion:'ngs.npc-one-stop.selection.v2'}});
+
  for(const [i,cmd] of commands.entries()){
   const response=await write('viewer',viewer,{...cmd,idempotencyKey:'fixture-'+i});
   assert.equal(response.status,202,JSON.stringify(await response.json()));
@@ -273,6 +273,7 @@ test('authenticated deployment status reports only the serving artifact and no i
 test('Space only queues a replacement for the exact published legacy ID and retains any-sized selection within transport',async t=>{
  const db=store(t),seen=[];
  const options={db,secret:token,authorize:async()=>true,authorizeWrite:async()=>true,
+  replicaReads:true,workspaceReady:true,poseSelectionV2Enabled:true,
   hasPublishedNpc:async(user,id)=>{seen.push([user.userId,id]);return ['character.seojin','character.yeonwoo'].includes(id);}};
  const browser=(...args)=>browserQueueResponse(request(...args),options);
  const a=headers('a'),session=await (await browser('/__npcgen_session','GET',a)).json();
@@ -281,6 +282,12 @@ test('Space only queues a replacement for the exact published legacy ID and reta
  const payload={schemaVersion:'ngs.npc-one-stop.selection.replace.v2',projectId:'binari',intent:'기존 NPC의 전체 재생성',sourceRefs:['기획'],
   character:{npcId:'character.seojin',slug:'seojin',name:'서진',role:'암행어사',actId:'act01',chapterId:'chapter01'},motionSelection:inputs};
  const submit=(id,p)=>browser('/api/requests','POST',auth,{requestType:'npc.workflow',idempotencyKey:id,payload:p});
+ assert.equal(session.poseSelectionV2Enabled,true);
+ const denied=await browserQueueResponse(request('/api/requests','POST',auth,{requestType:'npc.workflow',
+  idempotencyKey:'v2-disabled',payload}),{...options,poseSelectionV2Enabled:false});
+ assert.equal(denied.status,404);
+ assert.deepEqual(await denied.json(),{error:'NPC_POSE_SELECTION_V2_UNAVAILABLE'});
+
  assert.equal((await submit('incorrect-slug',{...payload,character:{...payload.character,slug:'yeonwoo'}})).status,400);
  assert.equal((await submit('cannot-create-character',{...payload,schemaVersion:'ngs.npc-one-stop.selection.v2'})).status,400);
  assert.deepEqual(seen,[]);

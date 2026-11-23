@@ -207,13 +207,17 @@ const spaceCatalogPath='/api/space/project-catalog';
 const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
-const spaceSession=session=>session?.state==='authenticated'&&session.backend==='space'&&
+const spaceSession=value=>{
+ const {poseSelectionV2Enabled,...session}=value??{};
+ if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
+ return session?.state==='authenticated'&&session.backend==='space'&&
  (exact(session,'backend,readOnly,state')&&session.readOnly===true||
   (exact(session,queueSpaceSession)||
    (exact(session,queueSpaceSession+',workspaceReady')||exact(session,'audioSeparationEnabled,'+queueSpaceSession+',workspaceReady')&&
     session.audioSeparationEnabled===true&&session.requestWritable===true)&&session.workspaceReady===true&&session.readOnly===false)&&
   session.queueEnabled===true&&typeof session.readOnly==='boolean'&&typeof session.requestWritable==='boolean'&&
   /^space\.[a-f0-9]{64}$/.test(session.contextId)&&/^[a-f0-9]{64}$/.test(session.csrfToken));
+};
 const spaceWorkspaceReady=session=>spaceSession(session)&&session.workspaceReady===true;
 
 function workspaceTransport(session,request,signal){
@@ -696,7 +700,7 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='npcs'){
-   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace});
+   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace,poseSelectionV2Enabled:session.poseSelectionV2Enabled===true});
    return;
   }
   if(tab==='concept'&&projectId==='binari'){

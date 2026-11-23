@@ -1,6 +1,6 @@
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {motionCatalogSchema,motionSelectionOf,npcReplacementSlug,quickMotionSelection,sameMotionChoice,selectionReplaceSchemaVersion,
- selectionSchemaVersion,validMotionChoice,validMotionSelection,validNpcMotionSelectionRequest} from './npc-motion-selection.mjs';
+ selectionSchemaVersion,selectionLegacySchemaVersion,selectionLegacyReplaceSchemaVersion,validMotionChoice,validMotionSelection,validNpcMotionSelectionRequest} from './npc-motion-selection.mjs';
 /** The roster '+' creates a new NPC; the detail action targets the selected NPC ID. */
 const directions=['n','ne','e','se','s','sw','w','nw'];
 const identifier=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -17,12 +17,12 @@ const knownRejections=new Set([
  'COMMON_INVALID_IDENTIFIER','ORIGIN_OR_CSRF_REJECTED','CSRF_INVALID','PROJECT_OR_RESOURCE_DENIED',
  'LOCAL_SIGN_IN_REQUIRED','LOCAL_SESSION_EXPIRED_OR_REVOKED','FRONTEND_SESSION_CONTEXT_CHANGED',
  'PAYLOAD_TOO_LARGE','NGS_REQUEST_QUEUE_INPUT_TOO_LARGE','SPACE_BODY_TOO_LARGE',
- 'REQUEST_SUBMIT_INVALID','NGS_ONE_STOP_PAYLOAD_INVALID','OFFICIAL_REQUEST_NPC_ALREADY_REGISTERED',
+ 'REQUEST_SUBMIT_INVALID','NPC_POSE_SELECTION_V2_UNAVAILABLE','NGS_ONE_STOP_PAYLOAD_INVALID','OFFICIAL_REQUEST_NPC_ALREADY_REGISTERED',
  'ONE_STOP_REPLACE_TARGET_NOT_FOUND','ONE_STOP_REPLACE_IDENTITY_INVALID','ONE_STOP_MOTION_SELECTION_STALE',
  'NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID','NPC_ANIMATION_REGENERATE_TARGET_NOT_FOUND','NPC_ANIMATION_REGENERATE_PRESETS_STALE',
 ]);
 
-function oneStopRequest(values,motionCatalog,target){
+function oneStopRequest(values,motionCatalog,target,poseSelectionV2Enabled){
  const {name,role,actId,chapterId}=values,slug=target?.slug??values.slug?.trim(),intent=values.intent?.trim();
  if(!text(name,60)||!text(role,300)||!validId(slug)||!slugPattern.test(slug)||(!target&&!validId('npc.'+slug))||!validId(actId)||!validId(chapterId)){
   throw Error('이름, 식별 이름, 역할과 스토리 위치를 확인해 주세요.');
@@ -34,13 +34,16 @@ function oneStopRequest(values,motionCatalog,target){
  if(!validMotionSelection(chosen)||!chosen.every(choice=>motionCatalog.some(row=>sameMotionChoice(choice,row)))){
   throw Error('게시된 모션 프리셋을 한 개 이상 선택하세요. 변경된 선택은 해제한 뒤 다시 골라 주세요.');
  }
- const body={schemaVersion:target?selectionReplaceSchemaVersion:selectionSchemaVersion,projectId:'binari',
+ const schemaVersion=poseSelectionV2Enabled===true
+  ?(target?selectionReplaceSchemaVersion:selectionSchemaVersion)
+  :(target?selectionLegacyReplaceSchemaVersion:selectionLegacySchemaVersion);
+ const body={schemaVersion,projectId:'binari',
   character:{npcId:target?.npcId??'npc.'+slug,name:name.trim(),slug,role:role.trim(),actId,chapterId},intent,sourceRefs,
   motionSelection:chosen.map(motionSelectionOf)};
  if(!validNpcMotionSelectionRequest(body))throw Error('요청 입력 내용을 확인해 주세요.');
  return body;
 }
-export const newNpcOneStopRequest=(values,motionCatalog=[])=>oneStopRequest(values,motionCatalog,null);
+export const newNpcOneStopRequest=(values,motionCatalog=[],poseSelectionV2Enabled=false)=>oneStopRequest(values,motionCatalog,null,poseSelectionV2Enabled);
 
 export function npcReplacementTarget(npc){
  const npcId=npc?.id;
@@ -137,7 +140,7 @@ function npcRegenerateIcon(){
  icon.append(path);return icon;
 }
 
-export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwner=owner}){
+export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwner=owner,poseSelectionV2Enabled=false}){
  const target=replaceNpc===undefined?null:npcReplacementTarget(replaceNpc);
  if(replaceNpc!==undefined&&!target)return null;
  const action=target?'종합 재생성':'종합 생성',titleText='NPC '+action;
@@ -292,7 +295,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
     const receipt=await intake.send(()=>{
      const body=oneStopRequest({name:name.input.value,slug:slug.input.value,role:role.input.value,actId:act.input.value,
       chapterId:chapter.input.value,intent:intent.input.value,sourceRefs:refs.input.value,
-      motionSelection:[...selected.values()]},motionCatalog??[],target);
+      motionSelection:[...selected.values()]},motionCatalog??[],target,poseSelectionV2Enabled);
      requestBuilt=true;return body;
     });
     if(receipt&&!ended){

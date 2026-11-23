@@ -23,7 +23,7 @@ import {npcPlanningAddType,npcPlanningRequestType,validNpcPlanningAdd,validNpcPl
 import {audioResponseRange,localAudioResults,localAudioSeparationSource} from './local-audio-results.mjs';
 import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from './local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from './motion-preset-convert-2d.mjs';
-import {isSelectionSchema,isNpcWorkflowReplaceSchema,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate} from './npc-motion-selection.mjs';
+import {isSelectionSchema,isPoseSelectionV2,isNpcWorkflowReplaceSchema,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate} from './npc-motion-selection.mjs';
 
 const canonicalPolicy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const assets=new Map([
@@ -89,10 +89,10 @@ export function configuration(env=process.env){
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
-  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
+  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,audioSeparationEnabled=false,brandMarkPath}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,brandMarkPath}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -181,6 +181,9 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      throw failure('NGS_NPC_PLANNING_ADD_PAYLOAD_INVALID',400);
     if(command.requestType===npcPlanningRequestType&&!validNpcPlanningUpdate(command.payload))
      throw failure('NGS_NPC_PLANNING_UPDATE_PAYLOAD_INVALID',400);
+    if((command.requestType==='npc.workflow'||command.requestType===animationRegenerateType)&&
+       isPoseSelectionV2(command.payload.schemaVersion)&&poseSelectionV2Enabled!==true)
+     throw failure('NPC_POSE_SELECTION_V2_UNAVAILABLE',404);
     if(command.requestType===animationRegenerateType){
      if(!validNpcAnimationRegenerate(command.payload))throw failure('NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID',400);
      const {projectId,npcId,motionSelection}=command.payload;
@@ -227,6 +230,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
+     ...(poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),
      ...(queue&&audioWorkspaceEnabled===true&&audioSeparationEnabled===true?{audioSeparationEnabled:true}:{})});
    }
    if(url.pathname===replicaSyncProgressPath){

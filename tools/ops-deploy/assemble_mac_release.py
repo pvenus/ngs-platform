@@ -19,6 +19,16 @@ STARTUP = (ENTRY, ENTRY.with_name("local-miniflare-runtime.mjs"),
            ENTRY.with_name("local-miniflare-worker.mjs"), ENTRY.with_name("local-request-queue.mjs"),
            Path("dev/0014_space_file_replica_versions.sql"), Path("dev/0015_replica_sync_progress.sql"), Path("dev/0016_audio_result_index.sql"),
            Path("local-miniflare/package-lock.json"), Path("local-miniflare/package.json"))
+AUDIO_SQL = STARTUP[6]
+AUDIO_CORE = ENTRY.with_name("audio-result-index.mjs")
+AUDIO_CHANGED = {
+    STARTUP[1]: ("ee6ecfd6d0b8686e8bb84d5173af7bf0c1ae6b7ae02c5bd5b08c66fc2a0b51e5",
+                       "95e18083073c40b52090b969034b4a018dfba0959afcbd29b42e92ab2bcab944"),
+    STARTUP[2]: ("16390508ba2d4eeb37fa642945e7a725600a1fc4cd03ecc5508b60ad5624982e",
+                       "be0a551b301320d33e33557e349078a04a06ae4e401eacefa6b59a0abb862bb5"),
+    AUDIO_SQL: (None, "6894df8c2f93faad885dee1d4155b2268fd318fd1a412b07e43cfc8efaa23ef3"),
+    AUDIO_CORE: (None, "0072472cefbf60031334853920ff0bd3b5e5653c69f264cb8e35eace48b633ed"),
+}
 LABEL = "com.vinus.ngs.local-mcp"
 NODE_VERSION = "24.21.0"
 NGS = Path.home() / "Workspaces/NGS"
@@ -187,6 +197,31 @@ def check_deps(tree, packages):
                  and (stat.S_ISDIR(s.st_mode) or stat.S_ISREG(s.st_mode)), "DEPENDENCY_MODE_INVALID")
 
 
+def startup_compatible(old, files):
+    """One exact additive 0016 migration, paired with the fixed native runner."""
+    def previous(path):
+        source = old / path
+        if not os.path.lexists(source):
+            return None
+        need(source.resolve() == source and source.is_file(), "NATIVE_SCHEMA_OR_RUNTIME_CHANGE_OUTSIDE_SCOPE")
+        return digest(source.read_bytes())
+    def incoming(path):
+        value = files.get(path.as_posix())
+        return digest(value) if value is not None else None
+    pairs = {path: (previous(path), incoming(path)) for path in STARTUP}
+    if not all((new is not None and old is not None) or path == AUDIO_SQL
+               for path, (old,new) in pairs.items()):
+        return False
+    changes = {path: pair for path, pair in pairs.items() if pair[0] != pair[1]}
+    if not changes:
+        return True
+    changes[AUDIO_CORE] = (previous(AUDIO_CORE), incoming(AUDIO_CORE))
+    return (changes == AUDIO_CHANGED
+            and pairs[STARTUP[4]][0] == "ece870d0e6aae03efb748bc8823ace35b6465b1b7ed47907a9dfdb3473fe4117"
+            and pairs[STARTUP[5]][0] == "0943cc2bc8d6abb4822df6c9e299b400bda65a931cf9e1245e8b61749f15a8f8"
+            and pairs[STARTUP[-2]][0] == "67d588e052138372d72348439a67b0d8058a3462352f2e77258be16b525a9d88")
+
+
 def assemble_verified(verified, *, control=DEFAULT_CONTROL, releases=DEFAULT_RELEASES, scratch=DEFAULT_SCRATCH,
                       prior_plist, expected_prior_sha256, node, npm_cache,
                       queue=ACTIVE_QUEUE, _install=npm_install, _prior=prior_release):
@@ -205,7 +240,7 @@ def assemble_verified(verified, *, control=DEFAULT_CONTROL, releases=DEFAULT_REL
         old = _prior(prior, releases, scratch, node, queue)
         files = archive_files(verified)
         packages = lock_packages(files)
-        need(all(n.as_posix() in files and (old / n).read_bytes() == files[n.as_posix()] for n in STARTUP),
+        need(startup_compatible(old, files),
              "NATIVE_SCHEMA_OR_RUNTIME_CHANGE_OUTSIDE_SCOPE")
         with tempfile.TemporaryDirectory(prefix=".ops-ngs-assembly-", dir=releases) as temp:
             sandbox = Path(temp)

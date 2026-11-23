@@ -468,6 +468,36 @@ class Apply(unittest.TestCase):
         self.assertEqual(self.host.calls, ["stop", "replace", "start", "stop"])
         self.assertFalse(self.host.loaded)
 
+    def test_separation_attestation_is_bound_and_only_candidate_env_changes(self):
+        root = Path(__file__).resolve().parents[2] / "ngs-local"
+        self.assertFalse(m.approve_audio_separation(self.folder, self.spec, root))
+        marker = self.folder / m.AUDIO_OPT_IN
+        value = {"schemaVersion":"ops.ngs-local-audio-separation-enable.v1", "sha":SHA,
+                 "archiveSha256":self.spec["archiveSha256"],
+                 "expectedPriorPlistSha256":self.spec["expectedPriorPlistSha256"]}
+        marker.write_text(json.dumps({**value,"sha":"f"*40}))
+        marker.chmod(0o600)
+        with self.assertRaisesRegex(m.Refused,"ATTESTATION_INVALID"):
+            m.approve_audio_separation(self.folder,self.spec,root)
+        marker.write_text(json.dumps(value)[:-1]+',"sha":"'+SHA+'"}')
+        with self.assertRaisesRegex(m.Refused,"ATTESTATION_INVALID"):
+            m.approve_audio_separation(self.folder,self.spec,root)
+        marker.write_text(json.dumps(value)); marker.chmod(0o644)
+        with self.assertRaisesRegex(m.Refused,"ATTESTATION_INVALID"):
+            m.approve_audio_separation(self.folder,self.spec,root)
+        marker.chmod(0o600)
+        self.assertTrue(m.approve_audio_separation(self.folder,self.spec,root))
+        raw = plistlib.loads(self.host.prior)
+        env = {**raw["EnvironmentVariables"],"NGS_AUDIO_WORKSPACE_ENABLED":"1"}
+        raw["EnvironmentVariables"] = env
+        prior = plistlib.dumps(raw)
+        _, candidate, original, _ = m.select(prior,self.host.new,self.host.scratch/SHA,
+            self.host.releases,self.host.scratch,self.host.queue,SHA,enable_audio_separation=True)
+        self.assertEqual(original,env)
+        self.assertEqual(plistlib.loads(candidate)["EnvironmentVariables"],
+            {**env,"NGS_AUDIO_SEPARATION_ENABLED":"1","NGS_COMMIT_SHA":SHA})
+        self.assertNotIn("NGS_POSE_SELECTION_V2_ENABLED",plistlib.loads(candidate)["EnvironmentVariables"])
+
     def test_existing_schema_migration_is_outside_scope(self):
         (self.host.old / "dev/0015_replica_sync_progress.sql").write_text("old compatible schema only")
         with self.assertRaisesRegex(m.Refused, "STORAGE_STARTUP_INPUTS_CHANGED"):

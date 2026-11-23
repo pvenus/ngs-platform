@@ -75,6 +75,7 @@ export default {
       return result.npcs.some((npc:{id:string})=>npc.id===npcId);
     } : undefined;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
+      poseSelectionV2Enabled:(env as Cloudflare.Env & {NGS_POSE_SELECTION_V2_ENABLED?:string}).NGS_POSE_SELECTION_V2_ENABLED==="1",
       hasAudioSeparationSource:replicaReads&&env.NPCGEN_AUDIO_SEPARATION_ENABLED==="1"
         ?payload=>objectAudioSeparationSource(fileReplica!,payload):undefined,
       // A trusted roster entry or the single configured exception is required in

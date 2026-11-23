@@ -2,8 +2,8 @@
 // v2 requests derive a combat portrait branch from selected combat presets.
 export const selectionSchemaVersion='ngs.npc-one-stop.selection.v2';
 export const selectionReplaceSchemaVersion='ngs.npc-one-stop.selection.replace.v2';
-const selectionLegacySchemaVersion='ngs.npc-one-stop.selection.v1';
-const selectionLegacyReplaceSchemaVersion='ngs.npc-one-stop.selection.replace.v1';
+export const selectionLegacySchemaVersion='ngs.npc-one-stop.selection.v1';
+export const selectionLegacyReplaceSchemaVersion='ngs.npc-one-stop.selection.replace.v1';
 export const motionCatalogSchema='ngs.motion-selection-catalog.v1';
 export const motionDirections=Object.freeze(['n','ne','e','se','s','sw','w','nw']);
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
@@ -37,8 +37,9 @@ export function validNpcAnimationRegenerate(value){
   (value.schemaVersion===animationRegenerateSchema||value.schemaVersion===animationRegenerateLegacySchema)&&value.projectId==='binari'&&
   validNpcAnimationTarget(value.npcId)&&validMotionSelection(value.motionSelection);
 }
-export function npcAnimationRegenerateRequest(npcId,selected,catalog){
- const payload={schemaVersion:animationRegenerateSchema,projectId:'binari',npcId,motionSelection:selected};
+export const isPoseSelectionV2=schema=>[selectionSchemaVersion,selectionReplaceSchemaVersion,animationRegenerateSchema].includes(schema);
+export function npcAnimationRegenerateRequest(npcId,selected,catalog,poseSelectionV2Enabled=false){
+ const payload={schemaVersion:poseSelectionV2Enabled===true?animationRegenerateSchema:animationRegenerateLegacySchema,projectId:'binari',npcId,motionSelection:selected};
  if(!validNpcAnimationRegenerate(payload)||!selected.every(choice=>catalog.some(row=>sameMotionChoice(choice,row))))
   throw Error('게시된 모션 프리셋을 다시 골라 주세요.');
  return payload;
