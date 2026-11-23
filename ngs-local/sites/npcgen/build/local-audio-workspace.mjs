@@ -446,7 +446,7 @@ export function mountAudioWorkspace({items,detail,concepts=[],loadConcepts,signa
  fields.append(name.wrapper,concept.wrapper,conceptText.wrapper,brief.wrapper,vocals.wrapper,directLyrics.wrapper,
   lyricsRequest.wrapper,lyrics.wrapper,duration.wrapper);
  if(full){
-  full.input.title='최대 5번 작곡하고, 목표에 못 미치면 가장 긴 계획을 사용합니다.';
+  full.input.title='60초 이상인 완곡을 목표로 하며, 정확한 길이는 작곡 모델이 정합니다.';
   full.input.addEventListener('change',()=>{
    if(full.input.checked)duration.input.value='';
    updateModes();

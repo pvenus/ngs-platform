@@ -18,7 +18,7 @@
     "sites/npcgen/build/folder-mcp-client.mjs": "80c618d2973d25637163b14ca82e97480b25b88d1e79b25116d59142cd3906b7",
     "sites/npcgen/build/folder-mcp-loopback.mjs": "8f07ebbbf52b38fc417525f3e2d30881c13eb55a57ad701f0455dcf44f183ab7",
     "sites/npcgen/build/local-audio-results.mjs": "81277228073a135fee9241a698ba6c419b43d4c432d8649eb3415d41248fa739",
-    "sites/npcgen/build/local-audio-workspace.mjs": "4910afb3f6f77bdebbf42bb468d50dfde469f7ea1269cad9a46fdfd2637ddf1d",
+    "sites/npcgen/build/local-audio-workspace.mjs": "1809c5178a729705171ac9566211f313fa68190ccc6e16803ca8f0dd3c343e02",
     "sites/npcgen/build/local-concept-category-contract.mjs": "aa00aa854f65063065174404c233994ab2a51f595f2e9dee1dcaf157ce9a3c9f",
     "sites/npcgen/build/local-concept-category-ui.mjs": "9639929aef200bb6fb384416f7f755620b47777640cd77f54fa2d001a8c8e896",
     "sites/npcgen/build/local-miniflare-app.mjs": "39691649498c49fb0eccf6186a4ccf9733bfab50f8907dbe900b806d770641d9",
