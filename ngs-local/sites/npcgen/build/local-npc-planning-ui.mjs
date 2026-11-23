@@ -6,6 +6,7 @@ export const npcPlanningRoles=Object.freeze([
  ['overview','인물 개요'],['portrait.art','포트레이트용 아트'],
  ['portrait.representative','대표 포즈 기획'],['portrait.idle','아이들 포즈 기획'],
 ].map(Object.freeze));
+const combatPlanningRole='portrait.combat';
 const schemaVersion='ngs.npc-planning-update.v1';
 export const npcPlanningRequestType='npc.planning.update';
 export const npcPlanningAddType='npc.planning.add';
@@ -56,6 +57,9 @@ export function npcPlanningSelection(plans,wanted){
   const found=plans.filter(row=>row.planningRole===role);
   return {role,name,document:found.length===1?found[0]:null};
  });
+ // Optional workflow-produced tab: no placeholders or ambiguous role selection.
+ const combat=plans.filter(row=>row.planningRole===combatPlanningRole);
+ if(combat.length===1)choices.push({role:combatPlanningRole,name:'전투 포즈 기획',document:combat[0]});
  const selected=choices.find(row=>row.role===wanted||row.document?.id===wanted)??choices[0];
  const custom=plans.filter(row=>row.planningRole==='custom'&&typeof row.id==='string'&&newCategory.test(row.id)&&
   row.contentFormat==='markdown.v1');
@@ -76,7 +80,7 @@ export function renderNpcPlanningDocument(row,appendLegacy){
  return node('p','meta','작성된 기획 문서가 없습니다.');
 }
 export function editableNpcPlanningDocument(row){
- if(!row||row.planningRole==='custom')return false;
+ if(!row||row.planningRole==='custom'||row.planningRole===combatPlanningRole)return false;
  return row.contentFormat==='markdown.v1'?typeof row.markdown==='string'&&!!row.markdown.trim():
   Object.hasOwn(row,'content')&&(typeof row.content==='string'?!!row.content.trim():
    row.content!==null&&typeof row.content==='object'&&Object.keys(row.content).length>0);

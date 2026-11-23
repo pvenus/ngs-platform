@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {isQueuedRequest,submitQueuedRequest} from '../build/local-request-queue-browser.mjs';
 import {createAudioIntake} from '../build/local-audio-workspace.mjs';
 import {createNpcOneStopIntake} from '../build/local-npc-one-stop-ui.mjs';
-import {createNpcPlanningIntake} from '../build/local-npc-planning-ui.mjs';
+import {createNpcPlanningIntake,editableNpcPlanningDocument,npcPlanningSelection,validNpcPlanningUpdate} from '../build/local-npc-planning-ui.mjs';
 const accepted={queueId:'ngs.local.00000000-0000-4000-8000-000000000000',status:'queued'};
 const pending=()=>Response.json(accepted,{status:202});
 const jsonPost=command=>({method:'POST',body:JSON.stringify(command)});
@@ -38,4 +38,24 @@ test('exact Space queue receipts are temporary acknowledgments, never official r
  assert.equal(isQueuedRequest(Response.json({...queued,officialRequestId:'x'},{status:202}),{...queued,officialRequestId:'x'}),false);
  const intake=createAudioIntake(async()=>Response.json(queued,{status:202}),{uuid:()=>crypto.randomUUID()});
  assert.deepEqual(await intake.send(()=>({})),queued);
+});
+
+
+test('combat planning tab only reads a unique exact published role; other roles stay editable',()=>{
+ const overview={id:'overview-card',name:'Overview',planningRole:'overview',contentFormat:'markdown.v1',markdown:'# Overview'};
+ const combat={id:'combat-card',name:'Combat',planningRole:'portrait.combat',contentFormat:'markdown.v1',markdown:'# Combat'};
+ const regular=['overview','portrait.art','portrait.representative','portrait.idle'];
+ const absent=npcPlanningSelection([overview,{...combat,planningRole:'combat'}],'portrait.combat');
+ assert.deepEqual(absent.choices.map(row=>row.role),regular);
+ assert.equal(absent.selected.document,overview);
+ const present=npcPlanningSelection([overview,combat],'portrait.combat');
+ assert.deepEqual(present.choices.map(row=>row.role),[...regular,'portrait.combat']);
+ assert.equal(present.selected.document,combat);
+ assert.equal(npcPlanningSelection([overview,combat],combat.id).selected.document,combat);
+ assert.equal(npcPlanningSelection([overview,combat,{...combat,id:'other'}],'portrait.combat').selected.document,overview);
+ assert.equal(editableNpcPlanningDocument(combat),false);
+ assert.equal(editableNpcPlanningDocument(overview),true);
+ const payload={schemaVersion:'ngs.npc-planning-update.v1',projectId:'binari',npcId:'npc.fixture',role:'overview',requirements:'edit'};
+ assert.equal(validNpcPlanningUpdate(payload),true);
+ assert.equal(validNpcPlanningUpdate({...payload,role:'portrait.combat'}),false);
 });
