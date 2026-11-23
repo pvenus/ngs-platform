@@ -10,7 +10,7 @@ const receiver=readFileSync(here('../build/space-file-replica.mjs'),'utf8');
 const sourcePath='ngs-local/sites/npcgen/build/object-replica.mjs';
 const base=existsSync(here('../'+sourcePath))?'../':'../../../';
 const core=readFileSync(here(base+sourcePath),'utf8');
-const schema=['0014_space_file_replica_versions.sql','0015_replica_sync_progress.sql']
+const schema=['0014_space_file_replica_versions.sql','0015_replica_sync_progress.sql','0016_audio_result_index.sql']
  .flatMap(file=>readFileSync(here(base+'ngs-local/dev/'+file),'utf8').split('--> statement-breakpoint'));
 const module=(path,relative)=>({type:'ESModule',path,contents:readFileSync(here(relative),'utf8')});
 const localBuild='ngs-local/sites/npcgen/build/';
@@ -52,7 +52,7 @@ const mini=new Miniflare({
  {type:'ESModule',path:sourcePath,contents:core},
  module('build/space-machine-routes.mjs','../build/space-machine-routes.mjs'),
  module('build/space-request-queue.mjs','../build/space-request-queue.mjs'),
- ...['replica-whole-file-wire.mjs','local-concept-category-contract.mjs','local-npc-planning-ui.mjs','local-concept-category-ui.mjs',
+ ...['audio-result-index.mjs','replica-whole-file-wire.mjs','local-concept-category-contract.mjs','local-npc-planning-ui.mjs','local-concept-category-ui.mjs',
      'local-request-queue-browser.mjs','local-audio-workspace.mjs','motion-preset-convert-2d.mjs','npc-motion-selection.mjs'].map(f=>module(localBuild+f,base+localBuild+f)),],
 });
 const send=(method,args)=>mini.dispatchFetch('http://receiver.invalid',{method:'POST',body:JSON.stringify({method,args})});

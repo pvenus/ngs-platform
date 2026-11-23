@@ -31,9 +31,8 @@ export async function spaceReplicaView(request,replica,{authorize}={}){
   need(q.getAll('projectId').length===1&&q.get('projectId')===projectId,403,'PROJECT_OR_RESOURCE_DENIED');
   if(path===icon)return await projectIcon(request,replica,q);
   if(q.has('id'))return await audioFile(request,replica,q);
-  need(exactKeys(q,'projectId'),400,'AUDIO_RESULT_INPUT_INVALID');
-  if(!await replica.head('project.json'))unavailable();
-  return request.method==='HEAD'?new Response(null,{headers}):json(await playlist(replica));
+  const data=await playlist(replica,q);
+  return request.method==='HEAD'?new Response(null,{headers}):json(data);
  }catch(e){
   const status=[400,401,403,404,405].includes(e?.status)?e.status:503;
   return json({error:status===503?'SPACE_REPLICA_VIEW_UNAVAILABLE':e.message},status);

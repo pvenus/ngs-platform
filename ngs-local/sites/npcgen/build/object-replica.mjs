@@ -1,5 +1,6 @@
 /** Shared object replica: temporary data becomes visible only through the version CAS. */
 import {createHash} from 'node:crypto';
+import {audioIndexPath,audioSummaryLimit,createAudioResultIndex,readAudioIndexBytes} from './audio-result-index.mjs';
 import {wholeFileObjectMaximum} from './replica-whole-file-wire.mjs';
 const project='binari',defaultNamespace='ngs-replica/v1/binari/';
 const passes='ngs_replica_pass_v2',receives='ngs_replica_receive_v2',entries='ngs_replica_version_v2',resets='ngs_replica_reset_v2';
@@ -68,6 +69,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
  writePart=(upload,part,body)=>upload.uploadPart(part,body),
  writeWhole=(bucket,key,body,size,options)=>bucket.put(key,body,options),namespace=defaultNamespace,cacheOrigin}={}){
  if(typeof namespace!=='string'||!/^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){1,8}$/u.test(namespace))unavailable();
+ const audioIndex=createAudioResultIndex(db);
  const legacy=namespace+'files/',stage=namespace+'v2/stage/',versions=namespace+'v2/objects/';
  const pathOK=p=>typeof p==='string'&&p.isWellFormed()&&encoder.encode(legacy+p).length<=1024&&p.split('/').length<=64&&
   p.split('/').every(c=>c.length&&encoder.encode(c).length<=255&&!c.startsWith('.')&&!/[\\\x00-\x1f\x7f]/u.test(c));
@@ -264,7 +266,12 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   need(exact(args,'scope')&&args.scope===project,403,'NGS_FILE_SYNC_SCOPE_DENIED');
   const syncId='ngs.sync.'+makeId(),inventoryAt=now();
   await run(`INSERT INTO ${passes}(sync_id,baseline,expiry) VALUES(?,(SELECT COALESCE(MAX(version),0) FROM ${entries}),?)`,syncId,inventoryAt+inactivity);
-  try{await collectExpired();return {syncId,scope:project,inventoryAt,files:await list()};}
+  try{
+   await collectExpired();
+   const files=await list();
+   await audioIndex.backfill(files,head,get);
+   return {syncId,scope:project,inventoryAt,files};
+  }
   catch(e){await run(`DELETE FROM ${passes} WHERE sync_id=?`,syncId);throw e;}
  }
  async function createTransfer(session,path,sha256,size,epoch,whole=false){
@@ -349,10 +356,12 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
  const persistDone=(f,id,guard,...bindings)=>stmt(`INSERT INTO ${progressResults}(sync_id,path,state)
   SELECT ?,?,'completed' WHERE EXISTS(SELECT 1 FROM ${progressRows} WHERE sync_id=? AND state='syncing')
   AND (${guard}) ON CONFLICT(sync_id,path) DO NOTHING`,id,f.path,id,...bindings);
- async function publish(f,session){
+ async function publish(f,session,metadataBytes){
   const id=session.sync_id,capacity=[id,id,id,f.path];
   if(!f.same){
    const key=objectKey(f.attempt);
+   const audioPath=audioIndexPath(f.path);
+   const audioSummary=audioPath?.[2]==='metadata.json'?readAudioIndexBytes(metadataBytes,audioPath[1],f.sha256):null;
    const [appended]=await db.batch([
     stmt(`INSERT INTO ${entries}(path,sha256,object_key,size,sync_id,last_sha)
      SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
@@ -361,6 +370,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
      AND ${progressCapacity} AND NOT EXISTS(SELECT 1 FROM ${progressResults} WHERE sync_id=? AND path=? AND state='failed')`,
      f.path,f.sha256,key,f.size,id,f.last_sha,id,now(),id,f.path,f.attempt,f.path,f.prior,...capacity,id,f.path),
     persistDone(f,id,`EXISTS(SELECT 1 FROM ${entries} WHERE object_key=?)`,key),
+    ...audioIndex.publish(f.path,audioSummary,key),
    ]);
    if(!appended.meta.changes){
     const live=await current(f.path);
@@ -438,7 +448,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   }
   if(!final)return {nextOffset:next};
   if(f.upload_id)await verifyLarge(f,JSON.parse(f.parts));
-  return await publish(f,session);
+  return await publish(f,session,offset===0?data:null);
  }
  async function receiveWholeFile(args,body){
   ready();
@@ -465,7 +475,8 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   const fixed=needsPut&&size>0?fixedLengthStream(size):null;
   const reader=body.getReader();
   const digest=createHash('sha256');
-  const header=new Uint8Array(path==='project.json'?size:path==='icon.png'?Math.min(8,size):0);
+  const audioMetadata=audioIndexPath(path)?.[2]==='metadata.json';
+  const header=new Uint8Array(path==='project.json'||audioMetadata&&size<=audioSummaryLimit?size:path==='icon.png'?Math.min(8,size):0);
   let seen=0,checked=now(),checkpoint=0,validationError;
   async function progressBytes(){
    if(!transferRow||seen>=size||seen-checkpoint<chunkSize||now()-checked<1000)return;
@@ -507,7 +518,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
    }
    if(!await run(`UPDATE ${receives} SET received=?,last_sha=? WHERE sync_id=? AND path=? AND attempt=? AND parts=?`,
       size,sha256,id,path,transferRow.attempt,wholeTransfer))stale();
-   await publish({...transferRow,last_sha:sha256},session);
+   await publish({...transferRow,last_sha:sha256},session,audioMetadata&&size<=audioSummaryLimit?header:null);
    return {ok:true};
   }catch(e){
    aborter.abort();
@@ -540,11 +551,12 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   if(existing?.sync_id===session.sync_id&&!existing.object_key&&existing.sha256===args.sha256)return {removed:false};
   const {prior,sha256,size}=await activePrior(args.path,session);
   if(sha256!==args.sha256)stale();
-  const changed=await run(`INSERT INTO ${entries}(path,sha256,object_key,size,sync_id)
+  const [changed]=await db.batch([stmt(`INSERT INTO ${entries}(path,sha256,object_key,size,sync_id)
    SELECT ?,?,NULL,?,? WHERE EXISTS(SELECT 1 FROM ${passes} WHERE sync_id=? AND expiry>?)
    AND COALESCE((SELECT MAX(version) FROM ${entries} WHERE path=?),0)=?`,
-   args.path,sha256,size,session.sync_id,session.sync_id,now(),args.path,prior);
-  if(!changed)stale();
+   args.path,sha256,size,session.sync_id,session.sync_id,now(),args.path,prior),
+   ...audioIndex.remove(args.path,sha256,session.sync_id)]);
+  if(!changed.meta.changes)stale();
   return {removed:true};
  }
  async function planProgress(args,session){
@@ -624,5 +636,5 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   need(exact(args,'syncId'));
   return await close(name,args.syncId);
  }
- return {call,list,head,get,progress,receiveWholeFile,npcCache,readVerifiedPng};
+ return {call,list,head,get,progress,receiveWholeFile,npcCache,readVerifiedPng,audioIndex:audioIndex.read};
 }

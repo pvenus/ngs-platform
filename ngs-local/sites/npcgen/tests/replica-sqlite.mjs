@@ -108,8 +108,11 @@ test('an exact v14 replica upgrades with rows preserved and can revert only new 
  assert.deepEqual(await reader.prepare('SELECT * FROM ngs_replica_version_v2').first(),original);
  reader.close();writer.close();
  const reverted=new DatabaseSync(path);
- assert.equal(reverted.prepare('PRAGMA user_version').get().user_version,15);
+ assert.equal(reverted.prepare('PRAGMA user_version').get().user_version,16);
  reverted.exec(`BEGIN IMMEDIATE;
+ DROP TABLE ngs_audio_result_index_v1;
+ DROP TABLE ngs_audio_result_index_progress_v1;
+ DELETE FROM ngs_replica_schema_pin_v1 WHERE tag='audio-result-index-v1';
  DROP TRIGGER ngs_replica_progress_count_v1;
  DROP TABLE ngs_replica_progress_item_v1;
  DROP TABLE ngs_replica_progress_v1;

@@ -3,7 +3,7 @@ import {createObjectReplica} from './object-replica.mjs';
 import {parseWholeFileHeaders,wholeFileError} from './replica-whole-file-wire.mjs';
 
 const json=(value,status=200)=>Response.json(value,{status});
-const api=new Set(['call','list','head','get','progress','cache-version','cache-read','cache-store','verified-png']);
+const api=new Set(['call','list','head','get','progress','audioIndex','cache-version','cache-read','cache-store','verified-png']);
 const info=o=>({size:o.size,etag:o.etag,customMetadata:o.customMetadata??{}});
 function permitted(r,env){
  const cap=r.headers.get('x-ngs-internal');

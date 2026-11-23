@@ -17,7 +17,7 @@ SHA = re.compile(r"[0-9a-f]{40}")
 ENTRY = Path("sites/npcgen/build/local-miniflare-app.mjs")
 STARTUP = (ENTRY, ENTRY.with_name("local-miniflare-runtime.mjs"),
            ENTRY.with_name("local-miniflare-worker.mjs"), ENTRY.with_name("local-request-queue.mjs"),
-           Path("dev/0014_space_file_replica_versions.sql"), Path("dev/0015_replica_sync_progress.sql"),
+           Path("dev/0014_space_file_replica_versions.sql"), Path("dev/0015_replica_sync_progress.sql"), Path("dev/0016_audio_result_index.sql"),
            Path("local-miniflare/package-lock.json"), Path("local-miniflare/package.json"))
 LABEL = "com.vinus.ngs.local-mcp"
 NODE_VERSION = "24.21.0"

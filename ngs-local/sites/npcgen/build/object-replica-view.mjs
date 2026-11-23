@@ -1,3 +1,4 @@
+import {audioIndexQuery} from './audio-result-index.mjs';
 /** Verified-object projections reused by Mac S3 and Space R2. Callers enforce their own session policy. */
 import {audioResultTaskKey} from './local-audio-workspace.mjs';
 const projectId='binari',icon='/api/project-folders/icon',audio='/api/audio-workspace';
@@ -73,31 +74,8 @@ export async function objectAudioSeparationSource(replica,{sourceOfficialRequest
  const row=await audioRecord(replica,sourceOfficialRequestId,sourceSha256);
  return Boolean(row&&!row.separated&&proof(await replica.head(row.wav),sourceSha256,row.a.bytes));
 }
-export async function playlist(replica){
- const inventory=await replica.list();
- const ids=[],wave=new Map();
- for(const {path,sha256} of inventory){
-  const parts=path.split('/');
-  if(parts.length!==3||parts[0]!=='audio'||!official.test(parts[1]))continue;
-  if(parts[2]==='metadata.json')ids.push(parts[1]);
-  if(parts[2]==='audio.wav')wave.set(parts[1],sha256);
- }
- need(ids.length<=4096,503,'SPACE_REPLICA_VIEW_UNAVAILABLE');
- const rows=[];
- for(let idx=0;idx<ids.length;idx+=8){
-  const records=await Promise.all(ids.slice(idx,idx+8).filter(id=>wave.has(id)).map(async id=>{
-   try{return await audioRecord(replica,id,wave.get(id));}catch{return null;}
-  }));
-  rows.push(...records.filter(Boolean));
- }
- const when=r=>integers(r.meta.generatedAt,1,Number.MAX_SAFE_INTEGER)?r.meta.generatedAt:0;
- rows.sort((a,b)=>when(a)-when(b)||a.meta.officialRequestId.localeCompare(b.meta.officialRequestId));
- return {projectId,results:rows.map(({meta,a,separated})=>{
-  const bpm=meta.bpmBasis==='model'&&integers(meta.bpm,30,300)?meta.bpm:null;
-  return {title:meta.title,bpm,bpmBasis:bpm===null?'unavailable':'model',durationSeconds:a.durationSeconds,
-   ...(separated?{separated:true}:{}),
-   url:audio+'?'+new URLSearchParams({projectId,id:meta.officialRequestId,sha256:a.sha256})};
- })};
+export async function playlist(replica,query){
+ return replica.audioIndex(audioIndexQuery(query));
 }
 export async function soundConcepts(replica){
  const index=await recordObject(replica,'concept/metadata.json',2*1024*1024);

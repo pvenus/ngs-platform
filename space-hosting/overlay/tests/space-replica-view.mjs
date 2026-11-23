@@ -13,15 +13,22 @@ const mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityD
  modules:[{type:'ESModule',path:'test.mjs',contents:`
  import {createSpaceFileReplica} from './build/space-file-replica.mjs';
  import {spaceReplicaView} from './build/space-replica-view.mjs';
- export default {fetch(request,env){
+ export default {async fetch(request,env){
   const replica=createSpaceFileReplica({db:env.DB,bucket:env.BUCKET});
+  const operation=new URL(request.url).pathname;
+  if(['/fixture-sync','/fixture-remove'].includes(operation)){
+   const result=await replica.call('ngs_file_sync_begin',{scope:'binari'});
+   if(operation==='/fixture-remove')await replica.call('ngs_file_sync_remove',{syncId:result.syncId,...await request.json()});
+   await replica.call('ngs_file_sync_finish',{syncId:result.syncId});
+   return Response.json({ok:true});
+  }
   return spaceReplicaView(request,replica,{authorize:async (user,project)=>user.userId==='owner-fixture'&&project==='binari'})
    .then(response=>response??new Response(null,{status:404}));
  }};
  `},mod('build/space-file-replica.mjs','../build/space-file-replica.mjs'),mod('build/space-replica-view.mjs','../build/space-replica-view.mjs'),
  mod(shared+'object-replica-view.mjs',sharedRoot+shared+'object-replica-view.mjs'),
  mod(shared+'local-audio-workspace.mjs',sharedRoot+shared+'local-audio-workspace.mjs'),
- mod(shared+'local-request-queue-browser.mjs',sharedRoot+shared+'local-request-queue-browser.mjs'),mod(shared+'object-replica.mjs',sharedRoot+shared+'object-replica.mjs'),mod(shared+'replica-whole-file-wire.mjs',sharedRoot+shared+'replica-whole-file-wire.mjs')],
+ mod(shared+'local-request-queue-browser.mjs',sharedRoot+shared+'local-request-queue-browser.mjs'),mod(shared+'audio-result-index.mjs',sharedRoot+shared+'audio-result-index.mjs'),mod(shared+'object-replica.mjs',sharedRoot+shared+'object-replica.mjs'),mod(shared+'replica-whole-file-wire.mjs',sharedRoot+shared+'replica-whole-file-wire.mjs')],
 });
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const auth={'oai-authenticated-user-id':'owner-fixture','oai-authenticated-user-email':'owner@example.invalid'};
@@ -38,8 +45,10 @@ const meta=(id,generatedAt,t=title)=>({schemaVersion:'workflow.audio-result.v1',
  sampleRate:8000,frames:800,durationSeconds:0.1}});
 try{
  const db=await mini.getD1Database('DB');
- const schema=readFileSync(here(sharedRoot+'ngs-local/dev/0014_space_file_replica_versions.sql'),'utf8');
- for(const sql of schema.split('--> statement-breakpoint'))await db.prepare(sql).run();
+ for(const name of ['0014_space_file_replica_versions.sql','0015_replica_sync_progress.sql','0016_audio_result_index.sql']){
+  const schema=readFileSync(here(sharedRoot+'ngs-local/dev/'+name),'utf8');
+  for(const sql of schema.split('--> statement-breakpoint'))await db.prepare(sql).run();
+ }
  const bucket=await mini.getR2Bucket('BUCKET');
  async function publish(path,body,extra={}){
   if(!Buffer.isBuffer(body))body=Buffer.from(JSON.stringify(body));
@@ -85,10 +94,12 @@ try{
  assert.deepEqual(await (await send('/api/space/audio-concepts')).json(),{concepts:[
   {id:'category.audio',label:'Sound fixture'},{id:'category.legacy',label:'Legacy sound fixture'},
  ]});
+ assert.equal((await send(path)).status,503);
+ assert.equal((await send('/fixture-sync')).status,200);
  const results=await (await send(path)).json();
- assert.deepEqual(results.results.map(r=>r.title),['Earlier fixture',title,'Fixture BGM (반주)']);
- assert.equal(results.results[2].separated,true);
- assert.deepEqual(Buffer.from(await (await send(results.results[2].url)).arrayBuffer()),data);
+ assert.deepEqual(results.results.map(r=>r.title),['Fixture BGM (반주)',title,'Earlier fixture']);
+ assert.equal(results.results[0].separated,true);
+ assert.deepEqual(Buffer.from(await (await send(results.results[0].url)).arrayBuffer()),data);
  assert.equal(results.results[1].bpm,83);assert.equal(results.results[1].durationSeconds,0.1);
  const url=results.results[1].url;
  const partial=await send(url,{...auth,Range:'bytes=10-13'});
@@ -98,8 +109,10 @@ try{
  assert.equal((await send(url,{...auth,Range:'bytes=2000-3000'})).status,416);
  assert.equal((await send(url.replace(sha256,'f'.repeat(64)))).status,404);
  assert.equal((await send(path+'&rawPath=legacy/private.json')).status,400);
- await bucket.put(prefix+'audio/'+one+'/audio.wav',new Uint8Array(),{customMetadata:{sha256,removed:'1'}});
+ assert.equal((await mini.dispatchFetch('http://site.invalid/fixture-remove',{method:'POST',body:JSON.stringify({path:'audio/'+one+'/audio.wav',sha256})})).status,200);
+ assert.notEqual(await bucket.head(prefix+'audio/'+one+'/audio.wav'),null);
+ assert.equal((await (await send(path+'&resultId='+one)).json()).result,null);
  assert.equal((await send(url)).status,404);
- assert.deepEqual((await (await send(path)).json()).results.map(r=>r.title),['Earlier fixture','Fixture BGM (반주)']);
+ assert.deepEqual((await (await send(path)).json()).results.map(r=>r.title),['Fixture BGM (반주)','Earlier fixture']);
  console.log('Space replica view: real workerd R2 project/icon, authorized sound options, BGM/range and fail-closed tests PASS');
 }finally{await mini.dispose();}

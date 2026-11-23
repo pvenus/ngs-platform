@@ -31,7 +31,7 @@ if [ -n "$commit_sha" ]; then
   printf "export const ngsCommitSha='%s';\n" "$commit_sha" > "$target/build/ngs-release-provenance.mjs"
 fi
 # One unchanged SQL authority for Local SQLite and the applied Site migration.
-for migration in 0014_space_file_replica_versions.sql 0015_replica_sync_progress.sql; do
+for migration in 0014_space_file_replica_versions.sql 0015_replica_sync_progress.sql 0016_audio_result_index.sql; do
   test ! -L "$target/drizzle/$migration"
   cp "$src/ngs-local/dev/$migration" "$target/drizzle/$migration"
   cmp "$target/ngs-local/dev/$migration" "$target/drizzle/$migration"

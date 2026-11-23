@@ -31,11 +31,11 @@ export function localObjectReplicaViews(replica){
   openProject:projectId=>openObjectWorkspaceProject(replica,projectId),
   async audio({query,range,authorize}){
    const id=query.get('id'),projectId=query.get('projectId'),params=[...query.keys()].sort().join(',');
-   if(!projectId||params!==(id===null?'projectId':'id,projectId,sha256'))throw invalid();
+   if(!projectId||id!==null&&params!=='id,projectId,sha256')throw invalid();
    authorize(projectId);
    if(projectId!==binari)throw missing();
    try{
-    if(id===null)return {json:await playlist(replica)};
+    if(id===null)return {json:await playlist(replica,query)};
     const headers=typeof range==='string'?{Range:range}:{};
     return {response:await audioFile(new Request('http://127.0.0.1/api/audio-workspace?'+query,{headers}),replica,query)};
    }catch(error){if(!error.status||error.status===503)throw unavailable();throw error;}

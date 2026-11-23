@@ -5,9 +5,10 @@ import {lstatSync,readFileSync,realpathSync} from 'node:fs';
 import {isAbsolute,join,resolve} from 'node:path';
 import {objectReplicaSyncTools} from './object-replica.mjs';
 const url='http://127.0.0.1';
-const modules=['local-miniflare-worker','object-replica','replica-whole-file-wire'];
+const modules=['local-miniflare-worker','object-replica','audio-result-index','replica-whole-file-wire'];
 const volume='/Volumes/무제';
-const bootSql=['0014_space_file_replica_versions.sql','0015_replica_sync_progress.sql'];
+const bootSql=['0014_space_file_replica_versions.sql','0015_replica_sync_progress.sql','0016_audio_result_index.sql'];
+const newTables=['ngs_audio_result_index_v1','ngs_audio_result_index_progress_v1'];
 const tableNames=['ngs_replica_pass_v2','ngs_replica_progress_item_v1','ngs_replica_progress_v1',
  'ngs_replica_receive_v2','ngs_replica_reset_v2','ngs_replica_version_v2'];
 const down=()=>Object.assign(Error('NGS_MINIFLARE_UNAVAILABLE'),{status:503});
@@ -30,7 +31,16 @@ async function migration(db){
  const statements=bootSql.map(file=>readFileSync(new URL('../../../dev/'+file,import.meta.url),'utf8'));
  const schemaHash=sha(statements.join('\0'));
  const exists=async()=> (await db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name").all()).results.map(r=>r.name);
- const known=[...tableNames,'ngs_local_replica_schema_pin'].sort();let actual=await exists();
+ const previous=[...tableNames,'ngs_local_replica_schema_pin'].sort();
+ const known=[...previous,...newTables].sort();let actual=await exists();
+ const pinned=async()=>(await db.prepare('SELECT sha256 FROM ngs_local_replica_schema_pin WHERE id=1').first())?.sha256;
+ if(JSON.stringify(actual)===JSON.stringify(previous)&&await pinned()===sha(statements.slice(0,-1).join('\0'))){
+  await db.batch([
+   ...statements.at(-1).split('--> statement-breakpoint').filter(x=>x.trim()).map(sql=>db.prepare(sql)),
+   db.prepare('UPDATE ngs_local_replica_schema_pin SET sha256=? WHERE id=1').bind(schemaHash),
+  ]);
+  actual=await exists();
+ }
  if(actual.length===0){
   await db.batch([
    ...statements.flatMap(r=>r.split('--> statement-breakpoint').filter(x=>x.trim())).map(sql=>db.prepare(sql)),
@@ -40,7 +50,7 @@ async function migration(db){
   actual=await exists();
  }
  if(JSON.stringify(actual)!==JSON.stringify(known)||
-  (await db.prepare('SELECT sha256 FROM ngs_local_replica_schema_pin WHERE id=1').first())?.sha256!==schemaHash)throw down();
+  await pinned()!==schemaHash)throw down();
  return schemaHash;
 }
 function parsedError(response,value){
@@ -75,7 +85,7 @@ export async function openLocalMiniflareReplica({persistRoot,fixture=false,load=
  };
  const replica=Object.freeze({
   call:(...args)=>json('call',...args),list:(...args)=>json('list',...args),head:(...args)=>json('head',...args),
-  progress:()=>json('progress'),
+  progress:()=>json('progress'),audioIndex:(...args)=>json('audioIndex',...args),
   async get(path,options={}){
    const response=await io('/call',{headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'get',args:[path,options]})});
    if(response.status===404)return null;

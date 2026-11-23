@@ -8,12 +8,14 @@ import {DatabaseSync} from 'node:sqlite';
 const source=realpathSync(fileURLToPath(new URL('../../../',import.meta.url)));
 const migrationPath=new URL('../../../dev/0014_space_file_replica_versions.sql',import.meta.url);
 const progressPath=new URL('../../../dev/0015_replica_sync_progress.sql',import.meta.url);
+const audioPath=new URL('../../../dev/0016_audio_result_index.sql',import.meta.url);
 const applicationId=0x4e475352; // NGSR; SQLite file header never identifies an RS store
-const oldSchemaVersion=14,schemaVersion=15;
+const oldSchemaVersion=14,progressSchemaVersion=15,schemaVersion=16;
 const maximumSchema=32*1024;
 const oldTables=['ngs_replica_pass_v2','ngs_replica_receive_v2','ngs_replica_reset_v2','ngs_replica_schema_pin_v1','ngs_replica_version_v2'];
-const knownTables=[...oldTables,'ngs_replica_progress_v1','ngs_replica_progress_item_v1'].sort();
-const baseTag='space-file-replica-v2',progressTag='replica-sync-progress-v1';
+const progressTables=[...oldTables,'ngs_replica_progress_v1','ngs_replica_progress_item_v1'].sort();
+const knownTables=[...progressTables,'ngs_audio_result_index_v1','ngs_audio_result_index_progress_v1'].sort();
+const baseTag='space-file-replica-v2',progressTag='replica-sync-progress-v1',audioTag='audio-result-index-v1';
 const sqliteMagic=Buffer.from('SQLite format 3\0');
 const error=(code='NGS_REPLICA_SQLITE_UNAVAILABLE')=>Object.assign(Error(code),{status:503});
 const invalid=()=>error('NGS_REPLICA_SQLITE_INVALID');
@@ -86,6 +88,9 @@ export function openReplicaSqlite({filename,migrationSql=replicaSqliteSchema(),r
  const progressCommands=progress.split('--> statement-breakpoint').map(sql=>sql.trim()).filter(Boolean);
  if(progressCommands.length!==3)throw schemaWrong();
  const progressDigest=createHash('sha256').update(progress).digest('hex');
+ const audio=readFileSync(audioPath,'utf8'),audioCommands=audio.split('--> statement-breakpoint').map(sql=>sql.trim()).filter(Boolean);
+ if(audioCommands.length!==3||Buffer.byteLength(audio)>maximumSchema)throw schemaWrong();
+ const audioDigest=createHash('sha256').update(audio).digest('hex');
  const memory=filename===':memory:';
  if(typeof readOnly!=='boolean'||memory&&readOnly)throw invalid();
  const file=memory?null:checkFile(filename,readOnly);
@@ -99,7 +104,7 @@ export function openReplicaSqlite({filename,migrationSql=replicaSqliteSchema(),r
   const version=()=>db.prepare('PRAGMA user_version').get()?.user_version;
   const marker=()=>db.prepare('PRAGMA application_id').get()?.application_id;
   const fresh=memory||file?.fresh;
-  if(!readOnly&&(fresh||version()===oldSchemaVersion)){
+  if(!readOnly&&(fresh||[oldSchemaVersion,progressSchemaVersion].includes(version()))){
    db.exec('BEGIN IMMEDIATE');
    try{
     if(fresh){
@@ -112,13 +117,20 @@ export function openReplicaSqlite({filename,migrationSql=replicaSqliteSchema(),r
      if(marker()!==applicationId||JSON.stringify(haveTables())!==JSON.stringify(oldTables)||pinned(baseTag)!==sha256)throw schemaWrong();
      for(const sql of progressCommands)db.exec(sql);
      db.prepare('INSERT INTO ngs_replica_schema_pin_v1(tag,digest) VALUES(?,?)').run(progressTag,progressDigest);
+     db.exec('PRAGMA user_version='+progressSchemaVersion);
+    }
+    if(version()===progressSchemaVersion){
+     if(marker()!==applicationId||JSON.stringify(haveTables())!==JSON.stringify(progressTables)||
+        pinned(baseTag)!==sha256||pinned(progressTag)!==progressDigest)throw schemaWrong();
+     for(const sql of audioCommands)db.exec(sql);
+     db.prepare('INSERT INTO ngs_replica_schema_pin_v1(tag,digest) VALUES(?,?)').run(audioTag,audioDigest);
      db.exec('PRAGMA user_version='+schemaVersion);
     }
     db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
   }
   if(marker()!==applicationId||version()!==schemaVersion||JSON.stringify(haveTables())!==JSON.stringify(knownTables)||
-     pinned(baseTag)!==sha256||pinned(progressTag)!==progressDigest)throw schemaWrong();
+     pinned(baseTag)!==sha256||pinned(progressTag)!==progressDigest||pinned(audioTag)!==audioDigest)throw schemaWrong();
   if(!memory){
    const pathCheck=lstatSync(filename);
    if(!regular(pathCheck)||!same(file.initial,pathCheck)||realpathSync(filename)!==filename)throw denied();
