@@ -2,6 +2,7 @@ import importlib.machinery
 import fcntl
 import json
 import os
+import sqlite3
 from pathlib import Path
 import plistlib
 import subprocess
@@ -437,11 +438,120 @@ class Apply(unittest.TestCase):
             self.run_apply()
         self.assertFalse(self.host.calls)
 
+    def test_audio_apply_checks_held_before_forward_and_undo_before_prior_bootstrap(self):
+        self.host.health_failure = True
+        fake_pin = self.root / "known", (2, 13)
+        self.host.audio_db_file = Mock(return_value=fake_pin)
+        def audio_storage(_env, pin, pid, _states, *, undo=False):
+            self.assertEqual(pin, fake_pin)
+            self.assertFalse(self.host.loaded)
+            self.assertEqual(pid, 101 if undo else 100)
+            self.host.calls.append("schema-undo" if undo else "schema-check")
+        self.host.audio_storage = audio_storage
+        with patch.object(m, "audio_upgrade", return_value=True), patch.object(m, "audio_states", return_value={}):
+            with self.assertRaisesRegex(m.Refused, "FAILED_ROLLBACK_VERIFIED"):
+                self.run_apply()
+        self.assertEqual(self.host.calls, ["stop", "schema-check", "replace", "start", "stop",
+                                          "schema-undo", "replace", "start"])
+
+    def test_unproved_audio_undo_does_not_restore_selector_or_restart_prior(self):
+        self.host.health_failure = True
+        self.host.audio_db_file = Mock(return_value=(self.root / "known", (2, 13)))
+        def audio_storage(_env, _pin, _pid, _states, *, undo=False):
+            if undo:
+                raise m.Refused(m.AUDIO_HELD)
+        self.host.audio_storage = audio_storage
+        with patch.object(m, "audio_upgrade", return_value=True), patch.object(m, "audio_states", return_value={}):
+            with self.assertRaisesRegex(m.Refused, "ROLLBACK_UNVERIFIED"):
+                self.run_apply()
+        self.assertEqual(self.status()["rollbackFailure"], {"stage":"rollback_audio_schema", "code":m.AUDIO_HELD})
+        self.assertEqual(self.host.calls, ["stop", "replace", "start", "stop"])
+        self.assertFalse(self.host.loaded)
+
     def test_existing_schema_migration_is_outside_scope(self):
         (self.host.old / "dev/0015_replica_sync_progress.sql").write_text("old compatible schema only")
         with self.assertRaisesRegex(m.Refused, "STORAGE_STARTUP_INPUTS_CHANGED"):
             self.run_apply()
         self.assertFalse(self.host.calls)
+
+class AudioState(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.source = Path(__file__).resolve().parents[2] / "ngs-local"
+        self.states = m.audio_states(self.source)
+        self.assertEqual(self.states[15][0], "6f5edd0a1c841b58e79fd68b3a631fdd42d29389e0d1823a16453389a0594d74")
+        self.path = self.root / "replica.sqlite"
+        self.create(15)
+
+    def create(self, version):
+        with sqlite3.connect(self.path) as db:
+            db.execute(m.SCHEMA_PIN)
+            for src in m.SCHEMA_SQL[:2 if version == 15 else 3]:
+                db.executescript((self.source / src).read_text())
+            db.execute("INSERT INTO ngs_local_replica_schema_pin VALUES(1,?)", (self.states[version][0],))
+            db.execute("INSERT INTO ngs_replica_version_v2(path,sha256,object_key,size,sync_id) VALUES(?,?,?,?,?)",
+                       ("audio/existing/audio.wav", "f"*64, "old-object", 233, "past"))
+
+    def install_new(self):
+        with sqlite3.connect(self.path) as db:
+            db.executescript((self.source / m.AUDIO_SQL).read_text())
+            db.execute("UPDATE ngs_local_replica_schema_pin SET sha256=? WHERE id=1", (self.states[16][0],))
+            db.execute("INSERT INTO ngs_audio_result_index_progress_v1 VALUES(1,'',1)")
+
+    def state(self):
+        with sqlite3.connect(self.path) as db:
+            return m.confirm_audio_schema(db, self.states)
+
+    def test_downgrade_exact_migration_preserves_version_rows_inode_and_object(self):
+        wav = self.root / "external-wav"; wav.write_bytes(b"original")
+        ino = self.path.stat().st_ino
+        with sqlite3.connect(self.path) as db:
+            expected = db.execute("SELECT * FROM ngs_replica_version_v2").fetchall()
+        m.audio_schema_transaction(self.path, self.states)
+        self.install_new()
+        self.assertEqual(self.state(), 16)
+        with self.assertRaisesRegex(m.Refused, m.AUDIO_SHA):
+            m.audio_schema_transaction(self.path, self.states)
+        m.audio_schema_transaction(self.path, self.states, undo=True)
+        m.audio_schema_transaction(self.path, self.states, undo=True) # no-op exact replay
+        self.assertEqual(self.state(), 15)
+        self.assertEqual(self.path.stat().st_ino, ino)
+        self.assertEqual(wav.read_bytes(), b"original")
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(db.execute("SELECT * FROM ngs_replica_version_v2").fetchall(), expected)
+
+    def test_malformed_state_or_busy_does_not_modify(self):
+        self.install_new()
+        with sqlite3.connect(self.path) as db:
+            db.execute("CREATE TABLE unrecognized(value TEXT)")
+        before = self.path.read_bytes()
+        with self.assertRaisesRegex(m.Refused, m.AUDIO_SHA):
+            m.audio_schema_transaction(self.path, self.states, undo=True)
+        self.assertEqual(self.path.read_bytes(), before)
+        with sqlite3.connect(self.path, isolation_level=None) as db:
+            db.execute("BEGIN EXCLUSIVE")
+            with self.assertRaises(sqlite3.OperationalError):
+                m.audio_schema_transaction(self.path, self.states, undo=True)
+
+    def test_held_requires_exact_launchd_absence_ports_pid_and_no_db_holder(self):
+        host = m.Mac()
+        absent = subprocess.CompletedProcess([], 113, "", f'Could not find service "{m.LABEL}" in domain for user gui: {host.uid}')
+        good = subprocess.CompletedProcess([], 1, "", "")
+        unknown = subprocess.CompletedProcess([], 1, "", "")
+        occupied = subprocess.CompletedProcess([], 0, "p777\n", "")
+        with patch.object(host, "listener", return_value=set()):
+            with patch.object(m.subprocess, "run", side_effect=[absent, good, good]):
+                host.require_audio_hold(100, self.path)
+            for states in ([unknown], [absent, occupied], [absent, good, occupied]):
+                with patch.object(m.subprocess, "run", side_effect=states):
+                    with self.assertRaisesRegex(m.Refused, m.AUDIO_HELD):
+                        host.require_audio_hold(100, self.path)
+        with patch.object(host, "listener", return_value={100}), patch.object(m.subprocess, "run", return_value=absent):
+            with self.assertRaisesRegex(m.Refused, m.AUDIO_HELD):
+                host.require_audio_hold(100, self.path)
+
 
 class Diagnostic(unittest.TestCase):
     def test_cli_invalid_input_outputs_one_safe_json_line(self):

@@ -10,6 +10,7 @@ from pathlib import Path
 import plistlib
 import re
 import signal
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -30,6 +31,23 @@ SCHEMA_INPUTS = (ENTRY, ENTRY.with_name("local-miniflare-runtime.mjs"),
                  Path("dev/0014_space_file_replica_versions.sql"),
                  Path("dev/0015_replica_sync_progress.sql"), Path("dev/0016_audio_result_index.sql"),
                  Path("local-miniflare/package-lock.json"))
+AUDIO_SQL = SCHEMA_INPUTS[-2]
+AUDIO_CORE = ENTRY.with_name("audio-result-index.mjs")
+AUDIO_CHANGED = {
+    SCHEMA_INPUTS[1]: ("ee6ecfd6d0b8686e8bb84d5173af7bf0c1ae6b7ae02c5bd5b08c66fc2a0b51e5",
+                       "95e18083073c40b52090b969034b4a018dfba0959afcbd29b42e92ab2bcab944"),
+    SCHEMA_INPUTS[2]: ("16390508ba2d4eeb37fa642945e7a725600a1fc4cd03ecc5508b60ad5624982e",
+                       "be0a551b301320d33e33557e349078a04a06ae4e401eacefa6b59a0abb862bb5"),
+    AUDIO_SQL: (None, "6894df8c2f93faad885dee1d4155b2268fd318fd1a412b07e43cfc8efaa23ef3"),
+    AUDIO_CORE: (None, "0072472cefbf60031334853920ff0bd3b5e5653c69f264cb8e35eace48b633ed"),
+}
+# Exact Workerd object id for the immutable native binding DB='ngs-local-replica'
+# with the locked Miniflare/Workerd versions. Never choose an arbitrary DB.
+D1_REL = Path("d1/miniflare-D1DatabaseObject/678fb3379919ca69fa29822dfb5e8be567a4d083774283035c7eca0a7625614a.sqlite")
+AUDIO_SHA = "NATIVE_AUDIO_SCHEMA_UNPROVEN"
+AUDIO_HELD = "NATIVE_AUDIO_STORAGE_NOT_STOPPED"
+SCHEMA_SQL = SCHEMA_INPUTS[4:7]
+SCHEMA_PIN = "CREATE TABLE ngs_local_replica_schema_pin (id INTEGER PRIMARY KEY CHECK (id=1),sha256 TEXT NOT NULL)"
 REPO = "pvenus/ngs-platform"
 BRANCH = "refs/heads/main"
 TOOLS = {"ngs_request_queue_list", "ngs_file_sync_begin", "ngs_file_sync_plan",
@@ -54,6 +72,8 @@ PHASE_CODES = {
     "start_candidate": "MAC_BOOTSTRAP_FAILED",
     "check_candidate": "NATIVE_HEALTH_UNVERIFIED",
     "check_storage": "MAC_STORAGE_CHECK_FAILED",
+    "preflight_audio_schema": "NATIVE_AUDIO_SCHEMA_UNPROVEN",
+    "rollback_audio_schema": "NATIVE_AUDIO_SCHEMA_UNPROVEN",
     "record_result": "MAC_RESULT_WRITE_FAILED",
     "rollback_stop": "MAC_BOOTOUT_FAILED",
     "rollback_restore": "MAC_ROLLBACK_RESTORE_FAILED",
@@ -66,6 +86,7 @@ HEALTH_CODES = {
     "NATIVE_QUEUE_UNAVAILABLE", "NATIVE_HEALTH_UNVERIFIED",
 }
 KNOWN_CODES = HEALTH_CODES | {
+    AUDIO_SHA, AUDIO_HELD,
     "INVALID_RELEASE_SHA", "PRIVATE_RELEASE_REQUIRED", "RELEASE_TREE_OWNER_DRIFT",
     "RELEASE_LINK_DRIFT", "RELEASE_TREE_MODE_DRIFT", "OPS_RELEASE_NOT_PREPARED",
     "OPS_PROVENANCE_INVALID", "RELEASE_PROVENANCE_INVALID", "GITHUB_WORKFLOW_NOT_VERIFIED",
@@ -245,6 +266,84 @@ def load_plan(sha, control, releases, scratch):
     return folder, spec, selected, workdir
 
 
+def file_digest(path):
+    if not path.exists() and not path.is_symlink():
+        return None
+    if path.resolve() != path or not path.is_file():
+        raise Refused("STORAGE_STARTUP_INPUTS_CHANGED")
+    return digest(path.read_bytes())
+
+
+def audio_upgrade(old, release):
+    """Recognize the single reviewed migration pair, not arbitrary startup drift."""
+    watched = set(SCHEMA_INPUTS)
+    pairs = {path: (file_digest(old / path), file_digest(release / path)) for path in watched}
+    require(all(None not in pairs[path] for path in SCHEMA_INPUTS if path != AUDIO_SQL),
+            "STORAGE_STARTUP_INPUTS_CHANGED")
+    changes = {path: pair for path, pair in pairs.items() if pair[0] != pair[1]}
+    if not changes:
+        return False
+    changes[AUDIO_CORE] = (file_digest(old / AUDIO_CORE), file_digest(release / AUDIO_CORE))
+    require(changes == AUDIO_CHANGED
+            and file_digest(old / SCHEMA_SQL[0]) == "ece870d0e6aae03efb748bc8823ace35b6465b1b7ed47907a9dfdb3473fe4117"
+            and file_digest(old / SCHEMA_SQL[1]) == "0943cc2bc8d6abb4822df6c9e299b400bda65a931cf9e1245e8b61749f15a8f8"
+            and file_digest(old / SCHEMA_INPUTS[-1]) == "67d588e052138372d72348439a67b0d8058a3462352f2e77258be16b525a9d88",
+            "STORAGE_STARTUP_INPUTS_CHANGED")
+    return True
+
+
+def schema_rows(db):
+    return db.execute("""SELECT type,name,tbl_name,sql FROM sqlite_schema
+        WHERE name NOT GLOB 'sqlite_*' AND name<>'_cf_METADATA'
+        ORDER BY type,name""").fetchall()
+
+
+def audio_states(release):
+    """Canonical exact DDL and pins from the already verified release archive."""
+    sql = [(release / name).read_bytes() for name in SCHEMA_SQL]
+    states = {}
+    with sqlite3.connect(":memory:") as authority:
+        authority.execute(SCHEMA_PIN)
+        for i, part in enumerate(sql):
+            authority.executescript(part.decode())
+            if i >= 1:
+                states[i + 14] = (digest(b"\0".join(sql[:i+1])), schema_rows(authority))
+    return states
+
+
+def confirm_audio_schema(db, states):
+    pins = db.execute("SELECT id,sha256 FROM ngs_local_replica_schema_pin").fetchall()
+    rows = schema_rows(db)
+    for version, (pin, expected) in states.items():
+        if pins == [(1, pin)] and rows == expected:
+            return version
+    raise Refused(AUDIO_SHA)
+
+
+def audio_schema_transaction(path, states, *, undo=False):
+    """Called only after native hold and the exact SQLite file identity are proven."""
+    db = sqlite3.connect(path.as_uri()+"?mode=rw", uri=True, timeout=0, isolation_level=None)
+    try:
+        db.execute("PRAGMA trusted_schema=OFF")
+        db.execute("BEGIN EXCLUSIVE")
+        found = confirm_audio_schema(db, states)
+        if undo and found == 16:
+            db.execute("DROP TABLE ngs_audio_result_index_v1")
+            db.execute("DROP TABLE ngs_audio_result_index_progress_v1")
+            changed = db.execute("UPDATE ngs_local_replica_schema_pin SET sha256=? WHERE id=1 AND sha256=?",
+                                 (states[15][0], states[16][0])).rowcount
+            require(changed == 1, AUDIO_SHA)
+            found = confirm_audio_schema(db, states)
+        require(found == 15, AUDIO_SHA)
+        db.execute("COMMIT")
+    except Exception:
+        if db.in_transaction:
+            db.execute("ROLLBACK")
+        raise
+    finally:
+        db.close()
+
+
 def select(raw, release, workdir, releases, scratch, queue, sha):
     plist = plistlib.loads(raw)
     args = plist["ProgramArguments"]
@@ -260,13 +359,12 @@ def select(raw, release, workdir, releases, scratch, queue, sha):
             and env.get("NGS_REQUEST_QUEUE_DB") == str(queue) and env.get("NGS_FILE_SYNC_MODE") == "push"
             and env.get("NGS_FILE_SYNC_PROJECTS") == "binari"
             and not {"NGS_LOCAL_S3_CONFIG", "NGS_LOCAL_REPLICA_DB"} & env.keys(), "NATIVE_ROLE_DRIFT")
-    require(all((old / f).read_bytes() == (release / f).read_bytes() for f in SCHEMA_INPUTS),
-            "STORAGE_STARTUP_INPUTS_CHANGED")
+    migrating = audio_upgrade(old, release)
     plist["ProgramArguments"] = [args[0], str(release / ENTRY)]
     plist["WorkingDirectory"] = str(workdir)
     require(SHA.fullmatch(sha) and release.name == "project-page-github-" + sha, "NATIVE_RELEASE_SHA_DRIFT")
     plist["EnvironmentVariables"] = {**env, "NGS_COMMIT_SHA": sha}
-    return old, plistlib.dumps(plist), env
+    return old, plistlib.dumps(plist), env, migrating
 
 
 class Mac:
@@ -321,6 +419,65 @@ class Mac:
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
         if result.returncode == 0:
             self.bootout()
+
+    def audio_db_file(self, env):
+        root = private(Path(env["NGS_LOCAL_MINIFLARE_ROOT"]), True)
+        path = root / D1_REL
+        for parent in (path.parent.parent, path.parent):
+            info = parent.lstat()
+            require(parent.resolve() == parent and stat.S_ISDIR(info.st_mode)
+                    and info.st_uid == self.uid and info.st_dev == root.stat().st_dev
+                    and not info.st_mode & 0o022, AUDIO_SHA)
+        def check(file):
+            info = file.lstat()
+            require(file.resolve() == file and stat.S_ISREG(info.st_mode) and info.st_uid == self.uid
+                    and info.st_dev == root.stat().st_dev and info.st_nlink == 1
+                    and not info.st_mode & 0o022, AUDIO_SHA)
+            return info
+        identity = check(path)
+        for extension in ('-wal', '-shm', '-journal'):
+            sidecar = path.with_name(path.name + extension)
+            if present(sidecar):
+                check(sidecar)
+        return path, (identity.st_dev, identity.st_ino)
+
+    def audio_service_status(self):
+        result = subprocess.run(["/bin/launchctl", "print", f"gui/{self.uid}/{LABEL}"],
+                                capture_output=True, text=True, timeout=8)
+        if result.returncode == 0:
+            return True
+        message = result.stdout + result.stderr
+        require(result.returncode == 113 and f'Could not find service "{LABEL}"' in message
+                and f"user gui: {self.uid}" in message, AUDIO_HELD)
+        return False
+
+    def require_audio_hold(self, prior_pid, path):
+        require(not self.audio_service_status() and not self.listener(5274) and not self.listener(5275), AUDIO_HELD)
+        if prior_pid:
+            gone = subprocess.run(["/bin/ps", "-p", str(prior_pid), "-o", "pid="],
+                                  capture_output=True, text=True, timeout=8)
+            require(gone.returncode == 1 and not (gone.stdout or gone.stderr), AUDIO_HELD)
+        # An exited LaunchAgent and closed ports alone do not exclude an
+        # orphaned Workerd holding a SQLite WAL handle.
+        paths = [path, *(Path(str(path) + ext) for ext in ('-wal', '-shm', '-journal') if present(Path(str(path) + ext)))]
+        owners = subprocess.run(["/usr/sbin/lsof", "-nP", "-Fp", "--", *map(str, paths)],
+                                capture_output=True, text=True, timeout=8)
+        require(owners.returncode == 1 and not (owners.stdout or owners.stderr), AUDIO_HELD)
+
+    def audio_storage(self, env, pinned, prior_pid, states, *, undo=False, wait=20):
+        end = time.monotonic() + wait
+        while True:
+            path, identity = self.audio_db_file(env)
+            require((path, identity) == pinned, AUDIO_SHA)
+            try:
+                self.require_audio_hold(prior_pid, path)
+                break
+            except Refused:
+                if time.monotonic() >= end:
+                    raise
+                time.sleep(0.25)
+        audio_schema_transaction(path, states, undo=undo)
+        require(self.audio_db_file(env) == pinned, AUDIO_SHA)
 
     def listener(self, port):
         try:
@@ -487,7 +644,7 @@ def apply(sha, control, host, attempt=None, previous=None):
         folder, spec, release, workdir = load_plan(sha, control, host.releases, host.scratch)
         stage = "check_current"
         prior = host.read_plist()
-        old, new, env = select(prior, release, workdir, host.releases, host.scratch, host.queue, sha)
+        old, new, env, migrating = select(prior, release, workdir, host.releases, host.scratch, host.queue, sha)
         if not retry:
             require(not any(present(folder / name) for name in ("prior.plist", "result.json", "attempts")),
                     "RELEASE_ALREADY_ATTEMPTED_RECONCILE")
@@ -496,6 +653,9 @@ def apply(sha, control, host, attempt=None, previous=None):
             history, ids = authorize_retry(folder, attempt, previous, prior)
         pins = host.unchanged(env)
         pid = host.healthy(old, wait=0)
+        if migrating:
+            audio_db = host.audio_db_file(env)
+            states = audio_states(release)
         stage = "record_result"
         attempt_folder = reserve_retry(history, ids, attempt) if retry else folder
         armed = attempt_folder / "prior.plist"
@@ -509,6 +669,9 @@ def apply(sha, control, host, attempt=None, previous=None):
             stopped = True
             stage = "wait_ports"
             wait_for_old_ports(host, pid)
+            if migrating:
+                stage = "preflight_audio_schema"
+                host.audio_storage(env, audio_db, pid, states)
             stage = "switch_selector"
             host.replace(prior, new)
             advanced = True
@@ -532,7 +695,12 @@ def apply(sha, control, host, attempt=None, previous=None):
                 actual = host.read_plist()
                 if actual == new:
                     stage = "rollback_stop"
+                    candidate_pid = host.pid() if migrating else None
                     host.stop_if_loaded()
+                    if migrating:
+                        stage = "rollback_audio_schema"
+                        require(host.unchanged(env) == pins, "ROLLBACK_STORAGE_IDENTITY_DRIFT")
+                        host.audio_storage(env, audio_db, candidate_pid, states, undo=True)
                     stage = "rollback_restore"
                     host.replace(new, prior)
                     stopped = True
@@ -542,10 +710,13 @@ def apply(sha, control, host, attempt=None, previous=None):
                 if stopped:
                     stage = "rollback_stop"
                     host.stop_if_loaded()
-                    if failure["stage"] == "wait_ports" and actual == prior and not advanced:
+                    if failure["stage"] in {"wait_ports", "preflight_audio_schema"} and actual == prior and not advanced:
                         # bootout can return before the verified prior listener
                         # exits. Do not bootstrap into either occupied port.
                         wait_for_old_ports(host, pid, foreign_code="NATIVE_PORT_OWNER_DRIFT")
+                        if failure["stage"] == "preflight_audio_schema":
+                            stage = "rollback_audio_schema"
+                            host.audio_storage(env, audio_db, pid, states)
                     stage = "rollback_start"
                     host.bootstrap()
                 stage = "rollback_check"

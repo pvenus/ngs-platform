@@ -98,3 +98,22 @@ warmed from previously vetted official npm cache data; it never needs to share
 production queue or Workerd data.
 
 A foreign listener never gets the shutdown grace period. The runner reports the existing port-busy diagnostic and does not stop unrelated processes.
+
+### Indexed-audio Local upgrade
+
+The native apply runner recognizes one exact 0016 startup-input transition.
+The GitHub-verified candidate archive is still required, and other changed
+startup schemas remain unsupported. Before selector CAS, it confirms exact
+predecessor D1 schema and a stopped service (recognized launchd absence,
+both Local ports closed, prior PID gone, no holder of the exact D1 SQLite
+file or journal). The storage file must keep the same device/inode.
+
+If the candidate fails after selection, the runner stops it and establishes
+the same hold before restoring the old selector. The SQLite transaction
+permits only the exact predecessor or 0016 schema. For 0016 it removes the
+two derived audio-index tables and restores the pinned predecessor schema
+digest, then verifies the exact predecessor shape before any restart. No
+replica version rows, R2 objects, queue, or source files are restored or
+removed. Uncertain hold, storage identity, or schema leaves the service
+stopped and reports rollback unverified; operator intervention is required.
+A rollback of a successfully deployed new binary is not a new CLI mode.
