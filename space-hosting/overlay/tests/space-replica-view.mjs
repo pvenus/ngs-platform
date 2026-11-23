@@ -100,6 +100,6 @@ try{
  assert.equal((await send(path+'&rawPath=legacy/private.json')).status,400);
  await bucket.put(prefix+'audio/'+one+'/audio.wav',new Uint8Array(),{customMetadata:{sha256,removed:'1'}});
  assert.equal((await send(url)).status,404);
- assert.deepEqual((await (await send(path)).json()).results.map(r=>r.title),['Earlier fixture']);
+ assert.deepEqual((await (await send(path)).json()).results.map(r=>r.title),['Earlier fixture','Fixture BGM (반주)']);
  console.log('Space replica view: real workerd R2 project/icon, authorized sound options, BGM/range and fail-closed tests PASS');
 }finally{await mini.dispose();}
