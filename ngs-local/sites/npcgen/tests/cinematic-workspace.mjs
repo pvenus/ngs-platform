@@ -16,8 +16,9 @@ const payload={schemaVersion:cinematicSchema,projectId:'binari',sourceSha256,mot
 const result={schemaVersion:cinematicResultSchema,projectId:'binari',sourceSha256,officialRequestId:id,
  sha256:sha(mp4),bytes:mp4.length,mimeType:'video/mp4',width:512,height:352,fps:24,frameCount:45};
 test('Local NGS authenticates and scopes ready cinematic intake plus verified replica playback',async t=>{
- const root=mkdtempSync(join(realpathSync(tmpdir()),'ngs-cinematic-'));
- t.after(()=>rmSync(root,{force:true,recursive:true}));
+ const parent=mkdtempSync(join(realpathSync(tmpdir()),'ngs-cinematic-'));
+ const root=join(parent,'projects');
+ t.after(()=>rmSync(parent,{force:true,recursive:true}));
  for(const p of ['sources','results'])mkdirSync(join(root,'binari','cinematics',p),{mode:0o700,recursive:true});
  writeFileSync(join(root,'binari','project.json'),'{"name":"비나리"}',{mode:0o600});
  const lock=join(root,'binari','cinematics');
