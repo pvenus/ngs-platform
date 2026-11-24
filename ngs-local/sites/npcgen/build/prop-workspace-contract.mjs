@@ -29,6 +29,9 @@ export function validPropPayload(type,p){
   return exactPropKeys(p,fields)&&(k!=='regenerate'||source(p.source))&&
    text(p.intent,4000)&&propSha(p.designContextSha256)&&(!Object.hasOwn(p,'motion')||propMotion(p.motion));
  }
- return exactPropKeys(p,[...base,'source','motionId','prompt'])&&source(p.source)&&propSlug(p.motionId)&&text(p.prompt,2000)&&!/\bembedding:/iu.test(p.prompt);
+ const profile=Object.hasOwn(p,'renderProfile');
+ return exactPropKeys(p,[...base,'source','motionId','prompt',...(profile?['renderProfile']:[])])&&
+  (!profile||p.propId==='candle-brass-petal-unlit-clean'&&p.renderProfile==='candle-chroma-headroom-v1')&&
+  source(p.source)&&propSlug(p.motionId)&&text(p.prompt,2000)&&!/\bembedding:/iu.test(p.prompt);
 }
 export const propPayload=(action,input)=>({...input,schemaVersion:schema[action],projectId:'binari'});
