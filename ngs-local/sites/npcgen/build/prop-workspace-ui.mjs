@@ -152,8 +152,8 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
    const selectable=clips.filter(x=>!queued.has(x.id));
    all.disabled=deleting||selectable.length===0;
    all.textContent=selectable.length&&selectable.every(x=>checked.has(x.id))?'전체 선택 해제':'전체 선택';
-   remove.disabled=!removable||deleting||checked.size===0;
-   count.textContent=checked.size+'개 선택';
+   remove.disabled=!removable||deleting||checked.size===0||checked.size>30;
+   count.textContent=checked.size+'개 선택'+(checked.size>30?' · 한 번에 30개까지 제거할 수 있습니다.':'');
    for(const [id,{check,badge}] of rows){
     check.checked=checked.has(id);check.disabled=deleting||queued.has(id);
     badge.hidden=!queued.has(id);

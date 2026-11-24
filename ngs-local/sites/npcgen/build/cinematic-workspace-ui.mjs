@@ -124,7 +124,7 @@ export async function mountCinematicWorkspace({items,detail,request,submit,proje
   prior?.abort();const child=new AbortController();if(signal.aborted)child.abort();return child;
  };
  signal.addEventListener('abort',()=>{inline?.abort();editor?.abort();},{once:true});
- async function openNative(id,host,{editMode=false}={}){
+ async function openNative(id,host,{editMode=false,autoplay=false}={}){
   const abort=editMode?(editor=startChild(editor)):(inline=startChild(inline));
   if(!editMode)for(const node of rows.querySelectorAll('.cinematic-inline-player'))if(node!==host)node.replaceChildren();
   if(editMode)host.replaceChildren();
@@ -138,7 +138,7 @@ export async function mountCinematicWorkspace({items,detail,request,submit,proje
    else host.replaceChildren();
    const send=queueAction(submit,cinematicPlaybackUpdateType);
    await mountCinematicPlayer(host,{manifest:{...sequence,playback},frameUrl:i=>url(projectId,{sequence:id,frame:i}),signal:abort.signal,
-    edit:editMode,...((editMode&&playbackEnabled&&typeof submit==='function')?{onSaveRequest:async next=>{
+    edit:editMode,autoplay,...((editMode&&playbackEnabled&&typeof submit==='function')?{onSaveRequest:async next=>{
      const payload={schemaVersion:cinematicPlaybackUpdateSchema,projectId,sequenceId:id,expectedRevision:revision,playback:next};
      if(!validCinematicPlaybackUpdate(payload))throw Error('NGS_CINEMATIC_PAYLOAD_INVALID');
      await send(payload);
@@ -153,7 +153,7 @@ export async function mountCinematicWorkspace({items,detail,request,submit,proje
   }
   const still=make('img');still.alt='버전 '+short(id)+' 첫 프레임';still.src=url(projectId,{sequence:id,frame:0});still.loading='lazy';
   const permalink=make('a','PNG '+short(id));permalink.href=navigate({cineTab:'animations',cineSource:currentSource,item:id});
-  line.append(still,permalink,action('바로 재생',()=>void openNative(id,player),signal),action('메타 편집',()=>void openNative(id,edit,{editMode:true}),signal));
+  line.append(still,permalink,action('바로 재생',()=>void openNative(id,player,{autoplay:true}),signal),action('메타 편집',()=>void openNative(id,edit,{editMode:true}),signal));
   row.append(line,player);rows.append(row);
   if(id===item)void openNative(id,player);
  }

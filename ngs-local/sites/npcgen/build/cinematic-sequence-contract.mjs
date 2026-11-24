@@ -40,14 +40,14 @@ export const cinematicSequencesRemoveSchema='ngs.cinematic-sequences-remove.v1';
 export const cinematicArchivePath='cinematics/sequence-archive.json';
 export const cinematicArchiveSchema='ngs.cinematic-sequence-archive.v1';
 export const maxSelection=30;
-const boundedText=(value,max)=>typeof value==='string'&&value.isWellFormed()&&value===value.trim()&&value.length>0&&
- new TextEncoder().encode(value).length<=max&&!/[\x00-\x1f\x7f]/u.test(value);
+const boundedText=(value,max,chars=max)=>typeof value==='string'&&value.isWellFormed()&&value===value.trim()&&value.length>0&&
+ [...value].length<=chars&&new TextEncoder().encode(value).length<=max&&!/[\x00-\x1f\x7f]/u.test(value);
 const oneEach=(list,test,limit)=>Array.isArray(list)&&list.length>=1&&list.length<=limit&&
  list.every(test)&&new Set(list).size===list.length;
 export const validCinematicSourceGenerate=p=>exact(p,['schemaVersion','projectId','title','prompt'])&&
- p.schemaVersion===cinematicSourceGenerateSchema&&p.projectId==='binari'&&boundedText(p.title,120)&&cinematicMotion(p.prompt);
+ p.schemaVersion===cinematicSourceGenerateSchema&&p.projectId==='binari'&&boundedText(p.title,480,120)&&cinematicMotion(p.prompt);
 export const validCinematicSourceResult=p=>exact(p,['schemaVersion','projectId','officialRequestId','title','sha256','bytes','width','height'])&&
- p.schemaVersion===cinematicSourceResultSchema&&p.projectId==='binari'&&cinematicId(p.officialRequestId)&&boundedText(p.title,120)&&
+ p.schemaVersion===cinematicSourceResultSchema&&p.projectId==='binari'&&cinematicId(p.officialRequestId)&&boundedText(p.title,480,120)&&
  cinematicHash(p.sha256)&&Number.isSafeInteger(p.bytes)&&p.bytes>=57&&p.bytes<=8*1024*1024&&
  p.width===1536&&p.height===1024;
 export const validCinematicSequencesRemove=p=>exact(p,['schemaVersion','projectId','sequenceIds'])&&

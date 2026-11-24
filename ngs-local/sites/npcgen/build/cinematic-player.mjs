@@ -103,7 +103,7 @@ async function loadImages(urls,signal){
  }));
  return result;
 }
-export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit=true,onSaveRequest}){
+export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit=true,onSaveRequest,autoplay=false}){
  const d=parent.ownerDocument,make=(tag,text)=>{const e=d.createElement(tag);if(text)e.textContent=text;return e;};
  const stage=make('canvas');stage.width=manifest.width;stage.height=manifest.height;
  stage.style.maxWidth='100%';stage.style.display='block';stage.setAttribute('aria-label','시네마틱 전용 카메라 화면');
@@ -131,11 +131,12 @@ export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit
   if(next>=playback.durationFrames){disable();return;}
   handle=requestAnimationFrame(advance);
  }
- toggle.addEventListener('click',()=>{
-  if(handle!==null)return disable();
+ function start(){
+  if(handle!==null)return;
   if(tick>=playback.durationFrames-1){tick=0;paint(tick);}
   base=tick;toggle.textContent='일시 정지';handle=requestAnimationFrame(advance);
- },{signal});
+ }
+ toggle.addEventListener('click',()=>handle===null?start():disable(),{signal});
  range.addEventListener('input',()=>{disable();tick=Number(range.value);paint(tick);},{signal});
  signal.addEventListener('abort',disable,{once:true});
  try{
@@ -143,6 +144,7 @@ export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit
   signal.throwIfAborted();
  }catch(error){if(!signal.aborted)status.textContent='PNG 프레임을 읽지 못했어요.';throw error;}
  toggle.disabled=false;range.disabled=false;paint(0);
+ if(autoplay)start();
  if(edit)layoutTimelineControls(parent,playback,value=>{
   if(!value)return;
   disable();playback=value;evaluate=compileCinematicTimeline(playback,manifest.frameCount);
