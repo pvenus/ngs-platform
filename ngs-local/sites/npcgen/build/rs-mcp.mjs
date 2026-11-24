@@ -150,7 +150,13 @@ export function rsPropActions(list){
    fields?.schemaVersion?.const!==schema||fields?.projectId?.const!=='binari')return false;
   if(action!=='animation')return fields?.motion?.const==='still';
   const keys=['schemaVersion','projectId','propId','source','motionId','prompt'];
-  return payload.type==='object'&&payload.additionalProperties===false&&matchesKeys(payload.required,keys)&&exact(fields,keys)&&
+  const hasCandleProfile=Object.hasOwn(fields,'renderProfile');
+  const wireKeys=hasCandleProfile?[...keys,'renderProfile']:keys;
+  if(hasCandleProfile&&!(exact(fields.renderProfile,['const'])&&fields.renderProfile.const==='candle-chroma-headroom-v1'&&
+      exact(payload.if,['required'])&&matchesKeys(payload.if.required,['renderProfile'])&&exact(payload.then,['properties'])&&
+      exact(payload.then.properties,['propId'])&&exact(payload.then.properties.propId,['const'])&&
+      payload.then.properties.propId.const==='candle-brass-petal-unlit-clean'))return false;
+  return payload.type==='object'&&payload.additionalProperties===false&&matchesKeys(payload.required,keys)&&exact(fields,wireKeys)&&
    fields.propId?.type==='string'&&fields.motionId?.type==='string'&&fields.prompt?.type==='string'&&fields.prompt?.maxLength===2000&&
    fields.source?.type==='object'&&fields.source.additionalProperties===false&&
    matchesKeys(fields.source.required,['revision','sha256'])&&

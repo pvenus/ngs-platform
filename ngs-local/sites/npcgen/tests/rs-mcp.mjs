@@ -22,7 +22,7 @@ const idFor=key=>'request.official.'+createHash('sha256').update(JSON.stringify(
 const receipt=row=>({officialRequestId:idFor(row.idempotencyKey),status:'registered'});
 test('MCP exposes only independently verified static generation and exact animation append',async t=>{
  const requests=[];
- let mode='still',append=false,invalidSource=false,duplicate=false,available=true;
+ let mode='still',append=false,invalidSource=false,candleProfile=false,validCandleGuard=true,duplicate=false,available=true;
  const tool={name:submit,inputSchema:{properties:{requestType:{enum:['prop.generate','prop.regenerate','prop.animation.generate']}},
   oneOf:['generate','regenerate'].map(action=>({properties:{requestType:{const:'prop.'+action},
    payload:{properties:{schemaVersion:{const:'ngs.prop-'+action+'.v1'},projectId:{const:'binari'},motion:{const:'still'}}}}}))}};
@@ -42,6 +42,12 @@ test('MCP exposes only independently verified static generation and exact animat
   if(append){
    const branch=structuredClone(appendBranch);
    if(invalidSource)delete branch.properties.payload.properties.source.properties.sha256;
+   if(candleProfile){
+    const p=branch.properties.payload;
+    p.properties.renderProfile={const:'candle-chroma-headroom-v1'};
+    p.if={required:['renderProfile']};
+    p.then={properties:{propId:{const:validCandleGuard?'candle-brass-petal-unlit-clean':'any-prop'}}};
+   }
    current.inputSchema.oneOf.push(branch);
   }
   const result=method==='initialize'?{protocolVersion:'2025-06-18',capabilities:{tools:{}}}:
@@ -52,11 +58,14 @@ test('MCP exposes only independently verified static generation and exact animat
  const read=createRSPropReadiness({url:'http://127.0.0.1:'+server.address().port+'/mcp'});
  assert.deepEqual(await read(),['generate','regenerate']);
  append=true;assert.deepEqual(await read(),['generate','regenerate','animation']);
+ candleProfile=true;assert.deepEqual(await read(),['generate','regenerate','animation']);
+ validCandleGuard=false;assert.deepEqual(await read(),['generate','regenerate']);
+ candleProfile=false;
  invalidSource=true;assert.deepEqual(await read(),['generate','regenerate']);
  mode='subtle';assert.deepEqual(await read(),['regenerate']);
  duplicate=true;assert.deepEqual(await read(),[]);
  available=false;assert.deepEqual(await read(),[]);
- assert.deepEqual(requests,['initialize','notifications/initialized','tools/list','tools/list','tools/list','tools/list','tools/list','tools/list']);
+ assert.deepEqual(requests,['initialize','notifications/initialized',...Array(8).fill('tools/list')]);
 });
 test('exact success is acknowledged, lost ACK resumes without another submit, unrelated request progresses',async()=>{
  const a=makeQueue('A'),b=makeQueue('B'),rows=new Map([[a.queueId,a],[b.queueId,b]]);
