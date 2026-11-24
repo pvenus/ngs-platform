@@ -144,6 +144,51 @@ class Apply(unittest.TestCase):
     def status(self):
         return json.loads((self.folder / "result.json").read_bytes())
 
+    def prototype_predecessor(self):
+        revision = "e" * 40
+        old = self.host.old
+        self.host.old = self.host.releases / ("project-page-local-candle-" + revision)
+        old.rename(self.host.old)
+        cwd = self.host.scratch / revision
+        cwd.mkdir(mode=0o700)
+        local_data = self.root / "private-prototype-data"
+        local_data.write_bytes(b"owner private candle content")
+        raw = plistlib.loads(self.host.raw)
+        raw["ProgramArguments"][1] = str(self.host.old / m.ENTRY)
+        raw["WorkingDirectory"] = str(cwd)
+        raw["EnvironmentVariables"].update(NGS_COMMIT_SHA=revision,NGS_LOCAL_CANDLE_PROP_STORE=str(local_data))
+        self.host.raw = self.host.prior = plistlib.dumps(raw)
+        self.spec["expectedPriorPlistSha256"] = m.digest(self.host.prior)
+        self.publish()
+        return local_data
+
+    def test_exact_candle_adoption_preserves_private_data_and_only_selects_github(self):
+        store = self.prototype_predecessor()
+        self.assertEqual(self.run_apply()["state"], "deployed")
+        chosen = plistlib.loads(self.host.raw)
+        self.assertEqual(chosen["ProgramArguments"][1], str(self.host.new / m.ENTRY))
+        self.assertEqual(chosen["EnvironmentVariables"]["NGS_LOCAL_CANDLE_PROP_STORE"], str(store))
+        self.assertEqual((self.folder / "prior.plist").read_bytes(), self.host.prior)
+        self.assertEqual(store.read_bytes(), b"owner private candle content")
+        self.assertTrue(self.host.old.is_dir())
+
+    def test_adoption_mismatched_private_provenance_refused_before_stop(self):
+        self.prototype_predecessor()
+        raw = plistlib.loads(self.host.raw);raw["EnvironmentVariables"]["NGS_COMMIT_SHA"] = "f" * 40
+        self.host.raw = plistlib.dumps(raw)
+        self.spec["expectedPriorPlistSha256"] = m.digest(self.host.raw)
+        self.publish()
+        with self.assertRaises(m.ApplyFailed):self.run_apply()
+        self.assertEqual(self.host.calls, [])
+
+    def test_adoption_health_failure_restores_exact_prototype_selector(self):
+        store = self.prototype_predecessor()
+        self.host.health_failure=True
+        with self.assertRaises(m.ApplyFailed):self.run_apply()
+        self.assertEqual(self.status()["state"], "rolled-back")
+        self.assertEqual(self.host.raw, self.host.prior)
+        self.assertEqual(store.read_bytes(), b"owner private candle content")
+
     def test_exact_success_and_no_rerun(self):
         self.assertEqual(self.run_apply(), {"sha": SHA, "target": "mac", "state": "deployed", "health": "verified"})
         self.assertEqual(self.host.calls, ["stop", "replace", "start"])

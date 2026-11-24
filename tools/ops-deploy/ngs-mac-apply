@@ -375,10 +375,21 @@ def select(raw, release, workdir, releases, scratch, queue, sha, *, enable_audio
     require(plist["Label"] == LABEL and len(args) == 2 and Path(args[0]).is_absolute()
             and Path(args[0]).name == "node", "NATIVE_ROLE_DRIFT")
     old = Path(args[1]).parents[3]
-    require(old.parent == releases and re.fullmatch(r"project-page-github-[0-9a-f]{7,40}", old.name)
+    work = Path(plist["WorkingDirectory"])
+    canonical = re.fullmatch(r"project-page-github-[0-9a-f]{7,40}", old.name)
+    predecessor = re.fullmatch(r"project-page-local-candle-([0-9a-f]{40})", old.name)
+    # One-way adoption of the exact owner-pinned prototype as a predecessor.
+    # The destination remains canonical GitHub only; both code trees and all
+    # runtime data are untouched, same-storage validation and rollback remain.
+    require(old.parent == releases and (canonical or predecessor)
             and Path(args[1]) == old / ENTRY and (old / ENTRY).is_file()
-            and Path(plist["WorkingDirectory"]).parent == scratch,
-            "NATIVE_ROLE_DRIFT")
+            and work.parent == scratch, "NATIVE_ROLE_DRIFT")
+    if predecessor:
+        revision = predecessor.group(1)
+        require(env.get("NGS_COMMIT_SHA") == revision and work == scratch / revision
+                and (old / ENTRY).resolve() == old / ENTRY, "NATIVE_ROLE_DRIFT")
+        private(old, True)
+        private(work, True)
     require(env.get("NGS_PROJECT_LISTEN_PORT") == "5274" and env.get("NGS_REQUEST_QUEUE_MCP_PORT") == "5275"
             and env.get("NGS_REQUEST_QUEUE_DB") == str(queue) and env.get("NGS_FILE_SYNC_MODE") == "push"
             and env.get("NGS_FILE_SYNC_PROJECTS") == "binari"
