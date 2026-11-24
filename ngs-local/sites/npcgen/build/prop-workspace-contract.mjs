@@ -35,3 +35,9 @@ export function validPropPayload(type,p){
   source(p.source)&&propSlug(p.motionId)&&text(p.prompt,2000)&&!/\bembedding:/iu.test(p.prompt);
 }
 export const propPayload=(action,input)=>({...input,schemaVersion:schema[action],projectId:'binari'});
+
+export const propAnimationRemoveType='prop.animation.remove';
+export const propAnimationRemoveSchema='ngs.prop-animation-remove.v1';
+export const validPropAnimationRemove=p=>exactPropKeys(p,['schemaVersion','projectId','propId','source','motionIds'])&&
+ p.schemaVersion===propAnimationRemoveSchema&&p.projectId==='binari'&&propSlug(p.propId)&&source(p.source)&&
+ Array.isArray(p.motionIds)&&p.motionIds.length>=1&&p.motionIds.length<=30&&p.motionIds.every(propSlug)&&new Set(p.motionIds).size===p.motionIds.length;

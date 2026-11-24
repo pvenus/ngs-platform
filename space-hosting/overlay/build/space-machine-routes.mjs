@@ -7,6 +7,7 @@ export const machineTokenConfigured=validMachineToken;
 // Only call with the server-resolved participant, never browser-supplied roles.
 export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
  ['owner','editor','viewer'].includes(grant.role);
+import {cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,cinematicSequencesRemoveType} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
 import {cinematicType} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
 import {propAction,validPropActions} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
@@ -134,7 +135,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,admitCinematic}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,cinematicRemoveEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -145,12 +146,18 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   need(typeof authorize==='function'&&await authorize({userId:id,email})===true,403,'PROJECT_OR_RESOURCE_DENIED');
   const actor=await hash(JSON.stringify(['space.queue.actor.v1',id])),tokens=await csrf(secret,actor),service=new SpaceRequestQueue(db);
   const activeProps=replicaReads&&workspaceReady&&validPropActions(propActions)&&typeof admitProp==='function'?propActions:[];
-  const activeCinematic=replicaReads&&workspaceReady&&cinematicEnabled===true&&typeof admitCinematic==='function';
+  const nativeReady=replicaReads&&workspaceReady&&typeof admitCinematic==='function';
+  const activeCinematic=nativeReady&&cinematicEnabled===true;
+  const activeSequence=nativeReady&&cinematicSequenceEnabled===true;
+  const activePlayback=nativeReady&&cinematicPlaybackEnabled===true;
+  const activeSource=nativeReady&&cinematicSourceEnabled===true;
+  const activeRemove=nativeReady&&cinematicRemoveEnabled===true;
+  const activePropRemove=replicaReads&&workspaceReady&&propAnimationRemoveEnabled===true&&typeof admitPropAnimationRemove==='function';
   if(url.pathname===session){
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
    const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...tokens});
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));
@@ -166,9 +173,14 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   const {value}=await body(request,small);
   if((value?.requestType==='npc.workflow'||value?.requestType==='npc.animation.regenerate')&&isPoseSelectionV2(value.payload?.schemaVersion))
    need(replicaReads&&workspaceReady&&poseSelectionV2Enabled===true,404,'NPC_POSE_SELECTION_V2_UNAVAILABLE');
-  if(value?.requestType===cinematicType){
-   need(activeCinematic,404,'CINEMATIC_GENERATION_UNAVAILABLE');
+  const cinematicCapabilities={[cinematicType]:activeCinematic,[cinematicSequenceType]:activeSequence,[cinematicPlaybackUpdateType]:activePlayback,[cinematicSourceGenerateType]:activeSource,[cinematicSequencesRemoveType]:activeRemove};
+  if(Object.hasOwn(cinematicCapabilities,value?.requestType)){
+   need(cinematicCapabilities[value.requestType],404,'CINEMATIC_GENERATION_UNAVAILABLE');
    await admitCinematic({userId:id,email},value);
+  }
+  if(value?.requestType==='prop.animation.remove'){
+   need(activePropRemove,404,'PROP_WORKSPACE_ACTION_UNAVAILABLE');
+   await admitPropAnimationRemove({userId:id,email},value);
   }
   const action=propAction(value?.requestType);
   if(action){

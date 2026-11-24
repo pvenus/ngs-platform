@@ -9,7 +9,7 @@ import { spaceReplicaView } from "./space-replica-view.mjs";
 import { dispatchWorkspaceRead } from "../ngs-local/sites/npcgen/build/workspace-read-registry.mjs";
 import { propEnabledActions } from "../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs";
 import { admitCinematicRequest } from "../ngs-local/sites/npcgen/build/cinematic-workspace.mjs";
-import { admitPropRequest } from "../ngs-local/sites/npcgen/build/prop-workspace.mjs";
+import { admitPropRequest, admitPropAnimationRemove } from "../ngs-local/sites/npcgen/build/prop-workspace.mjs";
 import { openSpaceWorkspaceProject } from "./space-workspace-read-storage.mjs";
 import { spaceWorkspaceReadResponse } from "./space-workspace-read-response.mjs";
 import { PromptService } from "../lib/prompt-service";
@@ -83,6 +83,18 @@ export default {
     } : undefined;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
       cinematicEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_ENABLED?:string}).NGS_CINEMATIC_ENABLED==="1",
+      cinematicSequenceEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_SEQUENCE_ENABLED?:string}).NGS_CINEMATIC_SEQUENCE_ENABLED==="1",
+      cinematicPlaybackEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_PLAYBACK_ENABLED?:string}).NGS_CINEMATIC_PLAYBACK_ENABLED==="1",
+      cinematicSourceEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_SOURCE_ENABLED?:string}).NGS_CINEMATIC_SOURCE_ENABLED==="1",
+      cinematicRemoveEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_REMOVE_ENABLED?:string}).NGS_CINEMATIC_REMOVE_ENABLED==="1",
+      propAnimationRemoveEnabled:(env as Cloudflare.Env & {NGS_PROP_ANIMATION_REMOVE_ENABLED?:string}).NGS_PROP_ANIMATION_REMOVE_ENABLED==="1",
+      admitPropAnimationRemove:replicaReads?async (user,command)=>admitPropAnimationRemove({
+        openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),command,
+        authorize:async (projectId,resource)=>{
+          if(!await workspaceAuthorize(user,projectId,resource))
+            throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
+        },
+      }):undefined,
       admitCinematic:replicaReads?async (user,command)=>admitCinematicRequest({
         openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),command,
         authorize:async (projectId,resource)=>{

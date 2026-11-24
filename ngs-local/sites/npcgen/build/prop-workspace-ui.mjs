@@ -34,12 +34,12 @@ function animationPreview(clip,lane){
  const label=lane==='detail'?'디테일':'픽셀',button=node('button',label+' 재생','prop-control');
  button.type='button';const image=node('span');frame.append(button,image);
  button.addEventListener('click',()=>{
-  const img=node('img');img.src=src;img.alt=clip.title+' '+label;image.replaceChildren(img);
+  const img=node('img');img.src=src;img.alt=clip.title+' '+label;img.decoding='async';image.replaceChildren(img);
  });
  return frame;
 }
 
-export async function mountPropWorkspace({items,detail,tools,item,propTab,propAnimation,navigate,request,submit,actions=[],signal}){
+export async function mountPropWorkspace({items,detail,tools,item,propTab,propAnimation,navigate,request,submit,removeAnimations,actions=[],signal}){
  const can=action=>typeof submit==='function'&&actions.includes(action);
  const tab=propTab==='animation'?'animation':'basic';
  const sectionUrl=(id,key=tab,clip)=>navigate({item:id,propTab:key==='animation'?'animation':'',propAnimation:key==='animation'&&clip?clip:''});
@@ -127,29 +127,100 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   heading.append(node('h4','애니메이션','npc-media-heading'));
   if(can('animation'))heading.append(actionButton('animation'));
   panel.append(heading);
-  const clips=prop.animations;
+  const seen=new Set();
+  const clips=(Array.isArray(prop.animations)?prop.animations:[]).filter(clip=>{
+   if(!propSlug(clip?.id)||seen.has(clip.id)||typeof clip.title!=='string'||!clip.title.trim()||
+      !['detail','pixel'].every(lane=>clip.media?.[lane]?.mediaType==='image/apng'&&verifiedURL(clip.media[lane])))return false;
+   seen.add(clip.id);return true;
+  });
   if(!clips.length){
    const empty=node('div',null,'prop-surface');
    empty.append(node('p','게시된 애니메이션이 없습니다.','meta'));
    panel.append(empty);return;
   }
-  const clip=clips.find(row=>row.id===propAnimation)??clips[0];
-  const layout=node('div',null,'npc-planning-layout');
-  const menu=node('nav',null,'npc-planning-nav prop-animation-nav');
-  menu.setAttribute('aria-label','애니메이션 폴더');
-  menu.append(node('h4','애니메이션 폴더'));
-  for(const row of clips){
-   const folder=node('a',null,'npc-roster-entry');
-   folder.href=sectionUrl(item,'animation',row.id);
-   folder.append(node('strong',row.title),node('span',row.id,'meta'));
-   if(row.id===clip.id)folder.setAttribute('aria-current','page');
-   menu.append(folder);
+  const active=clips.find(row=>row.id===propAnimation)??clips[0];
+  const list=node('ul',null,'prop-animation-list'),controls=node('div',null,'prop-animation-selection');
+  list.setAttribute('aria-label','프랍 애니메이션 목록');
+  const all=node('button','전체 선택','prop-control'),remove=node('button','선택 삭제 요청','prop-control prop-animation-delete');
+  const count=node('span',null,'meta');count.setAttribute('role','status');
+  all.type=remove.type='button';
+  controls.append(all,remove,count);panel.append(controls,list);
+  const checked=new Set(),queued=new Set(),rows=new Map();
+  const removable=typeof removeAnimations==='function';
+  let deleting=false;
+  function update(){
+   const selectable=clips.filter(x=>!queued.has(x.id));
+   all.disabled=deleting||selectable.length===0;
+   all.textContent=selectable.length&&selectable.every(x=>checked.has(x.id))?'전체 선택 해제':'전체 선택';
+   remove.disabled=!removable||deleting||checked.size===0;
+   count.textContent=checked.size+'개 선택';
+   for(const [id,{check,badge}] of rows){
+    check.checked=checked.has(id);check.disabled=deleting||queued.has(id);
+    badge.hidden=!queued.has(id);
+   }
   }
-  const player=node('section',null,'npc-planning-page prop-animation-player');
-  player.append(node('h4',clip.title));
-  const pair=node('div',null,'prop-preview-pair');
-  pair.append(animationPreview(clip,'detail'),animationPreview(clip,'pixel'));
-  player.append(pair);layout.append(menu,player);panel.append(layout);
+  if(!removable)remove.title='현재 삭제 요청을 접수할 수 없습니다.';
+  for(const clip of clips){
+   const row=node('li',null,'prop-animation-row'),check=node('input'),link=node('a',null,'prop-animation-row-title');
+   check.type='checkbox';check.setAttribute('aria-label',clip.title+' 선택');
+   check.addEventListener('change',()=>{
+    if(deleting||queued.has(clip.id)||signal?.aborted)return;
+    if(check.checked)checked.add(clip.id);else checked.delete(clip.id);
+    update();
+   });
+   link.href=sectionUrl(item,'animation',clip.id);
+   link.append(node('strong',clip.title),node('span',clip.id,'meta'));
+   if(clip.id===active.id){row.className+=' prop-animation-row-current';link.setAttribute('aria-current','page');}
+   const badge=node('span','삭제 요청됨','meta');
+   badge.hidden=true;link.append(badge);
+   const pair=node('div',null,'prop-preview-pair prop-animation-row-preview');
+   pair.append(animationPreview(clip,'detail'),animationPreview(clip,'pixel'));
+   row.append(check,link,pair);list.append(row);rows.set(clip.id,{check,badge});
+  }
+  all.addEventListener('click',()=>{
+   if(signal?.aborted||all.disabled)return;
+   const active=clips.filter(x=>!queued.has(x.id)),clear=active.every(x=>checked.has(x.id));
+   for(const {id} of active){if(clear)checked.delete(id);else checked.add(id);}
+   update();
+  });
+  update();
+  if(!removable)return;
+
+  const modal=node('dialog',null,'prop-workspace-dialog'),title=node('h3','선택한 애니메이션 삭제'),
+   message=node('p'),names=node('ul'),footer=node('div',null,'prop-actions'),
+   cancel=node('button','취소','prop-control'),confirm=node('button','삭제 요청','prop-control prop-animation-delete');
+  title.id='prop-animation-removal-title';modal.setAttribute('aria-labelledby',title.id);
+  cancel.type=confirm.type='button';footer.append(cancel,confirm);modal.append(title,message,names,footer);
+  panel.append(modal);
+  let confirmed=[];
+  remove.addEventListener('click',()=>{
+   if(remove.disabled||modal.open||signal?.aborted)return;
+   confirmed=clips.filter(x=>checked.has(x.id)&&!queued.has(x.id));
+   if(!confirmed.length)return;
+   message.textContent='선택한 '+confirmed.length+'개 애니메이션의 삭제를 요청할까요?';
+   names.replaceChildren(...confirmed.map(x=>node('li',x.title)));
+   modal.showModal();cancel.focus();
+  });
+  cancel.addEventListener('click',()=>modal.close());
+  modal.addEventListener('close',()=>{if(!signal?.aborted&&!remove.disabled)remove.focus();});
+  signal?.addEventListener('abort',()=>{if(modal.open)modal.close();},{once:true});
+  confirm.addEventListener('click',async()=>{
+   if(!modal.open||deleting||signal?.aborted||!confirmed.length)return;
+   const animationIds=confirmed.map(x=>x.id);
+   deleting=true;update();modal.close();pageStatus.textContent='삭제 요청을 확인 중입니다.';
+   try{
+    const result=await removeAnimations({propId:prop.propId,source:{revision:prop.source.revision,sha256:prop.source.sha256},animationIds},{signal});
+    if(signal?.aborted)return;
+    if(result?.accepted!==true)throw Error('PROP_ANIMATION_DELETE_NOT_CONFIRMED');
+    for(const id of animationIds){queued.add(id);checked.delete(id);}
+    pageStatus.textContent=animationIds.length+'개 삭제 요청을 접수했습니다. 파일 동기화 후 목록에 반영됩니다.';
+   }catch{
+    if(!signal?.aborted)pageStatus.textContent='삭제 요청 접수를 확인하지 못했습니다. 애니메이션 목록은 그대로입니다.';
+   }finally{
+    deleting=false;
+    if(!signal?.aborted){update();if(!remove.disabled)remove.focus();else if(!all.disabled)all.focus();}
+   }
+  });
  }
 
  function open(action){

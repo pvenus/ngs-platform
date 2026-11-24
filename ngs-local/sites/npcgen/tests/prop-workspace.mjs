@@ -109,7 +109,7 @@ test('regeneration binds the selected immutable source and full replacement inte
  assert.equal(validPropPayload(propTypes.animation,{...animation,prompt:'embedding: opaque'}),false);
 });
 
-test('shared Prop DOM matches NPC cards and isolates animation folders and media by tab',async()=>{
+test('shared Prop DOM keeps tabs and URL selection with inline previews and verified batch requests',async()=>{
  const {mountPropWorkspace}=await import('../build/prop-workspace-ui.mjs');
  class Element{
   constructor(tag){
@@ -120,7 +120,10 @@ test('shared Prop DOM matches NPC cards and isolates animation folders and media
   replaceChildren(...children){this.children=[];this.append(...children);}
   setAttribute(key,value){this.attributes[key]=value;}
   addEventListener(key,value){this.events[key]=value;}
-  click(){this.events.click?.({});}
+  click(){if(!this.disabled)return this.events.click?.({});}
+  focus(){this.focused=true;}
+  showModal(){this.open=true;}
+  close(){this.open=false;this.events.close?.({});}
  }
  const document={createElement:tag=>new Element(tag)};
  const own=Object.getOwnPropertyDescriptor(globalThis,'document');
@@ -150,19 +153,58 @@ test('shared Prop DOM matches NPC cards and isolates animation folders and media
   assert.deepEqual(walk(basic.detail,x=>x.attributes.role==='tab').map(x=>[x.textContent,x.attributes['aria-selected']]),
    [['기본 정보','true'],['애니메이션','false']]);
   assert.equal(walk(basic.detail,x=>x.tag==='img').length,2);
-  assert.equal(walk(basic.detail,x=>x.attributes['aria-label']==='애니메이션 폴더').length,0);
+  assert.equal(walk(basic.detail,x=>x.attributes['aria-label']==='프랍 애니메이션 목록').length,0);
   assert.equal(walk(basic.detail,x=>x.textContent==='재생성 요청').length,1);
   const animated=await mount({propTab:'animation',propAnimation:second.id});
-  const menu=walk(animated.detail,x=>x.attributes['aria-label']==='애니메이션 폴더')[0];
-  assert.deepEqual(menu.children.slice(1).map(x=>[x.children[1].textContent,x.attributes['aria-current']??null]),
+  const menu=walk(animated.detail,x=>x.attributes['aria-label']==='프랍 애니메이션 목록')[0];
+  const [firstRow,secondRow]=menu.children;
+  assert.deepEqual(menu.children.map(x=>[x.children[1].children[1].textContent,x.children[1].attributes['aria-current']??null]),
    [['initial',null],['flame-flicker','page']]);
-  assert.match(menu.children[2].href,/propTab=animation&propAnimation=flame-flicker/);
+  assert.match(secondRow.children[1].href,/propTab=animation&propAnimation=flame-flicker/);
   assert.equal(walk(animated.detail,x=>x.tag==='img').length,0);
   assert.equal(walk(animated.detail,x=>x.textContent==='재생성 요청'||x.textContent==='애니메이션 생성 요청').length,0);
-  walk(animated.detail,x=>x.textContent==='픽셀 재생')[0].click();
-  const [preview]=walk(animated.detail,x=>x.tag==='img');
+  assert.equal(walk(animated.detail,x=>x.textContent==='선택 삭제 요청')[0].disabled,true);
+  walk(secondRow,x=>x.textContent==='픽셀 재생')[0].click();
+  assert.equal(walk(firstRow,x=>x.tag==='img').length,0);
+  const [preview]=walk(secondRow,x=>x.tag==='img');
   assert.equal(preview.alt,'불꽃 떨림 픽셀');
   assert.equal(preview.src,second.media.pixel.url);
+  const nonSelected=walk(firstRow,x=>x.textContent==='디테일 재생')[0];nonSelected.click();
+  assert.equal(walk(firstRow,x=>x.tag==='img')[0].src,first.media.detail.url);
+
+  const controller=new AbortController();
+  let allow=false,releasePending;
+  const calls=[];
+  const removable=await mount({propTab:'animation',signal:controller.signal,async removeAnimations(payload,options){
+   calls.push({payload,options});
+   if(!allow)return {accepted:false};
+   return await new Promise(resolve=>{releasePending=resolve;});
+  }},[first,second,{...first,id:'not-a-clip',media:{...first.media,pixel:{mediaType:'image/apng',url:'https://wrong.invalid/out'}}}]);
+  const get=(tag,text)=>walk(removable.detail,x=>x.tag===tag&&x.textContent===text)[0];
+  const select=get('button','전체 선택'),remove=get('button','선택 삭제 요청'),confirm=get('button','삭제 요청'),cancel=get('button','취소');
+  const boxes=walk(removable.detail,x=>x.type==='checkbox');
+  assert.deepEqual(boxes.map(x=>x.attributes['aria-label']),['점화 선택','불꽃 떨림 선택']);
+  assert.equal(remove.disabled,true);
+  select.click();assert.equal(select.textContent,'전체 선택 해제');
+  assert.deepEqual(boxes.map(x=>x.checked),[true,true]);
+  select.click();assert.deepEqual(boxes.map(x=>x.checked),[false,false]);
+  boxes[1].checked=true;boxes[1].events.change();
+  remove.click();assert.equal(walk(removable.detail,x=>x.tag==='dialog')[0].open,true);
+  cancel.click();assert.equal(calls.length,0);
+  remove.click();await confirm.click();
+  assert.deepEqual(calls[0].payload,{propId,source,animationIds:[second.id]});
+  assert.equal(calls[0].options.signal,controller.signal);
+  assert.equal(boxes[1].checked,true);
+  assert.match(walk(removable.detail,x=>x.className==='meta prop-request-status')[0].textContent,/확인하지 못했습니다/);
+  allow=true;select.click();remove.click();const queued=confirm.click();await confirm.click();
+  assert.equal(calls.length,2);assert.deepEqual(calls[1].payload.animationIds,[first.id,second.id]);
+  for(const check of boxes)assert.equal(check.disabled,true);
+  releasePending({accepted:true});await queued;
+  const visible=walk(removable.detail,x=>x.tag==='ul'&&x.attributes['aria-label']==='프랍 애니메이션 목록')[0];
+  assert.equal(visible.children.length,2);
+  assert.deepEqual(boxes.map(x=>x.checked),[false,false]);
+  assert.equal(walk(removable.detail,x=>x.textContent==='삭제 요청됨'&&x.hidden===false).length,2);
+  assert.match(walk(removable.detail,x=>x.className==='meta prop-request-status')[0].textContent,/파일 동기화 후/);
   const allowed=await mount({propTab:'animation',actions:['generate','regenerate','animation']});
   assert.equal(walk(allowed.detail,x=>x.textContent==='애니메이션 생성 요청').length,1);
   assert.equal(walk(allowed.detail,x=>x.tag==='img').length,0);

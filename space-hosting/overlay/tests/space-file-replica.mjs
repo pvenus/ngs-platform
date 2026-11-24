@@ -52,7 +52,7 @@ const mini=new Miniflare({
  {type:'ESModule',path:sourcePath,contents:core},
  module('build/space-machine-routes.mjs','../build/space-machine-routes.mjs'),
  module('build/space-request-queue.mjs','../build/space-request-queue.mjs'),
- ...['cinematic-contract.mjs','prop-workspace-contract.mjs','audio-result-index.mjs','replica-whole-file-wire.mjs','local-concept-category-contract.mjs','local-npc-planning-ui.mjs','local-concept-category-ui.mjs',
+ ...['cinematic-sequence-contract.mjs','cinematic-timeline.mjs','cinematic-player.mjs','cinematic-contract.mjs','prop-workspace-contract.mjs','audio-result-index.mjs','replica-whole-file-wire.mjs','local-concept-category-contract.mjs','local-npc-planning-ui.mjs','local-concept-category-ui.mjs',
      'local-request-queue-browser.mjs','local-audio-workspace.mjs','motion-preset-convert-2d.mjs','npc-motion-selection.mjs'].map(f=>module(localBuild+f,base+localBuild+f)),],
 });
 const send=(method,args)=>mini.dispatchFetch('http://receiver.invalid',{method:'POST',body:JSON.stringify({method,args})});

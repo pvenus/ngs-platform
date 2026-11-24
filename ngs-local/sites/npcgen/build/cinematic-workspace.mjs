@@ -1,3 +1,7 @@
+import {cinematicSequencePrefix,cinematicSequenceFramePath,cinematicSequenceFrameLimit,cinematicSequenceType,cinematicPlaybackUpdateType,
+ validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,validCinematicPlaybackState,
+ cinematicSourceGenerateType,cinematicSequencesRemoveType,cinematicArchivePath,validCinematicSourceGenerate,validCinematicSourceResult,
+ validCinematicSequencesRemove,validCinematicArchive} from './cinematic-sequence-contract.mjs';
 import {hashReplicaBytes,readReplicaObject,replicaUnavailable} from './workspace-read-storage.mjs';
 import {cinematicHash,cinematicId,cinematicSourcePath,cinematicSourcePrefix,cinematicResultPrefix,maxCinematicBytes,
  validCinematicPayload,validCinematicResult} from './cinematic-contract.mjs';
@@ -22,24 +26,79 @@ async function result(project,id){
  if((h.sha256!==undefined&&h.sha256!==m.sha256)||h.size!==m.bytes)throw replicaUnavailable();
  return m;
 }
+const nativeMetadataLimit=128*1024;
+async function archivedSequences(p){
+ const archive=await readReplicaObject(p,cinematicArchivePath,512*1024);
+ if(!archive)return new Set();
+ if(!validCinematicArchive(archive))throw replicaUnavailable();
+ return new Set(archive.sequenceIds);
+}
+async function getSequence(p,id,{timeline=true}={}){
+ if((await archivedSequences(p)).has(id))return null;
+ const root=cinematicSequencePrefix+'/'+id;
+ const m=await readReplicaObject(p,root+'/manifest.json',nativeMetadataLimit);
+ if(!m)return null;
+ if(!validCinematicSequenceResult(m)||m.officialRequestId!==id)throw replicaUnavailable();
+ if(!timeline)return {sequence:m,revision:0,playback:m.playback};
+ const state=await readReplicaObject(p,root+'/timeline.json',nativeMetadataLimit);
+ if(state!==null&&(!validCinematicPlaybackState(state)||state.sequenceId!==id))throw replicaUnavailable();
+ return {sequence:m,revision:state?.revision??0,playback:state?.playback??m.playback};
+}
 export async function admitCinematicRequest({command,openProject,authorize}){
- const p=command?.payload;
- if(!validCinematicPayload(p))throw failure('NGS_CINEMATIC_PAYLOAD_INVALID',400);
+ const p=command?.payload,type=command?.requestType;
+ const validator=type===cinematicSequenceType?validCinematicSequencePayload:
+  type===cinematicPlaybackUpdateType?validCinematicPlaybackUpdate:type===cinematicSourceGenerateType?validCinematicSourceGenerate:
+  type===cinematicSequencesRemoveType?validCinematicSequencesRemove:validCinematicPayload;
+ if(!validator(p))throw failure('NGS_CINEMATIC_PAYLOAD_INVALID',400);
  if(await authorize(p.projectId,'cinematics')===false)throw failure('PROJECT_OR_RESOURCE_DENIED',403);
  const storage=await openProject(p.projectId);
- if(!storage||!await sourceMeta(storage,p.sourceSha256))throw failure('CINEMATIC_SOURCE_NOT_FOUND',404);
+ if(type===cinematicSourceGenerateType){if(!storage)throw replicaUnavailable();return;}
+ if(type===cinematicSequencesRemoveType){
+  if(!storage)throw replicaUnavailable();
+  const archived=await archivedSequences(storage);
+  if(p.sequenceIds.some(id=>archived.has(id)))throw failure('CINEMATIC_SEQUENCE_ALREADY_REMOVED',409);
+  for(const id of p.sequenceIds)if(!await getSequence(storage,id,{timeline:false}))throw missing();
+  return;
+ }
+ if(type===cinematicPlaybackUpdateType){
+  const sequence=storage&&await getSequence(storage,p.sequenceId);
+  if(!sequence)throw missing();
+  if(sequence.revision!==p.expectedRevision)throw failure('CINEMATIC_PLAYBACK_REVISION_CONFLICT',409);
+ }else if(!storage||!await sourceMeta(storage,p.sourceSha256))throw failure('CINEMATIC_SOURCE_NOT_FOUND',404);
 }
 export async function cinematicWorkspaceRead({query,openProject,authorize}){
- if(!params(query,['projectId','source','clip','video'])||query.get('projectId')!=='binari')
+ if(!params(query,['projectId','source','sourceInfo','clip','video','sequence','frame'])||query.get('projectId')!=='binari')
   throw failure('CINEMATIC_QUERY_INVALID',400);
- const sha=query.get('source'),id=query.get('clip'),video=query.get('video');
+ const sha=query.get('source'),id=query.get('clip'),video=query.get('video'),
+  sequenceId=query.get('sequence'),frame=query.get('frame'),sourceInfo=query.get('sourceInfo');
+ if(sourceInfo!==null&&(sourceInfo!=='1'||sha===null))throw failure('CINEMATIC_QUERY_INVALID',400);
+ if(sequenceId!==null&&(!cinematicId(sequenceId)||sha!==null||id!==null||video!==null)||
+   frame!==null&&(sequenceId===null||!/^(?:0|[1-9][0-9]?)$/.test(frame)))throw failure('CINEMATIC_QUERY_INVALID',400);
  if(sha!==null&&(!cinematicHash(sha)||id!==null||video!==null)||id!==null&&!cinematicId(id)||
    video!==null&&(video!=='1'||id===null))throw failure('CINEMATIC_QUERY_INVALID',400);
  if(await authorize('binari','cinematics')===false)throw failure('PROJECT_OR_RESOURCE_DENIED',403);
  const p=await openProject('binari');
  if(!p)throw replicaUnavailable();
+ if(sequenceId!==null){
+  const state=await getSequence(p,sequenceId,{timeline:frame===null});
+  if(!state)throw missing();
+  if(frame===null)return {json:state};
+  const selected=state.sequence.frames[Number(frame)];
+  if(!selected)throw missing();
+  const bytes=await p.readBytes(cinematicSequenceFramePath(sequenceId,selected.index),cinematicSequenceFrameLimit);
+  if(!bytes)throw missing();
+  const ihdr=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  if(bytes.length!==selected.bytes||!pngMagic.every((n,i)=>n===bytes[i])||ihdr.getUint32(16)!==state.sequence.width||
+    ihdr.getUint32(20)!==state.sequence.height||await hashReplicaBytes(bytes)!==selected.sha256)throw replicaUnavailable();
+  return {bytes,mime:'image/png'};
+ }
  if(sha!==null){
-  if(!await sourceMeta(p,sha))throw missing();
+  const head=await sourceMeta(p,sha);if(!head)throw missing();
+  if(sourceInfo!==null){
+   const info=await readReplicaObject(p,cinematicSourcePrefix+'/'+sha+'.json',4096);
+   if(info!==null&&(!validCinematicSourceResult(info)||info.sha256!==sha||info.bytes!==head.size))throw replicaUnavailable();
+   return {json:{sourceSha256:sha,title:info?.title??null}};
+  }
   const bytes=await p.readBytes(cinematicSourcePath(sha),maxCinematicBytes);
   if(!bytes)throw missing();
   if(!pngMagic.every((n,i)=>n===bytes[i])||await hashReplicaBytes(bytes)!==sha)throw replicaUnavailable();
@@ -60,7 +119,15 @@ export async function cinematicWorkspaceRead({query,openProject,authorize}){
  // List verified publications from the inventory without opening every MP4.
  const videos=new Set(resultRows.filter(r=>r.kind==='file'&&r.name.endsWith('.mp4')).map(r=>r.name.slice(0,-4)));
  const clips=resultRows.flatMap(({name,kind})=>kind==='file'&&name.endsWith('.json')&&cinematicId(name.slice(0,-5))&&videos.has(name.slice(0,-5))?[name.slice(0,-5)]:[]).sort();
- return {json:{sources,clips}};
+ const sequenceRows=await p.listChildren(cinematicSequencePrefix);
+ if(sequenceRows.length>4096)throw replicaUnavailable();
+ const sequences=[],archived=await archivedSequences(p);
+ for(const {name,kind} of sequenceRows){
+  if(kind!=='directory'||!cinematicId(name)||archived.has(name))continue;
+  // File replication may expose a parent directory before its commit manifest.
+  if(await p.head(cinematicSequencePrefix+'/'+name+'/manifest.json'))sequences.push(name);
+ }
+ return {json:{sources,clips,sequences:sequences.sort()}};
 }
 // Only used for a verified bounded MP4. Ignore non-single-range syntaxes per
 // the wire contract; do not let a media request assemble arbitrary ranges.

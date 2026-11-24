@@ -1,18 +1,7 @@
-# Cinematic video workspace
-
-The Binari Cinematic Video tab shows project-owned PNG sources, accepts one
-motion prompt and lists playable/downloadable MP4 results, after normal file
-replication. Inputs are immutable and addressable by SHA-256 in
-`cinematics/sources/<sha256>.png`; this feature does not take arbitrary network
-URLs or filesystem paths. Import source images with the authorized Filex owner
-path before requesting generation. The UI does not write directly to Filex.
-Result metadata and video under `cinematics/results/` are checked for matching
-length and digest before playback. The branch never uses prop postprocessing,
-foreground segmentation, transparency, or pixel conversion.
-
-Local only advertises request submission when its own trusted PDS returns the
-cinematic capability. Space uses the same browser payload, read route and
-replica contract. Hosted admission is off by default and can only be enabled
-by the operator using `NGS_CINEMATIC_ENABLED=1` after the worker, PDS/Filex scope
-and canonical RS are verified. This does not grant additional project access.
-Acceptance into the browser queue does not mean a clip has been generated.
+# Cinematic workspace
+- **원본 이미지**: 장면 이름과 연출을 입력해 `cinematic.source.generate` 요청을 접수한다. 이미지 워커가 하나의 불투명 PNG를 게시한다. 애니메이션이 자동 접수되지 않는다.
+- **애니메이션**: 원본을 확인하고 선택한 뒤 별도로 `cinematic.sequence.generate`를 접수한다. 여러 버전을 한 줄씩 보며 바로 재생한다. 선택 제거는 형식에 맞는 정식 요청으로 게시 목록에서만 제외한다. 기존 MP4는 읽기 전용으로 유지한다.
+- PNG 시퀀스는 재생 편집에서 불변이다. 기준 시계는 24fps이고, 원본 프레임 혼합 없이 속도 곡선의 선형 적분으로 다음 프레임을 고른다. 속도 0은 멈춤, 1/3은 24fps 시계에서 각 원본을 3틱 유지하는 기본값이다. 예: 45 프레임 × 3틱 = 5.625초.
+- 카메라 곡선의 각 포인트는 기준 시간 프레임과 배율, 정규화한 초점 x/y를 가진다. 별도 화면에 이미지를 그리므로 게임 카메라나 Unity 상태는 변경하지 않는다. 포인트 사이 카메라는 완만하게 이동하며 이미지 밖으로 나가지 않는다.
+- JSON 내보내기/가져오기는 화면의 초안을 바꾼다. 저장은 `cinematic.playback.update`와 현재 리비전으로 공식 요청한다. 다른 편집이 먼저 저장되면 새로고침 후 다시 적용한다. 재생 메타만 갱신하므로 이미지·애니메이션 워커를 다시 실행하지 않는다.
+- 로컬 및 Space는 동일한 요청 계약과 조회 코드를 사용한다. 운영에서 각 기능이 준비되어야 해당 입력이 열린다.

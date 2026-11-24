@@ -15,10 +15,11 @@ import {validFolderPath} from './local-recursive-folders.mjs';
 import {openLocalWorkspaceProject} from './local-project-workspace.mjs';
 import {localObjectReplicaViews} from './local-object-replica-views.mjs';
 import {openLocalObjectReplicaFromEnv} from './local-object-replica-runtime.mjs';
+import {cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,cinematicSequencesRemoveType} from './cinematic-sequence-contract.mjs';
 import {cinematicPath,cinematicType} from './cinematic-contract.mjs';
 import {admitCinematicRequest,cinematicVideoResponse} from './cinematic-workspace.mjs';
 import {propAction,validPropActions} from './prop-workspace-contract.mjs';
-import {admitPropRequest} from './prop-workspace.mjs';
+import {admitPropRequest,admitPropAnimationRemove} from './prop-workspace.mjs';
 import {createRSPropReadiness} from './rs-mcp.mjs';
 import {dispatchWorkspaceRead,workspaceReadRoute} from './workspace-read-registry.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
@@ -37,6 +38,9 @@ const assets=new Map([
  ['/local-project-page.css', ['text/css; charset=utf-8', new URL('./local-project-page.css',import.meta.url)]],
  ['/local-project-page.js', ['text/javascript; charset=utf-8', new URL('./local-project-page.js',import.meta.url)]],
  ['/prop-package-contract.mjs',['text/javascript; charset=utf-8',new URL('./prop-package-contract.mjs',import.meta.url)]],
+ ['/cinematic-sequence-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-sequence-contract.mjs',import.meta.url)]],
+ ['/cinematic-timeline.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-timeline.mjs',import.meta.url)]],
+ ['/cinematic-player.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-player.mjs',import.meta.url)]],
  ['/cinematic-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-contract.mjs',import.meta.url)]],
  ['/cinematic-workspace-ui.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-workspace-ui.mjs',import.meta.url)]],
  ['/prop-workspace-ui.mjs',['text/javascript; charset=utf-8',new URL('./prop-workspace-ui.mjs',import.meta.url)]],
@@ -110,14 +114,20 @@ function macPuzzleDefault(platform,entryPoint){
   ?join(homedir(),'Workspaces','NGS','runtime','puzzle-design-assets','binari-bad-ending-v1')
   :undefined;
 }
-async function readLocalCinematicReady(){
+async function readWorkflowCapability(path,schema){
  try{
-  const r=await fetch('http://127.0.0.1:8030/v1/cinematics/ownership/workflow',{redirect:'error',signal:AbortSignal.timeout(350)});
+  const r=await fetch('http://127.0.0.1:8030'+path,{redirect:'error',signal:AbortSignal.timeout(350)});
   if(!r.ok)return false;
   const v=await r.json();
-  return v?.schemaVersion==='workflow.cinematic-write.v1'&&v.enabled===true;
+  return v?.schemaVersion===schema&&v.enabled===true;
  }catch{return false;}
 }
+const readLocalCinematicReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow','workflow.cinematic-write.v1');
+const readLocalSequenceReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence','workflow.cinematic-sequence-write.v1');
+const readLocalPlaybackReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-playback','workflow.cinematic-playback-write.v1');
+const readLocalSourceReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-source','workflow.cinematic-source-write.v1');
+const readLocalRemoveReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence-remove','workflow.cinematic-sequence-remove.v1');
+const readLocalPropRemoveReady=()=>readWorkflowCapability('/v1/props/ownership/workflow-animation-remove','workflow.prop-animation-remove.v1');
 export function configuration(env=process.env,{platform=process.platform,entryPoint=process.argv[1]}={}){
 
  const port=Number(env.NGS_PROJECT_LISTEN_PORT??'5274');
@@ -126,11 +136,11 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
-  readCinematicReady:isNativeMac(platform,entryPoint)?readLocalCinematicReady:undefined,
+  ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady}:{}),
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readCinematicReady,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readCinematicRemoveReady,readPropAnimationRemoveReady,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -147,7 +157,9 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const auth=createLoopbackAuth({loadReadProjects:()=>projects});
  const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
  const queue=requestQueue??ownedQueue;
- const activeCinematic=async()=>Boolean(queue&&typeof readCinematicReady==='function'&&await readCinematicReady());
+ const cinematicReads={[cinematicType]:readCinematicReady,[cinematicSequenceType]:readCinematicSequenceReady,[cinematicPlaybackUpdateType]:readCinematicPlaybackReady,[cinematicSourceGenerateType]:readCinematicSourceReady,[cinematicSequencesRemoveType]:readCinematicRemoveReady};
+ const activeCinematic=async(type)=>Boolean(queue&&typeof cinematicReads[type]==='function'&&await cinematicReads[type]());
+ const activePropRemoval=async()=>Boolean(queue&&typeof readPropAnimationRemoveReady==='function'&&await readPropAnimationRemoveReady());
  const activePropActions=async()=>{
   if(!queue)return [];
   const actions=typeof readPropActions==='function'?await readPropActions():propActions;
@@ -226,12 +238,16 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const command=parseRequestSubmission(await readSmallBody(req,64*1024));
     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     projectPermission(session.principal,command.payload.projectId,undefined,false);
-    if(command.requestType===cinematicType){
-     if(!await activeCinematic())throw failure('CINEMATIC_GENERATION_UNAVAILABLE',404);
+    if(Object.hasOwn(cinematicReads,command.requestType)){
+     if(!await activeCinematic(command.requestType))throw failure('CINEMATIC_GENERATION_UNAVAILABLE',404);
      await admitCinematicRequest({openProject,command,authorize:id=>projectPermission(session.principal,id,undefined,false)});
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
-    if(command.requestType.startsWith('prop.')){
+    if(command.requestType==='prop.animation.remove'){
+     if(!await activePropRemoval())throw failure('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
+     await admitPropAnimationRemove({openProject,command,authorize:id=>projectPermission(session.principal,id,undefined,false)});
+     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+    }else if(command.requestType.startsWith('prop.')){
      if(!propAction(command.requestType))throw failure('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
      await admitPropRequest({openProject,command,actions:await activePropActions(),authorize:id=>projectPermission(session.principal,id,undefined,false)});
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
@@ -311,10 +327,12 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const session=auth.bootstrap(req);
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
-    const actions=await activePropActions();
+    const [actions,legacyCine,sequenceCine,playbackCine,sourceCine,removeCine,removeProp]=await Promise.all([activePropActions(),activeCinematic(cinematicType),activeCinematic(cinematicSequenceType),activeCinematic(cinematicPlaybackUpdateType),activeCinematic(cinematicSourceGenerateType),activeCinematic(cinematicSequencesRemoveType),activePropRemoval()]);
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
      ...(actions.length?{propActions:actions}:{}),
-     ...(await activeCinematic()?{cinematicEnabled:true}:{}),
+     ...(legacyCine?{cinematicEnabled:true}:{}),
+     ...(sequenceCine?{cinematicSequenceEnabled:true}:{}),...(playbackCine?{cinematicPlaybackEnabled:true}:{}),
+     ...(sourceCine?{cinematicSourceEnabled:true}:{}),...(removeCine?{cinematicRemoveEnabled:true}:{}),...(removeProp?{propAnimationRemoveEnabled:true}:{}),
      ...(poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),
      ...(queue&&audioWorkspaceEnabled===true&&audioSeparationEnabled===true?{audioSeparationEnabled:true}:{})});
    }

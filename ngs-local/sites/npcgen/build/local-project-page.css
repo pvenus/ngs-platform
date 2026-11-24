@@ -330,7 +330,35 @@ ul{padding:0;list-style:none}
 .prop-preview-pair .npc-portrait-art{min-height:0;aspect-ratio:4/3;max-height:14.5rem}
 .prop-preview-pair img{display:block;width:100%;height:100%;max-height:14.5rem;object-fit:contain}
 .prop-preview-pair figure:nth-child(2) img,.prop-animation-preview:nth-child(2) img{image-rendering:pixelated}
+.prop-animation-selection{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0}
+.prop-animation-list{display:grid;gap:6px;list-style:none;padding:0;margin:0}
+.prop-animation-row{display:grid;grid-template-columns:auto minmax(96px,.35fr) minmax(0,1fr);align-items:start;gap:10px;padding:8px;border:1px solid var(--border);border-radius:9px}
+.prop-animation-row-current{border-color:var(--primary)}
+.prop-animation-row input{margin:7px 0 0}
+.prop-animation-row-title{display:grid;gap:3px;min-width:0;overflow-wrap:anywhere;color:inherit}
+.prop-animation-row-preview{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
+.prop-animation-delete:not(:disabled){color:var(--destructive,#a22727)}
+@media(max-width:460px){.prop-animation-row{grid-template-columns:auto minmax(0,1fr)}.prop-animation-row-preview{grid-column:2}}
 .prop-animation-preview{display:grid;align-content:start;gap:6px;min-width:0}
 .prop-animation-preview>span:empty{display:none}
 .prop-animation-preview>span{border:1px solid var(--border);border-radius:9px;overflow:hidden;background:repeating-conic-gradient(#f2f2ec 0% 25%,#fffdf8 0% 50%) 50%/20px 20px}
 @media(max-width:540px){.prop-preview-pair{grid-template-columns:1fr}.prop-workspace-dialog{width:calc(100vw - 16px);padding:12px}}
+
+.cinematic-version-line{
+ display:flex;
+ align-items:center;
+ flex-wrap:wrap;
+ gap:.6rem;
+ min-height:3.2rem;
+ padding:.45rem .2rem;
+}
+.cinematic-version-line img,.cinematic-version-line video{
+ width:6rem;
+ max-width:31vw;
+ height:auto;
+ max-height:5rem;
+ object-fit:contain;
+ background:#171720;
+}
+.cinematic-version{border-bottom:1px solid rgba(128,128,128,.25)}
+.cinematic-inline-player canvas{max-height:60vh;object-fit:contain}

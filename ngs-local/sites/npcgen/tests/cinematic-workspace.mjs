@@ -39,7 +39,7 @@ test('Local NGS authenticates and scopes ready cinematic intake plus verified re
  const submit=(p,extra={})=>fetch(origin+'/api/requests',{method:'POST',headers:{cookie,origin,'content-type':'application/json',
   'x-npcgen-csrf':csrfToken,'x-npcgen-frontend-context':contextId,...extra},
   body:JSON.stringify({requestType:cinematicType,idempotencyKey:'one-cinematic',payload:p})});
- assert.deepEqual(await (await get(base)).json(),{clips:[],sources:[sourceSha256]});
+ assert.deepEqual(await (await get(base)).json(),{clips:[],sources:[sourceSha256],sequences:[]});
  assert.equal((await submit(payload)).status,404);
  ready=true;
  assert.equal((await (await get('/__npcgen_session')).json()).cinematicEnabled,true);
@@ -50,7 +50,7 @@ test('Local NGS authenticates and scopes ready cinematic intake plus verified re
  assert.deepEqual(registered.payload,payload);
  assert.deepEqual(Buffer.from(await (await get(base+'&source='+sourceSha256)).arrayBuffer()),png);
  writeFileSync(join(lock,'results',id+'.mp4'),mp4,{mode:0o600});
- assert.deepEqual(await (await get(base)).json(),{clips:[id],sources:[sourceSha256]});
+ assert.deepEqual(await (await get(base)).json(),{clips:[id],sources:[sourceSha256],sequences:[]});
  assert.deepEqual(await (await get(base+'&clip='+id)).json(),{clip:result});
  const video=await get(base+'&clip='+id+'&video=1',{range:'bytes=4-7'});
  assert.equal(video.status,206);
@@ -67,4 +67,64 @@ test('rejects prompt injection syntax and limits bytes; range cannot join arbitr
  assert.ok(!validCinematicPayload({...payload,motionPrompt:'가'.repeat(700)}));
  assert.equal(cinematicVideoResponse(mp4,'bytes=40-').status,416);
  assert.equal(cinematicVideoResponse(mp4,'bytes=0-1,4-5').status,200);
+});
+
+test('formal source, native animation, timeline update and selected archive stay separate',async t=>{
+ const parent=mkdtempSync(join(realpathSync(tmpdir()),'ngs-cinematic-native-'));
+ t.after(()=>rmSync(parent,{force:true,recursive:true}));
+ const root=join(parent,'projects'),dir=join(root,'binari'),cine=join(dir,'cinematics');
+ const out=join(cine,'sequences',id);
+ mkdirSync(join(out,'frames'),{mode:0o700,recursive:true});
+ mkdirSync(join(cine,'sources'),{mode:0o700,recursive:true});
+ const json=(f,v)=>writeFileSync(f,JSON.stringify(v),{mode:0o600});
+ json(join(dir,'project.json'),{name:'비나리'});
+ // A separate scope fixture authenticates hashes and image dimensions; browser playback
+ // is tested with actual PNGs from the Worker integration, not this header fixture.
+ const frame=Buffer.from(png);frame.writeUInt32BE(128,16);frame.writeUInt32BE(128,20);
+ const original=Buffer.from(png);original.writeUInt32BE(1536,16);original.writeUInt32BE(1024,20);
+ const source=sha(original),version=sha(frame),sourcePublished={sourceSha256:source,title:'빈 문턱'};
+ const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,zoom:1,x:.5,y:.5}]};
+ const sequence={schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,sourceSha256:source,width:128,height:128,masterFps:24,frameCount:45,
+  frames:Array.from({length:45},(_,index)=>({index,bytes:frame.length,sha256:version})),playback};
+ const registered=[];
+ const yes=async()=>true;
+ const server=createLocalProjectPageServer({root,readCinematicSequenceReady:yes,readCinematicPlaybackReady:yes,readCinematicSourceReady:yes,readCinematicRemoveReady:yes,
+  requestQueue:{enqueue(c){registered.push(c);return {status:'queued'};}}});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const origin='http://127.0.0.1:'+server.address().port;
+ const boot=await fetch(origin+'/__npcgen_session'),cookie=boot.headers.get('set-cookie').split(';')[0];
+ const settings=await boot.json();
+ for(const flag of ['cinematicSequenceEnabled','cinematicPlaybackEnabled','cinematicSourceEnabled','cinematicRemoveEnabled'])assert.equal(settings[flag],true);
+ const get=query=>fetch(origin+base+query,{headers:{cookie}});
+ const post=(requestType,payload)=>fetch(origin+'/api/requests',{method:'POST',headers:{cookie,origin,'content-type':'application/json',
+  'x-npcgen-csrf':settings.csrfToken,'x-npcgen-frontend-context':settings.contextId},body:JSON.stringify({requestType,idempotencyKey:requestType,payload})});
+ const sourceCmd={schemaVersion:'ngs.cinematic-source-generate.v1',projectId:'binari',title:'빈 문턱',prompt:'A closed wooden door, ink wash.'};
+ const videoCmd={schemaVersion:'ngs.cinematic-sequence-generate.v1',projectId:'binari',sourceSha256:source,motionPrompt:'A pale light drifts.',playback};
+ assert.equal((await post('cinematic.source.generate',sourceCmd)).status,202);
+ assert.equal((await post('cinematic.sequence.generate',videoCmd)).status,404);
+ assert.equal(registered.length,1); // no dependent animation requested by source.
+ writeFileSync(join(cine,'sources',source+'.png'),original,{mode:0o600});
+ json(join(cine,'sources',source+'.json'),{schemaVersion:'ngs.cinematic-source-result.v1',projectId:'binari',officialRequestId:id,title:sourceCmd.title,sha256:source,bytes:original.length,width:1536,height:1024});
+ assert.deepEqual(await (await get('&source='+source+'&sourceInfo=1')).json(),sourcePublished);
+ assert.equal((await post('cinematic.sequence.generate',videoCmd)).status,202);
+ json(join(out,'manifest.json'),sequence);
+ writeFileSync(join(out,'frames','0000.png'),frame,{mode:0o600});
+ assert.deepEqual((await (await get('')).json()).sequences,[id]);
+ assert.deepEqual(Buffer.from(await (await get('&sequence='+id+'&frame=0')).arrayBuffer()),frame);
+ const revised={...playback,cameraCurve:[{frame:0,zoom:1,x:.5,y:.5},{frame:100,zoom:1.2,x:.52,y:.48}]};
+ const timeline={schemaVersion:'ngs.cinematic-playback-update.v1',projectId:'binari',sequenceId:id,expectedRevision:0,playback:revised};
+ assert.equal((await post('cinematic.playback.update',timeline)).status,202);
+ assert.equal((await (await get('&sequence='+id)).json()).revision,0);
+ json(join(out,'timeline.json'),{schemaVersion:'ngs.cinematic-playback-state.v1',projectId:'binari',sequenceId:id,revision:1,playback:revised});
+ assert.equal((await post('cinematic.playback.update',timeline)).status,409);
+ const read=await (await get('&sequence='+id)).json();
+ assert.deepEqual([read.revision,read.playback,read.sequence.frames[0].sha256],[1,revised,version]);
+ const hide={schemaVersion:'ngs.cinematic-sequences-remove.v1',projectId:'binari',sequenceIds:[id]};
+ assert.equal((await post('cinematic.sequences.remove',{...hide,sequenceIds:[id,id]})).status,400);
+ assert.equal((await post('cinematic.sequences.remove',hide)).status,202);
+ json(join(cine,'sequence-archive.json'),{schemaVersion:'ngs.cinematic-sequence-archive.v1',projectId:'binari',sequenceIds:[id]});
+ assert.equal((await get('&sequence='+id+'&frame=0')).status,404);
+ assert.deepEqual((await (await get('')).json()).sequences,[]);
+ assert.ok((await get('&source='+source)).ok);
 });

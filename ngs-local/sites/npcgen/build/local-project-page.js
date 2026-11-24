@@ -1,7 +1,7 @@
 import {mountCinematicWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
-import {validPropActions} from './prop-workspace-contract.mjs';
+import {validPropActions,propAnimationRemoveType,propAnimationRemoveSchema} from './prop-workspace-contract.mjs';
 import {conceptDetailOperations,conceptMarkdown,createConceptCategoryActions,syncConceptDetail} from './local-concept-category-ui.mjs';
 import {audioIndex,followAcceptedAudioResult,followDeletedAudioResults,mountAudioWorkspace,readAudioSoundConcepts,refreshAudioResults,showAudioResults} from './local-audio-workspace.mjs';
 import {loadNpcFolder} from './local-npc-workspace-ui.mjs';
@@ -17,6 +17,8 @@ let run;
 const queuePanel=document.querySelector('#local-request-queue');
 const queueLabel={
  [cinematicType]:'시네마틱 영상 생성',
+ 'cinematic.sequence.generate':'PNG 시네마틱 생성','cinematic.playback.update':'시네마틱 메타 수정',
+ 'cinematic.source.generate':'시네마틱 원본 이미지 생성','cinematic.sequences.remove':'시네마틱 애니메이션 제거','prop.animation.remove':'프랍 애니메이션 제거',
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
  'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제','audio.separate':'BGM 반주 만들기',
  [motionPresetConvertType]:'2D 마네킹 프리셋 변환','prop.generate':'프랍 종합 생성','prop.regenerate':'프랍 재생성','prop.animation.generate':'프랍 애니메이션 생성',
@@ -213,8 +215,8 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {poseSelectionV2Enabled,propActions,cinematicEnabled,...session}=value??{};
- if(cinematicEnabled!==undefined&&(cinematicEnabled!==true||session.requestWritable!==true||session.workspaceReady!==true))return false;
+ const {poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,...session}=value??{};
+ if([cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
  if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
  return session?.state==='authenticated'&&session.backend==='space'&&
@@ -664,12 +666,21 @@ async function loadWorkspace(search){
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
   if(tab==='cinematic'){
-   await mountCinematicWorkspace({items,detail,request,submit,projectId,item,navigate:next,signal,enabled:session.cinematicEnabled===true});
+   await mountCinematicWorkspace({items,detail,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true});
    if(!signal.aborted)note('');
    return;
   }
   if(tab==='props'){
-   await mountPropWorkspace({items,detail,tools:listToolbar,item,propTab:search.get('propTab'),propAnimation:search.get('propAnimation'),navigate:next,request,submit,actions:session.propActions??[],signal});
+   const removeAnimations=session.propAnimationRemoveEnabled===true&&submit?async({propId,source,animationIds})=>{
+    const motionIds=[...animationIds].sort();
+    const data=new TextEncoder().encode(JSON.stringify([propId,source.revision,source.sha256,motionIds]));
+    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),n=>n.toString(16).padStart(2,'0')).join('');
+    const response=await submit({requestType:propAnimationRemoveType,idempotencyKey:'prop-remove:'+hash,payload:{schemaVersion:propAnimationRemoveSchema,projectId,propId,source,motionIds}});
+    const value=await response.json().catch(()=>null);
+    if(!isQueuedRequest(response,value))throw Error(value?.error??'PROP_ANIMATION_REMOVE_NOT_ACCEPTED');
+    return {accepted:true};
+   }:undefined;
+   await mountPropWorkspace({items,detail,tools:listToolbar,item,propTab:search.get('propTab'),propAnimation:search.get('propAnimation'),navigate:next,request,submit,removeAnimations,actions:session.propActions??[],signal});
    if(!signal.aborted)note('');
    return;
   }

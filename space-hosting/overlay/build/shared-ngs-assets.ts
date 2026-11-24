@@ -2,6 +2,9 @@ import html from "../ngs-local/sites/npcgen/build/local-project-page.html?raw";
 import css from "../ngs-local/sites/npcgen/build/local-project-page.css?raw";
 import page from "../ngs-local/sites/npcgen/build/local-project-page.js?raw";
 import propPackageContract from "../ngs-local/sites/npcgen/build/prop-package-contract.mjs?raw";
+import cine0 from "../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs?raw";
+import cine1 from "../ngs-local/sites/npcgen/build/cinematic-timeline.mjs?raw";
+import cine2 from "../ngs-local/sites/npcgen/build/cinematic-player.mjs?raw";
 import cinematicWorkspace from "../ngs-local/sites/npcgen/build/cinematic-workspace-ui.mjs?raw";
 import cinematicContract from "../ngs-local/sites/npcgen/build/cinematic-contract.mjs?raw";
 import propWorkspace from "../ngs-local/sites/npcgen/build/prop-workspace-ui.mjs?raw";
@@ -27,6 +30,9 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/local-project-page.css", {type: "text/css; charset=utf-8", body: css}],
  ["/local-project-page.js", {type: javascript, body: page}],
  ["/prop-package-contract.mjs", {type: javascript, body: propPackageContract}],
+ ["/cinematic-sequence-contract.mjs",{type:javascript,body:cine0}],
+ ["/cinematic-timeline.mjs",{type:javascript,body:cine1}],
+ ["/cinematic-player.mjs",{type:javascript,body:cine2}],
  ["/cinematic-workspace-ui.mjs",{type:javascript,body:cinematicWorkspace}],
  ["/cinematic-contract.mjs",{type:javascript,body:cinematicContract}],
  ["/prop-workspace-ui.mjs",{type:javascript,body:propWorkspace}],

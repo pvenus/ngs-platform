@@ -1,5 +1,5 @@
 /** Folder identity, latest pointer and immutable package; never a generic file browser. */
-import {propWorkspacePath,propSlug,propRevision,propSha,propAction,validPropPayload} from './prop-workspace-contract.mjs';
+import {propWorkspacePath,propSlug,propRevision,propSha,propAction,validPropPayload,validPropAnimationRemove} from './prop-workspace-contract.mjs';
 import {hashReplicaBytes,readReplicaObject,workspaceItemIds} from './workspace-read-storage.mjs';
 import {propDesignPin} from './prop-design-pin.mjs';
 import {parsePropPointer,parsePropPackage,propManifestPath,propPointerPath,propAssetPath,propPackageMediaLimit} from './prop-package-contract.mjs';
@@ -57,6 +57,18 @@ export async function admitPropRequest({openProject,command,actions=[],authorize
   if((await propDesignPin(openProject,p.projectId)).designContextSha256!==p.designContextSha256)
    throw fail('PROP_DESIGN_PIN_STALE',409);
  }
+}
+
+export async function admitPropAnimationRemove({openProject,command,authorize}){
+ const p=command?.payload;
+ if(!validPropAnimationRemove(p))throw invalid();
+ if(await authorize?.(p.projectId,'props')===false)throw fail('PROJECT_OR_RESOURCE_DENIED',403);
+ const project=await openProject(p.projectId);
+ if(!project)throw unavailable();
+ const {p:current,row}=await selected(project,p.propId);
+ if(current.revision!==p.source.revision||current.sha256!==p.source.sha256)throw fail('PROP_WORKSPACE_SOURCE_STALE',409);
+ const ids=new Set(row.animations.map(a=>a.id));
+ if(!p.motionIds.every(id=>ids.has(id)))throw fail('PROP_WORKSPACE_MOTION_NOT_FOUND',404);
 }
 
 function publicMedia(pointer,media){
