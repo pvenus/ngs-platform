@@ -62,13 +62,15 @@ export function loopbackJsonMCP(url,{
   })().catch(error=>{initialized=undefined;throw error;});
   return initialized;
  }
- return async(name,arguments_,options)=>{
+ const call=async(name,arguments_,options)=>{
   await initialize();
   const result=await rpc('tools/call',{name,arguments:arguments_},options);
   if(result.isError===true)throw decodeToolError(name,result)??transportError();
   if(result.isError||!result.structuredContent||typeof result.structuredContent!=='object')throw transportError();
   return result.structuredContent;
  };
+ call.listTools=async(options)=>{await initialize();return rpc('tools/list',{},options);};
+ return call;
 }
 
 export function loopbackFolderMCP(url=DEFAULT_PROJECT_FOLDER_MCP_URL){

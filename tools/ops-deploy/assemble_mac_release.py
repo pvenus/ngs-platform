@@ -134,14 +134,23 @@ def prior_release(plist, releases, scratch, node, queue):
     args = plist["ProgramArguments"]
     env = plist["EnvironmentVariables"]
     old = Path(args[1]).parents[3]
+    work = Path(plist["WorkingDirectory"])
+    canonical = re.fullmatch(r"project-page-github-[0-9a-f]{7,40}", old.name)
+    predecessor = re.fullmatch(r"project-page-local-candle-([0-9a-f]{40})", old.name)
     need(plist["Label"] == LABEL and args == [str(node), str(old / ENTRY)]
-         and old.parent == releases and re.fullmatch(r"project-page-github-[0-9a-f]{7,40}", old.name)
-         and Path(plist["WorkingDirectory"]).parent == scratch
+         and old.parent == releases and (canonical or predecessor)
+         and work.parent == scratch
          and env.get("NGS_REQUEST_QUEUE_DB") == str(queue)
          and env.get("NGS_PROJECT_LISTEN_PORT") == "5274" and env.get("NGS_REQUEST_QUEUE_MCP_PORT") == "5275"
          and env.get("NGS_FILE_SYNC_MODE") == "push" and env.get("NGS_FILE_SYNC_PROJECTS") == "binari"
          and env.get("NGS_LOCAL_MINIFLARE_ROOT")
          and not {"NGS_LOCAL_S3_CONFIG", "NGS_LOCAL_REPLICA_DB"} & env.keys(), "PRIOR_NOT_NATIVE_COMBINED")
+    if predecessor:
+        revision = predecessor.group(1)
+        need(env.get("NGS_COMMIT_SHA") == revision and work == scratch / revision
+             and (old / ENTRY).resolve() == old / ENTRY and (old / ENTRY).is_file(),
+             "PRIOR_NOT_NATIVE_COMBINED")
+        private_dir(work)
     scope = Path(env["NGS_LOCAL_MINIFLARE_ROOT"])
     need(scope.parent == EXTERNAL_VOLUME and EXTERNAL_VOLUME.is_mount()
          and scope.name.startswith("NGS-Miniflare-") and scope.stat().st_dev == EXTERNAL_VOLUME.stat().st_dev,

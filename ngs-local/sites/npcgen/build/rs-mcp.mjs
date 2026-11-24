@@ -131,6 +131,31 @@ export function watchSpaceRSQueue({pump,signal,onResult=()=>{},onError=()=>{},sl
 }
 export const ngsQueueMcpUrl='http://127.0.0.1:5275/mcp';
 export const rsRequestMcpUrl='http://127.0.0.1:8770/mcp';
+/** Read only the production static schemas. A submit tool name alone is not readiness. */
+export function staticPropActions(list){
+ const entries=Array.isArray(list?.tools)?list.tools.filter(t=>t?.name===rsTool):[];
+ if(entries.length!==1)return [];
+ const input=entries[0].inputSchema;
+ const types=input?.properties?.requestType?.enum;
+ const branches=input?.oneOf;
+ if(!Array.isArray(types)||!Array.isArray(branches))return [];
+ return ['generate','regenerate'].filter(action=>{
+  const type=propTypes[action],schema='ngs.prop-'+action+'.v1';
+  const exactBranches=branches.filter(x=>x?.properties?.requestType?.const===type);
+  const fields=exactBranches[0]?.properties?.payload?.properties;
+  return types.filter(x=>x===type).length===1&&exactBranches.length===1&&
+   fields?.schemaVersion?.const===schema&&fields?.projectId?.const==='binari'&&
+   fields?.motion?.const==='still';
+ });
+}
+export function createRSStaticPropReadiness({url=rsRequestMcpUrl}={}){
+ const call=loopbackJsonMCP(url,{clientName:'ngs-prop-readiness',transportError:localUnavailable,timeoutMs:2500});
+ let pending;
+ return ()=>{
+  pending??=call.listTools({limit:128*1024}).then(staticPropActions,()=>[]).finally(()=>{pending=undefined;});
+  return pending;
+ };
+}
 export function sameMacRSQueue({ngsUrl=ngsQueueMcpUrl,rsUrl=rsRequestMcpUrl,signal,observeNgs}={}){
  // Ports are an injected test seam; the executable takes no host or URL.
  const callNGS=loopbackJsonMCP(ngsUrl,{clientName:'ngs-rs-mcp-consumer',signal,timeoutMs:4000,transportError:localUnavailable});

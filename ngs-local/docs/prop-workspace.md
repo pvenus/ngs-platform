@@ -7,14 +7,28 @@ A selection verifies the actual immutable manifest SHA and resolves only its
 typed assets. Preview URLs are same-origin; individual APNGs are only fetched
 on play. No Local draft, fixture overlay, generic file query or NPC video route.
 
-Writes use the existing authenticated /api/requests queue. The three distinct
-opt-in capabilities `NGS_PROP_GENERATE_ENABLED`, `NGS_PROP_REGENERATE_ENABLED` and
-`NGS_PROP_ANIMATION_ENABLED` default off in both runtimes. Configure one only
-after the same normal Request/Planner/worker/PDS/Filex path is verified for
-that operation. Capability checks are enforced on the server as well as the
-browser. Space checks its existing active Binari participant roster for the new
-`props` resource, not the optional queue-only exception. The design pin
-additionally requires the existing `concept` grant.
+Writes use the existing authenticated `/api/requests` queue. On native
+Mac NGS, the private server checks the actual Request Service MCP
+`request_submit` schema (read-only `tools/list`) before showing the Add or
+Regenerate controls, and rechecks before enqueueing. It accepts only the
+confirmed static `still` mode; an inaccessible or mismatched schema produces
+no active control. The normal RS-MCP relay must be at this same release before
+activating the native app. It forwards the typed request; there is no direct
+browser call to the Request Service.
+
+The common Space UI also requires explicit server capabilities. Its
+`NGS_PROP_GENERATE_ENABLED`, `NGS_PROP_REGENERATE_ENABLED` and
+`NGS_PROP_ANIMATION_ENABLED` settings are off by default; this Mac deployment
+does not set them or publish Space. Space applies its existing active Binari
+participant roster to the `props` resource, not the queue-only exception.
+The design pin additionally requires the existing `concept` grant.
+
+To adopt the existing private Mac preview release, the reviewed ordinary OPS
+assembler and native executor recognize an owner-pinned
+`project-page-local-candle-<40 hex>` only as a predecessor, with the matching
+commit binding and execution directory. Destination is always the verified
+GitHub artifact. Queue, Miniflare data, startup/schema pins and preview files
+are unchanged. The usual private predecessor plist/rollback is retained.
 
 `prop.generate` is a complete creation intent, not an image request.
 A regeneration targets one current published folder by revision and SHA.

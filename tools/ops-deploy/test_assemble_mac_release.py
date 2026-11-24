@@ -5,6 +5,7 @@ import plistlib
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import assemble_mac_release as a
 
@@ -65,6 +66,30 @@ class AssemblyTests(unittest.TestCase):
             scratch=self.scratch, prior_plist=self.prior, expected_prior_sha256=self.prior_hash,
             node=self.root / "node", npm_cache=self.root / "npm", _prior=lambda *args: self.old,
             _install=install or self.installer)
+
+    def test_verified_candle_predecessor_only_with_exact_owner_scope(self):
+        revision="3"*40
+        anchored=self.releases/("project-page-local-candle-"+revision)
+        self.old.rename(anchored)
+        work=self.scratch/revision
+        work.mkdir(mode=0o700)
+        volume=self.root/"mount"
+        volume.mkdir(mode=0o700)
+        scope=volume/"NGS-Miniflare-fixture"
+        scope.mkdir(mode=0o700)
+        node=self.root/"node"
+        queue=self.root/"queue"
+        env={"NGS_COMMIT_SHA":revision,"NGS_REQUEST_QUEUE_DB":str(queue),
+             "NGS_PROJECT_LISTEN_PORT":"5274","NGS_REQUEST_QUEUE_MCP_PORT":"5275",
+             "NGS_FILE_SYNC_MODE":"push","NGS_FILE_SYNC_PROJECTS":"binari",
+             "NGS_LOCAL_MINIFLARE_ROOT":str(scope)}
+        prior={"Label":a.LABEL,"ProgramArguments":[str(node),str(anchored/a.ENTRY)],
+               "WorkingDirectory":str(work),"EnvironmentVariables":env}
+        with patch.object(a,"EXTERNAL_VOLUME",volume),patch.object(Path,"is_mount",return_value=True):
+            self.assertEqual(a.prior_release(prior,self.releases,self.scratch,node,queue),anchored)
+            for change in ({"NGS_COMMIT_SHA":"4"*40},{"NGS_LOCAL_S3_CONFIG":"unexpected"}):
+                with self.assertRaisesRegex(a.AssemblyError,"PRIOR_NOT_NATIVE_COMBINED"):
+                    a.prior_release({**prior,"EnvironmentVariables":{**env,**change}},self.releases,self.scratch,node,queue)
 
     def test_exact_unselected_assembly_and_no_duplicate(self):
         source, scratch = self.assemble()

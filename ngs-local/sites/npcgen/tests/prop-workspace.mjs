@@ -69,8 +69,9 @@ test('exact no-preset named request, current pin, double submission protection d
  };
  for(const [key,raw] of fixture)make(key,raw);
  const sent=[];
+ let enabled=true;
  const server=createLocalProjectPageServer({root,requestQueue:{enqueue(cmd){sent.push(cmd);return {status:'queued',queueId:'fixture'};}},
-  propActions:['animation']});
+  readPropActions:async()=>enabled?['animation']:[]});
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));t.after(()=>new Promise(ok=>server.close(ok)));
  const origin='http://127.0.0.1:'+server.address().port,api='/api/prop-workspace?projectId=binari';
  const call=(path,opts)=>fetch(origin+path,opts);
@@ -92,6 +93,10 @@ test('exact no-preset named request, current pin, double submission protection d
  assert.equal(sent.length,0);
  assert.equal((await post(animation)).status,202);
  assert.deepEqual(sent.map(r=>r.payload),[animation]);
+ enabled=false;
+ assert.equal((await post(animation)).status,404);
+ assert.equal((await (await call('/__npcgen_session',{headers:{cookie}})).json()).propActions,undefined);
+ assert.equal(sent.length,1);
 });
 
 test('regeneration binds the selected immutable source and full replacement intent, not edits or a scope picker',()=>{
