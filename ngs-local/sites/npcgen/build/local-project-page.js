@@ -1,3 +1,5 @@
+import {mountPropWorkspace} from './prop-workspace-ui.mjs';
+import {validPropActions} from './prop-workspace-contract.mjs';
 import {conceptDetailOperations,conceptMarkdown,createConceptCategoryActions,syncConceptDetail} from './local-concept-category-ui.mjs';
 import {audioIndex,followAcceptedAudioResult,followDeletedAudioResults,mountAudioWorkspace,readAudioSoundConcepts,refreshAudioResults,showAudioResults} from './local-audio-workspace.mjs';
 import {loadNpcFolder} from './local-npc-workspace-ui.mjs';
@@ -14,7 +16,7 @@ const queuePanel=document.querySelector('#local-request-queue');
 const queueLabel={
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
  'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제','audio.separate':'BGM 반주 만들기',
- [motionPresetConvertType]:'2D 마네킹 프리셋 변환',
+ [motionPresetConvertType]:'2D 마네킹 프리셋 변환','prop.generate':'프랍 종합 생성','prop.update':'프랍 수정','prop.animation.generate':'프랍 애니메이션 생성',
 };
 const queueTime=new Intl.DateTimeFormat('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 let queueSession,queueRefresh=()=>{};
@@ -208,7 +210,8 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {poseSelectionV2Enabled,...session}=value??{};
+ const {poseSelectionV2Enabled,propActions,...session}=value??{};
+ if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
  return session?.state==='authenticated'&&session.backend==='space'&&
  (exact(session,'backend,readOnly,state')&&session.readOnly===true||
@@ -431,7 +434,7 @@ async function load(){
 const areas=[
  ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',false],
  ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',document.documentElement?.dataset.puzzleWorkspace==='enabled'],
- ['resources','배경·프랍 설계',false],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
+ ['resources','배경 설계',false],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
 ];
 const iconPaths={
  concept:'M4 19V5a1 1 0 0 1 1-1h7v16H5a1 1 0 0 1-1-1Zm8-15h7a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-7M7 8h2m6 0h2m-10 4h2m6 0h2',
@@ -476,11 +479,11 @@ async function loadWorkspace(search){
  const listToolbar=document.querySelector('#concept-category-tools');
  listToolbar.replaceChildren();listToolbar.hidden=true;
  let conceptActions=null,motionSubmit;
- const supported=(area,enabled)=>enabled&&(!['audio','production'].includes(area)||projectId==='binari');
+ const supported=(area,enabled)=>enabled&&(!['audio','production','props'].includes(area)||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
  document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':'항목';
  document.querySelector('#app').classList.remove('project-home');
- workspace.classList.toggle('npc-folder-workspace',tab==='npcs');
+ workspace.classList.toggle('npc-folder-workspace',tab==='npcs'||tab==='props');
  document.querySelector('#project-home').hidden=true;
  for(const id of ['#project-workspace','#workspace-identity','#workspace-tools'])document.querySelector(id).hidden=false;
  document.querySelector('#workspace-title').textContent=projectId;
@@ -656,6 +659,11 @@ async function loadWorkspace(search){
   // Same metadata and workspace routes in both environments; only the replica
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
+  if(tab==='props'){
+   await mountPropWorkspace({items,detail,tools:listToolbar,item,navigate:next,request,submit,actions:session.propActions??[],signal});
+   if(!signal.aborted)note('');
+   return;
+  }
   if(tab==='production'){
    // An independent Local puzzle, never an episode link or a legacy API.
    if(hosted)return;

@@ -1,6 +1,9 @@
 import html from "../ngs-local/sites/npcgen/build/local-project-page.html?raw";
 import css from "../ngs-local/sites/npcgen/build/local-project-page.css?raw";
 import page from "../ngs-local/sites/npcgen/build/local-project-page.js?raw";
+import propPackageContract from "../ngs-local/sites/npcgen/build/prop-package-contract.mjs?raw";
+import propWorkspace from "../ngs-local/sites/npcgen/build/prop-workspace-ui.mjs?raw";
+import propContract from "../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs?raw";
 import workspace from "../ngs-local/sites/npcgen/build/local-npc-workspace-ui.mjs?raw";
 import oneStop from "../ngs-local/sites/npcgen/build/local-npc-one-stop-ui.mjs?raw";
 import motionSelection from "../ngs-local/sites/npcgen/build/npc-motion-selection.mjs?raw";
@@ -21,6 +24,9 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/", {type: "text/html; charset=utf-8", body: withProductionAudio(html)}],
  ["/local-project-page.css", {type: "text/css; charset=utf-8", body: css}],
  ["/local-project-page.js", {type: javascript, body: page}],
+ ["/prop-package-contract.mjs", {type: javascript, body: propPackageContract}],
+ ["/prop-workspace-ui.mjs",{type:javascript,body:propWorkspace}],
+ ["/prop-workspace-contract.mjs",{type:javascript,body:propContract}],
  ["/local-npc-workspace-ui.mjs", {type: javascript, body: workspace}],
  ["/local-npc-one-stop-ui.mjs", {type: javascript, body: oneStop}],
  ["/npc-motion-selection.mjs", {type: javascript, body: motionSelection}],

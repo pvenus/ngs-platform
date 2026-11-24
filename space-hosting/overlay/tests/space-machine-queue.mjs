@@ -342,3 +342,26 @@ test('Space separation is opt-in and binds one exact authorized original source 
  const {queueId}=await accepted.json();assert.deepEqual((await new SpaceRequestQueue(db).get({queueId})).payload,payload);
  assert.equal(seen.length,2);
 });
+
+test('Space prop mutation requires its own explicit capability and existing browser CSRF/actor grants',async t=>{
+ const db=store(t),a=headers('a'),seen=[];
+ const options={db,secret:token,authorize:async()=>true,authorizeWrite:async user=>user.userId==='a',
+  replicaReads:true,workspaceReady:true,propActions:['animation']};
+ const admitProp=async (user,cmd,actions)=>{assert.equal(user.userId,'a');assert.deepEqual(actions,['animation']);seen.push(cmd);};
+ const inactive=(...args)=>browserQueueResponse(request(...args),options);
+ const active=(...args)=>browserQueueResponse(request(...args),{...options,admitProp});
+ const cfg=async browser=>(await (await browser('/__npcgen_session','GET',a)).json());
+ const cmd={requestType:'prop.animation.generate',idempotencyKey:'prop-case',payload:{schemaVersion:'ngs.prop-animation-generate.v1',
+  projectId:'binari',propId:'paper-candle',source:{revision:1,sha256:'a'.repeat(64)},motionId:'flicker',prompt:'Flame flickers once.'}};
+ const send=(browser,cfg,cmd)=>browser('/api/requests','POST',{...a,Origin:origin,'X-NPCGen-Csrf':cfg.csrfToken,
+  'X-NPCGen-Frontend-Context':cfg.contextId},cmd);
+ const off=await cfg(inactive),on=await cfg(active);
+ assert.equal(off.propActions,undefined);assert.deepEqual(on.propActions,['animation']);
+ assert.equal((await send(inactive,off,cmd)).status,404);
+ assert.equal((await send(active,on,{...cmd,payload:{...cmd.payload,preset:'not allowed'}})).status,400);
+ // This fixture inspects dispatch and payload whitelist; the true scoped
+ // admission in Local and the shared registry's separate tests bind the pin.
+ const good=await send(active,on,cmd);
+ assert.equal(good.status,202);assert.equal((await good.json()).status,'queued');
+ assert.equal(seen.at(-1).payload.prompt,'Flame flickers once.');
+});

@@ -6,7 +6,7 @@ const unavailable=new Map([
  ['/__npcgen_session','GET'],['/api/project-folders','GET'],['/api/project-folders/discover','GET'],
  ['/api/project-folders/compare','POST'],['/api/project-folders/refresh','POST'],['/api/project-folders/icon','GET'],
  ['/api/folders/compare','POST'],['/api/folders/refresh','POST'],['/api/audio-workspace','GET'],
- ['/api/project-workspace','GET'],['/api/npc-workspace','GET'],['/api/requests','POST'],
+ ['/api/project-workspace','GET'],['/api/npc-workspace','GET'],['/api/prop-workspace','GET'],['/api/requests','POST'],
 ]);
 const previousHostedBgm=new Set(['/api/space/audio-workspace','/api/space/audio-concepts','/api/space/audio-requests']);
 const csp="default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' blob:";

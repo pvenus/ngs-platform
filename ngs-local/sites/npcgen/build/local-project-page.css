@@ -302,3 +302,18 @@ ul{padding:0;list-style:none}
 .npc-animation-request-actions{display:flex;justify-content:flex-end;margin:0 0 8px}
 
 .local-puzzle-frame{display:block;width:100%;height:clamp(36rem,78dvh,58rem);border:0;border-radius:.75rem;background:#101010}
+
+/* Props use the existing two-pane folder navigation; previews load per selection. */
+.prop-detail-heading,.prop-actions{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
+.prop-detail-heading{justify-content:space-between}
+.prop-form-field{display:grid;gap:.35rem;margin-block:.8rem}
+.prop-form-field :is(input,select,textarea){width:100%;box-sizing:border-box;font:inherit}
+.prop-workspace-dialog{width:min(34rem,calc(100vw - 2rem));max-height:calc(100dvh - 2rem);box-sizing:border-box;overflow:auto}
+.prop-workspace-dialog .prop-actions{justify-content:flex-end}
+.prop-preview-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.prop-preview-pair figure{min-width:0;margin:0;text-align:center}
+.prop-preview-pair img,.prop-animation-preview img{display:block;max-width:100%;max-height:22rem;object-fit:contain;margin:auto}
+.prop-preview-pair figure:last-child img{image-rendering:pixelated}
+.prop-animation-row{display:flex;align-items:flex-start;flex-wrap:wrap;gap:.75rem;padding:.5rem 0}
+.prop-animation-preview{max-width:min(12rem,100%)}
+@media(max-width:540px){.prop-preview-pair{grid-template-columns:1fr}}

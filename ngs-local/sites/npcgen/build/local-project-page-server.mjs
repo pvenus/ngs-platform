@@ -15,6 +15,8 @@ import {validFolderPath} from './local-recursive-folders.mjs';
 import {openLocalWorkspaceProject} from './local-project-workspace.mjs';
 import {localObjectReplicaViews} from './local-object-replica-views.mjs';
 import {openLocalObjectReplicaFromEnv} from './local-object-replica-runtime.mjs';
+import {propAction,propEnabledActions,validPropActions} from './prop-workspace-contract.mjs';
+import {admitPropRequest} from './prop-workspace.mjs';
 import {dispatchWorkspaceRead,workspaceReadRoute} from './workspace-read-registry.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
 import {openLocalRequestQueue} from './local-request-queue.mjs';
@@ -31,6 +33,9 @@ const assets=new Map([
  ['/', ['text/html; charset=utf-8', new URL('./local-project-page.html',import.meta.url)]],
  ['/local-project-page.css', ['text/css; charset=utf-8', new URL('./local-project-page.css',import.meta.url)]],
  ['/local-project-page.js', ['text/javascript; charset=utf-8', new URL('./local-project-page.js',import.meta.url)]],
+ ['/prop-package-contract.mjs',['text/javascript; charset=utf-8',new URL('./prop-package-contract.mjs',import.meta.url)]],
+ ['/prop-workspace-ui.mjs',['text/javascript; charset=utf-8',new URL('./prop-workspace-ui.mjs',import.meta.url)]],
+ ['/prop-workspace-contract.mjs',['text/javascript; charset=utf-8',new URL('./prop-workspace-contract.mjs',import.meta.url)]],
  ['/local-npc-workspace-ui.mjs', ['text/javascript; charset=utf-8', new URL('./local-npc-workspace-ui.mjs',import.meta.url)]],
  ['/npc-motion-selection.mjs', ['text/javascript; charset=utf-8', new URL('./npc-motion-selection.mjs',import.meta.url)]],
  ['/local-npc-one-stop-ui.mjs', ['text/javascript; charset=utf-8', new URL('./local-npc-one-stop-ui.mjs',import.meta.url)]],
@@ -104,11 +109,11 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
  if(!Number.isInteger(port)||port<1||port>65535)throw failure('LOCAL_PROJECT_PORT_INVALID',503);
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
- return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
+ return {port,root,propActions:propEnabledActions(env),requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,propActions=[],brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -125,6 +130,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const auth=createLoopbackAuth({loadReadProjects:()=>projects});
  const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
  const queue=requestQueue??ownedQueue;
+ const activePropActions=queue&&validPropActions(propActions)?Object.freeze([...propActions]):[];
  async function allowedCombat(preset){
   if(preset==='walk'||preset==='run')return false;
   const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',item:preset});
@@ -198,6 +204,10 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const command=parseRequestSubmission(await readSmallBody(req,64*1024));
     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     projectPermission(session.principal,command.payload.projectId,undefined,false);
+    if(propAction(command.requestType)){
+     await admitPropRequest({openProject,command,actions:activePropActions,authorize:id=>projectPermission(session.principal,id,undefined,false)});
+     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+    }
     if(command.requestType==='audio.generate'){
      if(audioWorkspaceEnabled!==true)throw failure('AUDIO_WORKSPACE_UNAVAILABLE',404);
      if(!validLocalAudioPayload(command.payload))throw failure('NGS_AUDIO_GENERATE_PAYLOAD_INVALID',400);
@@ -274,6 +284,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
+     ...(activePropActions.length?{propActions:activePropActions}:{}),
      ...(poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),
      ...(queue&&audioWorkspaceEnabled===true&&audioSeparationEnabled===true?{audioSeparationEnabled:true}:{})});
    }

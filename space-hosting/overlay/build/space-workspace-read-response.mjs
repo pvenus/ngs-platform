@@ -16,8 +16,8 @@ export async function spaceWorkspaceReadResponse(request,replica,{authorize,npcR
   const result=await dispatchWorkspaceRead({pathname:url.pathname,query:url.searchParams,npcRead,
    mediaCache:!request.headers.has('Range')&&!request.headers.has('If-Range'),
    openProject:id=>openSpaceWorkspaceProject(replica,id),
-   authorize:async id=>{
-    if(id!=='binari'||await authorize?.({userId,email},id,workspaceReadResource(route==='npc'?'npcs':url.searchParams.get('tab')))!==true)
+   authorize:async (id,resource)=>{
+    if(id!=='binari'||await authorize?.({userId,email},id,route==='prop'?resource:workspaceReadResource(route==='npc'?'npcs':url.searchParams.get('tab')))!==true)
      throw failure('PROJECT_OR_RESOURCE_DENIED',403);
    }});
   if(result.json)return Response.json(result.json,{headers});

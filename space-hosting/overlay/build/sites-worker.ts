@@ -7,11 +7,13 @@ import { masterPrincipal } from "../lib/master-concept-transport";
 import { objectAudioSeparationSource } from "../ngs-local/sites/npcgen/build/object-replica-view.mjs";
 import { spaceReplicaView } from "./space-replica-view.mjs";
 import { dispatchWorkspaceRead } from "../ngs-local/sites/npcgen/build/workspace-read-registry.mjs";
+import { propEnabledActions } from "../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs";
+import { admitPropRequest } from "../ngs-local/sites/npcgen/build/prop-workspace.mjs";
 import { openSpaceWorkspaceProject } from "./space-workspace-read-storage.mjs";
 import { spaceWorkspaceReadResponse } from "./space-workspace-read-response.mjs";
 import { PromptService } from "../lib/prompt-service";
 import { createSpaceFileReplica, spaceFileSyncTools } from "./space-file-replica.mjs";
-import { authorizeSpaceQueueWrite, browserQueueResponse, machineResponse, machineTokenConfigured } from "./space-machine-routes.mjs";
+import { authorizeSpaceQueueWrite, spaceQueueParticipant, browserQueueResponse, machineResponse, machineTokenConfigured } from "./space-machine-routes.mjs";
 import { ngsCommitSha } from "./ngs-release-provenance.mjs";
 import { rejectCleanSpaceRequest } from "./clean-space-guard.mjs";
 import { runWithConnectorBinding } from "../lib/connector-context";
@@ -56,6 +58,10 @@ export default {
     const workspaceAuthorize = async (user:{userId:string,email:string},projectId:string,resource:string|undefined) => {
       if (projectId !== "binari" || !await authorize(user) || !resource) return false;
       try {
+        // The new prop folder is not a legacy PromptService logical resource.
+        // Only the existing active Binari participant roster can read it.
+        // In particular, a queue-only additional email is not a prop grant.
+        if(resource==="props")return spaceQueueParticipant(await masterPrincipal(user));
         await new PromptService(db!,user.userId,undefined,siteAppMaster(user)).resourcePolicy(projectId,resource);
         return true;
       } catch { return false; }
@@ -75,6 +81,14 @@ export default {
       return result.npcs.some((npc:{id:string})=>npc.id===npcId);
     } : undefined;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
+      propActions:propEnabledActions(env),
+      admitProp:replicaReads?async (user,command,actions)=>admitPropRequest({
+        openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),command,actions,
+        authorize:async (projectId,resource)=>{
+          if(!await workspaceAuthorize(user,projectId,resource))
+            throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
+        },
+      }):undefined,
       poseSelectionV2Enabled:(env as Cloudflare.Env & {NGS_POSE_SELECTION_V2_ENABLED?:string}).NGS_POSE_SELECTION_V2_ENABLED==="1",
       hasAudioSeparationSource:replicaReads&&env.NPCGEN_AUDIO_SEPARATION_ENABLED==="1"
         ?payload=>objectAudioSeparationSource(fileReplica!,payload):undefined,
