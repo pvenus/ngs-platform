@@ -108,3 +108,66 @@ test('regeneration binds the selected immutable source and full replacement inte
  assert.equal(validPropPayload('prop.update',payload),false);
  assert.equal(validPropPayload(propTypes.animation,{...animation,prompt:'embedding: opaque'}),false);
 });
+
+test('shared Prop DOM matches NPC cards and isolates animation folders and media by tab',async()=>{
+ const {mountPropWorkspace}=await import('../build/prop-workspace-ui.mjs');
+ class Element{
+  constructor(tag){
+   this.tag=tag;this.children=[];this.attributes={};this.events={};
+   this.classList={add:(...names)=>{this.className=[this.className,...names].filter(Boolean).join(' ');}};
+  }
+  append(...children){for(const child of children)child.parentElement=this;this.children.push(...children);}
+  replaceChildren(...children){this.children=[];this.append(...children);}
+  setAttribute(key,value){this.attributes[key]=value;}
+  addEventListener(key,value){this.events[key]=value;}
+  click(){this.events.click?.({});}
+ }
+ const document={createElement:tag=>new Element(tag)};
+ const own=Object.getOwnPropertyDescriptor(globalThis,'document');
+ Object.defineProperty(globalThis,'document',{value:document,configurable:true});
+ try{
+  const body=await propWorkspaceRead({query:new URLSearchParams({projectId:'binari',propId}),authorize:()=>{},
+   openProject:()=>({readBytes:async path=>fixture.get(path)??null})});
+  const first=body.json.prop.animations[0],second={...first,id:'flame-flicker',title:'불꽃 떨림'};
+  const walk=(el,keep)=>[...(keep(el)?[el]:[]),...el.children.flatMap(child=>walk(child,keep))];
+  async function mount(props={},published=[first,second]){
+   const pane=new Element('aside'),items=new Element('ul'),detail=new Element('article'),tools=new Element('span');
+   pane.append(items);
+   await mountPropWorkspace({items,detail,tools,item:propId,navigate:values=>'/?'+new URLSearchParams(
+    {projectId:'binari',catalogArea:'props',...values}),submit:()=>assert.fail('visual navigation must not submit'),
+    actions:['generate','regenerate'],
+    request:async path=>new URL(path,'https://fixture').searchParams.has('propId')
+     ?{prop:{...body.json.prop,animations:published}}:{props:[pointer]},...props});
+   return {items,detail,tools};
+  }
+  const basic=await mount();
+  const row=basic.items.children[0].children[0];
+  assert.match(row.className,/request-item npc-roster-entry/);
+  assert.equal(row.attributes['aria-current'],'page');
+  assert.deepEqual(row.children.map(x=>[x.tag,x.textContent]),[['strong',pointer.title],['span',propId]]);
+  assert.equal(basic.tools.children[0].attributes['aria-label'],'프랍 생성');
+  assert.match(basic.tools.children[0].className,/npc-one-stop-trigger/);
+  assert.deepEqual(walk(basic.detail,x=>x.attributes.role==='tab').map(x=>[x.textContent,x.attributes['aria-selected']]),
+   [['기본 정보','true'],['애니메이션','false']]);
+  assert.equal(walk(basic.detail,x=>x.tag==='img').length,2);
+  assert.equal(walk(basic.detail,x=>x.attributes['aria-label']==='애니메이션 폴더').length,0);
+  assert.equal(walk(basic.detail,x=>x.textContent==='재생성 요청').length,1);
+  const animated=await mount({propTab:'animation',propAnimation:second.id});
+  const menu=walk(animated.detail,x=>x.attributes['aria-label']==='애니메이션 폴더')[0];
+  assert.deepEqual(menu.children.slice(1).map(x=>[x.children[1].textContent,x.attributes['aria-current']??null]),
+   [['initial',null],['flame-flicker','page']]);
+  assert.match(menu.children[2].href,/propTab=animation&propAnimation=flame-flicker/);
+  assert.equal(walk(animated.detail,x=>x.tag==='img').length,0);
+  assert.equal(walk(animated.detail,x=>x.textContent==='재생성 요청'||x.textContent==='애니메이션 생성 요청').length,0);
+  walk(animated.detail,x=>x.textContent==='픽셀 재생')[0].click();
+  const [preview]=walk(animated.detail,x=>x.tag==='img');
+  assert.equal(preview.alt,'불꽃 떨림 픽셀');
+  assert.equal(preview.src,second.media.pixel.url);
+  const empty=await mount({propTab:'animation',propAnimation:'not-published'},[]);
+  assert.equal(walk(empty.detail,x=>x.textContent==='게시된 애니메이션이 없습니다.').length,1);
+  assert.equal(walk(empty.detail,x=>x.tag==='img').length,0);
+ }finally{
+  if(own)Object.defineProperty(globalThis,'document',own);
+  else delete globalThis.document;
+ }
+});

@@ -303,17 +303,34 @@ ul{padding:0;list-style:none}
 
 .local-puzzle-frame{display:block;width:100%;height:clamp(36rem,78dvh,58rem);border:0;border-radius:.75rem;background:#101010}
 
-/* Props use the existing two-pane folder navigation; previews load per selection. */
-.prop-detail-heading,.prop-actions{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
-.prop-detail-heading{justify-content:space-between}
-.prop-form-field{display:grid;gap:.35rem;margin-block:.8rem}
-.prop-form-field :is(input,select,textarea){width:100%;box-sizing:border-box;font:inherit}
-.prop-workspace-dialog{width:min(34rem,calc(100vw - 2rem));max-height:calc(100dvh - 2rem);box-sizing:border-box;overflow:auto}
+/* Props reuse NPC roster, detail tabs and media-card tokens. */
+.prop-roster .concept-category-heading{justify-content:flex-start}
+.prop-roster .request-item{box-sizing:border-box}
+.prop-detail-heading{flex-wrap:wrap}
+.prop-identity{min-width:0;overflow-wrap:anywhere}
+.prop-detail .prop-tab-panel,.prop-detail .prop-surface,.prop-detail .prop-animation-player{margin:0}
+.prop-request-status:empty{display:none}
+.prop-surface{min-width:0;padding:10px 12px 12px;border:1px solid var(--border);border-radius:9px;background:#fcfbf5}
+.prop-detail .prop-interaction{margin-top:12px}
+.prop-panel-heading,.prop-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.prop-control{padding:6px 11px;min-height:35px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--primary);font:inherit;font-size:.83rem;cursor:pointer}
+.prop-control:not(:disabled):hover{background:var(--secondary);border-color:var(--primary)}
+.prop-control:disabled{opacity:.55;cursor:default}
+.prop-control.prop-primary-control{background:#153f30;border-color:#b88d3c;color:var(--card)}
+.prop-control.prop-primary-control:not(:disabled):hover{background:#245442;color:var(--card)}
+.prop-form-field{display:grid;gap:.35rem;margin-block:.8rem;color:var(--primary);font-size:.86rem}
+.prop-form-field :is(input,select,textarea){width:100%;box-sizing:border-box;font:inherit;border:1px solid #cbd9ca;border-radius:7px;padding:7px 9px;background:var(--card);color:var(--foreground)}
+.prop-workspace-dialog{width:min(34rem,calc(100vw - 2rem));max-height:calc(100dvh - 2rem);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;padding:18px 22px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--foreground)}
+.prop-workspace-dialog::backdrop{background:#172e22a8}
+.prop-workspace-dialog h3{color:#103d30;font-size:1.2rem}
 .prop-workspace-dialog .prop-actions{justify-content:flex-end}
-.prop-preview-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
-.prop-preview-pair figure{min-width:0;margin:0;text-align:center}
-.prop-preview-pair img,.prop-animation-preview img{display:block;max-width:100%;max-height:22rem;object-fit:contain;margin:auto}
-.prop-preview-pair figure:last-child img{image-rendering:pixelated}
-.prop-animation-row{display:flex;align-items:flex-start;flex-wrap:wrap;gap:.75rem;padding:.5rem 0}
-.prop-animation-preview{max-width:min(12rem,100%)}
-@media(max-width:540px){.prop-preview-pair{grid-template-columns:1fr}}
+.prop-preview-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-width:44rem}
+.prop-preview-pair figure{min-width:0;margin:0}
+.prop-preview-pair figcaption{padding:6px 8px;color:var(--primary);font-size:.82rem;font-weight:650}
+.prop-preview-pair .npc-portrait-art{min-height:0;aspect-ratio:4/3;max-height:14.5rem}
+.prop-preview-pair img{display:block;width:100%;height:100%;max-height:14.5rem;object-fit:contain}
+.prop-preview-pair figure:nth-child(2) img,.prop-animation-preview:nth-child(2) img{image-rendering:pixelated}
+.prop-animation-preview{display:grid;align-content:start;gap:6px;min-width:0}
+.prop-animation-preview>span:empty{display:none}
+.prop-animation-preview>span{border:1px solid var(--border);border-radius:9px;overflow:hidden;background:repeating-conic-gradient(#f2f2ec 0% 25%,#fffdf8 0% 50%) 50%/20px 20px}
+@media(max-width:540px){.prop-preview-pair{grid-template-columns:1fr}.prop-workspace-dialog{width:calc(100vw - 16px);padding:12px}}

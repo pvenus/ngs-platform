@@ -34,7 +34,7 @@ function staticImage(media,label){
 function animationPreview(clip,lane){
  const frame=node('div',null,'prop-animation-preview'),m=clip.media?.[lane],src=verifiedURL(m);
  if(!src||m.mediaType!=='image/apng')return frame;
- const label=lane==='detail'?'디테일':'픽셀',button=node('button',label+' 재생');
+ const label=lane==='detail'?'디테일':'픽셀',button=node('button',label+' 재생','prop-control');
  button.type='button';const image=node('span');frame.append(button,image);
  button.addEventListener('click',()=>{
   const img=node('img');img.src=src;img.alt=clip.title+' '+label;image.replaceChildren(img);
@@ -42,60 +42,118 @@ function animationPreview(clip,lane){
  return frame;
 }
 
-export async function mountPropWorkspace({items,detail,tools,item,navigate,request,submit,actions=[],signal}){
+export async function mountPropWorkspace({items,detail,tools,item,propTab,propAnimation,navigate,request,submit,actions=[],signal}){
  const can=action=>typeof submit==='function'&&actions.includes(action);
- const pageStatus=node('p',null,'meta');pageStatus.setAttribute('role','status');
+ const tab=propTab==='animation'?'animation':'basic';
+ const sectionUrl=(id,key=tab,clip)=>navigate({item:id,propTab:key==='animation'?'animation':'',propAnimation:key==='animation'&&clip?clip:''});
+ items.parentElement.classList.add('npc-roster-list','prop-roster');
+ detail.classList.add('npc-detail','prop-detail');
+ const pageStatus=node('p',null,'meta prop-request-status');pageStatus.setAttribute('role','status');
  let selected=null;
  const data=await request(api({}));
  if(signal?.aborted)return;
  if(!Array.isArray(data?.props))throw Error('PROP_WORKSPACE_INVALID');
  if(can('generate')){
-  const add=node('button','＋ 프랍 생성');add.type='button';
+  const add=node('button','+','npc-one-stop-trigger');add.type='button';
+  add.setAttribute('aria-label','프랍 생성');add.title='프랍 생성';
   add.addEventListener('click',()=>open('generate'));tools.replaceChildren(add);tools.hidden=false;
  }
  const rows=data.props;
  items.replaceChildren(...rows.map(row=>{
-  const link=node('a',row.title,'workspace-nav-item');
-  link.href=navigate({item:row.propId});if(item===row.propId)link.setAttribute('aria-current','page');
-  link.append(node('small',row.propId,'meta'));return link;
+  const entry=node('li'),link=node('a',null,'request-item npc-roster-entry');
+  link.href=sectionUrl(row.propId);if(item===row.propId)link.setAttribute('aria-current','page');
+  link.append(node('strong',row.title),node('span',row.propId,'meta'));entry.append(link);return entry;
  }));
- if(rows.length===0)items.append(node('p','게시된 프랍이 없습니다.','meta'));
- if(!item){
-  detail.replaceChildren(node('h3','프랍 설계'),node('p','목록에서 프랍을 선택하면 게시된 디자인과 애니메이션을 볼 수 있습니다.','meta'),pageStatus);
+ if(rows.length===0)items.append(node('li','게시된 프랍이 없습니다.','meta'));
+ if(!item||!propSlug(item)||!rows.some(row=>row.propId===item)){
+  const header=node('header',null,'npc-detail-heading');
+  header.append(node('h3','프랍 설계'));
+  const body=node('section',null,'npc-tab-panel');
+  body.append(node('p',item?'선택한 프랍 폴더가 없습니다.':'왼쪽 목록에서 프랍을 선택하세요.','meta'),pageStatus);
+  detail.replaceChildren(header,body);
   return;
- }
- if(!propSlug(item)||!rows.some(row=>row.propId===item)){
-  detail.replaceChildren(node('h3','프랍 설계'),node('p','선택한 프랍 폴더가 없습니다.','meta'),pageStatus);return;
  }
  const {prop}=await request(api({propId:item}));
  if(signal?.aborted)return;
  if(prop?.propId!==item)throw Error('PROP_WORKSPACE_INVALID');
  selected=prop;
- const bar=node('header',null,'prop-detail-heading');
- const heading=node('div');heading.append(node('h3',prop.title),node('p',item+' · 버전 '+prop.source.revision,'meta'));
- bar.append(heading);
- const buttons=node('div',null,'prop-actions');
- for(const action of ['regenerate','animation'])if(can(action)){
-  const b=node('button',actionsLabel[action]);b.type='button';b.addEventListener('click',()=>open(action));buttons.append(b);
+ const bar=node('header',null,'npc-detail-heading prop-detail-heading');
+ const heading=node('div',null,'prop-identity'),badges=node('div',null,'npc-character-badges');
+ badges.append(node('span',item),node('span','버전 '+prop.source.revision));
+ heading.append(node('h3',prop.title),badges);bar.append(heading);
+ if(tab==='basic'&&can('regenerate'))bar.append(actionButton('regenerate'));
+ const tabs=node('nav',null,'npc-detail-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','프랍 상세 영역');
+ const links=[['basic','기본 정보'],['animation','애니메이션']].map(([key,label],i,choices)=>{
+  const link=node('a',label);link.id='prop-tab-'+key;link.href=sectionUrl(item,key);
+  link.setAttribute('role','tab');link.setAttribute('aria-selected',String(key===tab));
+  link.setAttribute('aria-controls','prop-tab-panel');link.tabIndex=key===tab?0:-1;
+  link.addEventListener('keydown',event=>{
+   const next=event.key==='ArrowRight'?(i+1)%choices.length:event.key==='ArrowLeft'?(i+choices.length-1)%choices.length
+    :event.key==='Home'?0:event.key==='End'?choices.length-1:null;
+   if(next!==null){event.preventDefault();links[next].click();}
+  });
+  return link;
+ });
+ tabs.append(...links);
+ const panel=node('section',null,'npc-tab-panel prop-tab-panel');
+ panel.id='prop-tab-panel';panel.tabIndex=0;
+ panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','prop-tab-'+tab);
+ detail.replaceChildren(bar,tabs,panel);
+ panel.append(pageStatus);
+ if(tab==='basic')showBasic(panel,prop);
+ else showAnimations(panel,prop);
+
+ function actionButton(action){
+  const button=node('button',actionsLabel[action],'prop-control');button.type='button';
+  button.addEventListener('click',()=>open(action));return button;
  }
- if(buttons.children.length)bar.append(buttons);
- const preview=node('div',null,'prop-preview-pair');
- for(const [lane,label] of [['detail','디테일'],['pixel','픽셀']]){
-  const figure=node('figure');figure.append(staticImage(prop.media?.[lane],prop.title+' '+label),node('figcaption',label));preview.append(figure);
+ function showBasic(panel,prop){
+  const card=node('section',null,'prop-surface');
+  card.append(node('h4','프랍 이미지','npc-media-heading'));
+  const preview=node('div',null,'prop-preview-pair');
+  for(const [lane,label] of [['detail','디테일'],['pixel','픽셀']]){
+   const figure=node('figure',null,'npc-portrait-card'),art=node('div',null,'npc-portrait-art');
+   art.append(staticImage(prop.media?.[lane],prop.title+' '+label));
+   figure.append(art,node('figcaption',label));preview.append(figure);
+  }
+  card.append(preview);panel.append(card);
+  if(prop.interaction?.pixelOpen||prop.interaction?.detailTrigger){
+   const interaction=node('section',null,'prop-surface prop-interaction');
+   interaction.append(node('h4','상호작용','npc-media-heading'));
+   if(prop.interaction.pixelOpen)interaction.append(node('p','픽셀 보기: 열기','meta'));
+   if(prop.interaction.detailTrigger)interaction.append(node('p','디테일 보기: 작동','meta'));
+   panel.append(interaction);
+  }
  }
- const clips=node('section');clips.append(node('h4','애니메이션'));
- if(!prop.animations.length)clips.append(node('p','게시된 애니메이션이 없습니다.','meta'));
- for(const clip of prop.animations){
-  const row=node('article',null,'prop-animation-row');
-  row.append(node('strong',clip.title),animationPreview(clip,'detail'),animationPreview(clip,'pixel'));clips.append(row);
+ function showAnimations(panel,prop){
+  const heading=node('div',null,'prop-panel-heading');
+  heading.append(node('h4','애니메이션','npc-media-heading'));
+  if(can('animation'))heading.append(actionButton('animation'));
+  panel.append(heading);
+  const clips=prop.animations;
+  if(!clips.length){
+   const empty=node('div',null,'prop-surface');
+   empty.append(node('p','게시된 애니메이션이 없습니다.','meta'));
+   panel.append(empty);return;
+  }
+  const clip=clips.find(row=>row.id===propAnimation)??clips[0];
+  const layout=node('div',null,'npc-planning-layout');
+  const menu=node('nav',null,'npc-planning-nav prop-animation-nav');
+  menu.setAttribute('aria-label','애니메이션 폴더');
+  menu.append(node('h4','애니메이션 폴더'));
+  for(const row of clips){
+   const folder=node('a',null,'npc-roster-entry');
+   folder.href=sectionUrl(item,'animation',row.id);
+   folder.append(node('strong',row.title),node('span',row.id,'meta'));
+   if(row.id===clip.id)folder.setAttribute('aria-current','page');
+   menu.append(folder);
+  }
+  const player=node('section',null,'npc-planning-page prop-animation-player');
+  player.append(node('h4',clip.title));
+  const pair=node('div',null,'prop-preview-pair');
+  pair.append(animationPreview(clip,'detail'),animationPreview(clip,'pixel'));
+  player.append(pair);layout.append(menu,player);panel.append(layout);
  }
- const interaction=node('section');
- if(prop.interaction?.pixelOpen||prop.interaction?.detailTrigger){
-  interaction.append(node('h4','상호작용'));
-  if(prop.interaction.pixelOpen)interaction.append(node('p','픽셀 보기: 열기'));
-  if(prop.interaction.detailTrigger)interaction.append(node('p','디테일 보기: 작동'));
- }
- detail.replaceChildren(bar,pageStatus,preview,interaction,clips);
 
  function open(action){
   if(!can(action)||action!=='generate'&&!selected)return;
@@ -114,7 +172,7 @@ export async function mountPropWorkspace({items,detail,tools,item,navigate,reque
   if(motionId)form.append(field('애니메이션 이름',motionId));
   form.append(field(action==='animation'?'움직임 프롬프트':'요청 내용',intent));
   const info=node('p',null,'meta');info.setAttribute('role','status');
-  const footer=node('div',null,'prop-actions'),cancel=node('button','닫기'),send=node('button','요청 보내기');
+  const footer=node('div',null,'prop-actions'),cancel=node('button','닫기','prop-control'),send=node('button','요청 보내기','prop-control prop-primary-control');
   cancel.type='button';send.type='submit';footer.append(cancel,send);form.append(info,footer);modal.append(form);
   const abort=()=>modal.close();
   signal?.addEventListener('abort',abort,{once:true});

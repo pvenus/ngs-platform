@@ -481,7 +481,7 @@ async function loadWorkspace(search){
  let conceptActions=null,motionSubmit;
  const supported=(area,enabled)=>enabled&&(!['audio','production','props'].includes(area)||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
- document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':'항목';
+ document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':'항목';
  document.querySelector('#app').classList.remove('project-home');
  workspace.classList.toggle('npc-folder-workspace',tab==='npcs'||tab==='props');
  document.querySelector('#project-home').hidden=true;
@@ -660,7 +660,7 @@ async function loadWorkspace(search){
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
   if(tab==='props'){
-   await mountPropWorkspace({items,detail,tools:listToolbar,item,navigate:next,request,submit,actions:session.propActions??[],signal});
+   await mountPropWorkspace({items,detail,tools:listToolbar,item,propTab:search.get('propTab'),propAnimation:search.get('propAnimation'),navigate:next,request,submit,actions:session.propActions??[],signal});
    if(!signal.aborted)note('');
    return;
   }
