@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {refreshAudioResults} from '../build/local-audio-workspace.mjs';
 import {motionPresetConvertType} from '../build/motion-preset-convert-2d.mjs';
+import {cinematicType} from '../build/cinematic-contract.mjs';
+
 const source=readFileSync(new URL('../build/local-project-page.js',import.meta.url),'utf8')
  .replace(/^import .*;\n/gm,'').replace(/\nroute\(\);\s*$/,'\n');
 const path='/api/space/project-catalog', requestId='space.catalog.11111111-2222-4333-8444-555555555555';
@@ -30,7 +32,7 @@ function browser(handler,search='',extra={},progressEnabled=false){
   documentElement:{dataset:{audioWorkspace:'enabled'}},createElement:()=>dom(),createElementNS:()=>dom(),
   hidden:false,addEventListener(name,fn,opts){events.set(name,{fn,signal:opts?.signal});}};
  const context={document,location:{search},window:{addEventListener(){}},Intl,URLSearchParams,AbortController,AbortSignal,
-  mountAudioWorkspace:()=>dom(),showAudioResults:()=>{},refreshAudioResults,motionPresetConvertType,motionConversionForm:()=>null,setInterval:()=>42,clearInterval(){},
+  mountAudioWorkspace:()=>dom(),showAudioResults:()=>{},refreshAudioResults,cinematicType,motionPresetConvertType,motionConversionForm:()=>null,setInterval:()=>42,clearInterval(){},
   setTimeout:(fn,ms)=>{
    if(ms===2500){const id=++sequence;syncTimer.set(id,fn);return id;}
    return setTimeout(fn,ms===2000?ms:0);
