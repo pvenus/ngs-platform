@@ -142,12 +142,13 @@ test('non-preset single animation appends a revision without dropping or modifyi
  await assert.rejects(validatePropSuccessor(pack,{...next,animations:[appended]},proof),/PRESERVATION/);
  await assert.rejects(validatePropSuccessor(pack,{...next,title:'부주의한 편집'},proof),/PRESERVATION/);
  await assert.rejects(validatePropSuccessor(pack,{...next,animations:[...pack.animations,{...appended,requestSha256:'6'.repeat(64)}]},proof),/LINEAGE/);
- await validatePropSuccessor(pack,{...next,title:'설명만 편집',animations:pack.animations},{operation:'edit',editScope:'metadata'});
- await assert.rejects(validatePropSuccessor(pack,next,{operation:'edit',editScope:'metadata'}),/PRESERVATION/);
  const alternate=media(giflikePng(16,16,{rowFilter:1}),16,16,[]);
- const appearance={...next,media:{...pack.media,pixel:alternate},animations:pack.animations};
- await assert.rejects(validatePropSuccessor(pack,appearance,{operation:'edit',editScope:'metadata'}),/EDIT_SCOPE/);
- await validatePropSuccessor(pack,appearance,{operation:'edit',editScope:'appearance'});
+ const regenerated={...next,title:'새 연출',media:{...pack.media,pixel:alternate},animations:[]};
+ await validatePropSuccessor(pack,regenerated,{operation:'regenerate'});
+ await validatePropSuccessor(pack,{...regenerated,animations:[{...appended,id:'initial'}]},{operation:'regenerate'});
+ await assert.rejects(validatePropSuccessor(pack,next,{operation:'regenerate'}),/REGENERATE_ANIMATION/);
+ await assert.rejects(validatePropSuccessor(pack,{...regenerated,animations:pack.animations},{operation:'regenerate'}),/REGENERATE_ANIMATION/);
+ await assert.rejects(validatePropSuccessor(pack,regenerated,{operation:'edit'}),/OPERATION/);
 });
 test('canonical folder listing reads small exact pointers only and derives safe immutable paths',async()=>{
  const sha256='1'.repeat(64),contacts=[];

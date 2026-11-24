@@ -134,17 +134,20 @@ export async function listPublishedPropPointers({listPropFolders,readPointer}={}
 }
 
 /** The caller still must compare-and-swap the authoritative current pointer. */
-export async function validatePropSuccessor(previous,next,{operation,animationId,editScope}={}){
+export async function validatePropSuccessor(previous,next,{operation,animationId}={}){
  const a=parsePropPackage(previous),b=parsePropPackage(next);
  insist(a.projectId===b.projectId&&a.propId===b.propId&&b.revision===a.revision+1&&b.officialRequestId!==a.officialRequestId&&
   b.parentSha256===(await propPackageReceipt(a)).slice(suffix.length),'PROP_PACKAGE_PREDECESSOR');
  const preserved=a.animations.every((clip,i)=>canonical(clip)===canonical(b.animations[i]));
- if(operation==='edit'){
-  insist(animationId===undefined&&['metadata','appearance'].includes(editScope)&&preserved&&b.animations.length===a.animations.length,
-   'PROP_PACKAGE_ANIMATION_PRESERVATION');
-  if(editScope==='metadata')insist(canonical(a.media)===canonical(b.media),'PROP_PACKAGE_EDIT_SCOPE');
+ if(operation==='regenerate'){
+  insist(animationId===undefined&&b.animations.length<=1,'PROP_PACKAGE_REGENERATE_ANIMATION');
+  if(b.animations.length){
+   const clip=b.animations[0];
+   insist(clip.id==='initial'&&clip.officialRequestId===b.officialRequestId&&clip.requestSha256===b.requestSha256,
+    'PROP_PACKAGE_REGENERATE_ANIMATION');
+  }
  }else if(operation==='append-animation'){
-  insist(editScope===undefined&&id(animationId)&&preserved&&b.animations.length===a.animations.length+1&&
+  insist(id(animationId)&&preserved&&b.animations.length===a.animations.length+1&&
    ['media','title','interaction','designContextSha256'].every(k=>canonical(a[k])===canonical(b[k])),
    'PROP_PACKAGE_ANIMATION_PRESERVATION');
   const clip=b.animations[a.animations.length];
