@@ -17,7 +17,7 @@ import {localObjectReplicaViews} from './local-object-replica-views.mjs';
 import {openLocalObjectReplicaFromEnv} from './local-object-replica-runtime.mjs';
 import {propAction,validPropActions} from './prop-workspace-contract.mjs';
 import {admitPropRequest} from './prop-workspace.mjs';
-import {createRSStaticPropReadiness} from './rs-mcp.mjs';
+import {createRSPropReadiness} from './rs-mcp.mjs';
 import {dispatchWorkspaceRead,workspaceReadRoute} from './workspace-read-registry.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
 import {openLocalRequestQueue} from './local-request-queue.mjs';
@@ -113,7 +113,7 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
-  readPropActions:isNativeMac(platform,entryPoint)?createRSStaticPropReadiness():undefined,
+  readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 

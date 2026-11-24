@@ -131,28 +131,36 @@ export function watchSpaceRSQueue({pump,signal,onResult=()=>{},onError=()=>{},sl
 }
 export const ngsQueueMcpUrl='http://127.0.0.1:5275/mcp';
 export const rsRequestMcpUrl='http://127.0.0.1:8770/mcp';
-/** Read only the production static schemas. A submit tool name alone is not readiness. */
-export function staticPropActions(list){
+/** Read the admitted request families, not the presence of a generic submit tool. */
+export function rsPropActions(list){
  const entries=Array.isArray(list?.tools)?list.tools.filter(t=>t?.name===rsTool):[];
  if(entries.length!==1)return [];
  const input=entries[0].inputSchema;
  const types=input?.properties?.requestType?.enum;
  const branches=input?.oneOf;
  if(!Array.isArray(types)||!Array.isArray(branches))return [];
- return ['generate','regenerate'].filter(action=>{
-  const type=propTypes[action],schema='ngs.prop-'+action+'.v1';
+ const matchesKeys=(values,keys)=>Array.isArray(values)&&values.length===keys.length&&keys.every(k=>values.includes(k));
+ return ['generate','regenerate','animation'].filter(action=>{
+  const type=propTypes[action],schema='ngs.prop-'+(action==='animation'?'animation-generate':action)+'.v1';
   const exactBranches=branches.filter(x=>x?.properties?.requestType?.const===type);
-  const fields=exactBranches[0]?.properties?.payload?.properties;
-  return types.filter(x=>x===type).length===1&&exactBranches.length===1&&
-   fields?.schemaVersion?.const===schema&&fields?.projectId?.const==='binari'&&
-   fields?.motion?.const==='still';
+  const payload=exactBranches[0]?.properties?.payload,fields=payload?.properties;
+  if(types.filter(x=>x===type).length!==1||exactBranches.length!==1||
+   fields?.schemaVersion?.const!==schema||fields?.projectId?.const!=='binari')return false;
+  if(action!=='animation')return fields?.motion?.const==='still';
+  const keys=['schemaVersion','projectId','propId','source','motionId','prompt'];
+  return payload.type==='object'&&payload.additionalProperties===false&&matchesKeys(payload.required,keys)&&exact(fields,keys)&&
+   fields.propId?.type==='string'&&fields.motionId?.type==='string'&&fields.prompt?.type==='string'&&fields.prompt?.maxLength===2000&&
+   fields.source?.type==='object'&&fields.source.additionalProperties===false&&
+   matchesKeys(fields.source.required,['revision','sha256'])&&
+   exact(fields.source.properties,['revision','sha256'])&&fields.source.properties.revision?.type==='integer'&&
+   fields.source.properties.sha256?.type==='string';
  });
 }
-export function createRSStaticPropReadiness({url=rsRequestMcpUrl}={}){
+export function createRSPropReadiness({url=rsRequestMcpUrl}={}){
  const call=loopbackJsonMCP(url,{clientName:'ngs-prop-readiness',transportError:localUnavailable,timeoutMs:2500});
  let pending;
  return ()=>{
-  pending??=call.listTools({limit:128*1024}).then(staticPropActions,()=>[]).finally(()=>{pending=undefined;});
+  pending??=call.listTools({limit:128*1024}).then(rsPropActions,()=>[]).finally(()=>{pending=undefined;});
   return pending;
  };
 }

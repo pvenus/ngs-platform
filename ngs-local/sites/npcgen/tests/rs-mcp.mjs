@@ -6,7 +6,7 @@ import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {createRSQueueConsumer,createSpaceRSQueueConsumer,sameMacRSQueue,createRSStaticPropReadiness} from '../build/rs-mcp.mjs';
+import {createRSQueueConsumer,createSpaceRSQueueConsumer,sameMacRSQueue,createRSPropReadiness} from '../build/rs-mcp.mjs';
 import {createNgsHealthRelay} from '../build/rs-ops-ngs-health.mjs';
 import {createSpaceMachineMcp} from '../build/space-machine-mcp.mjs';
 import {loopbackJsonMCP} from '../build/folder-mcp-loopback.mjs';
@@ -20,29 +20,43 @@ const makeQueue=(title='Track')=>{
 };
 const idFor=key=>'request.official.'+createHash('sha256').update(JSON.stringify(['request.official.v1','local','binari',key])).digest('hex');
 const receipt=row=>({officialRequestId:idFor(row.idempotencyKey),status:'registered'});
-test('live static control is derived through read-only MCP and never infers a submit capability',async t=>{
+test('MCP exposes only independently verified static generation and exact animation append',async t=>{
  const requests=[];
- let mode='still',duplicate=false,available=true;
+ let mode='still',append=false,invalidSource=false,duplicate=false,available=true;
  const tool={name:submit,inputSchema:{properties:{requestType:{enum:['prop.generate','prop.regenerate','prop.animation.generate']}},
   oneOf:['generate','regenerate'].map(action=>({properties:{requestType:{const:'prop.'+action},
    payload:{properties:{schemaVersion:{const:'ngs.prop-'+action+'.v1'},projectId:{const:'binari'},motion:{const:'still'}}}}}))}};
+ const appendBranch={properties:{requestType:{const:'prop.animation.generate'},payload:{type:'object',additionalProperties:false,
+  required:['schemaVersion','projectId','propId','source','motionId','prompt'],properties:{
+  schemaVersion:{const:'ngs.prop-animation-generate.v1'},projectId:{const:'binari'},
+  propId:{type:'string'},motionId:{type:'string'},prompt:{type:'string',maxLength:2000},
+  source:{type:'object',additionalProperties:false,required:['revision','sha256'],
+   properties:{revision:{type:'integer'},sha256:{type:'string'}}},
+ }}}};
  const server=createServer(async (req,res)=>{
   let raw='';for await(const x of req)raw+=x;
   const {id,method}=JSON.parse(raw);requests.push(method);
   if(!available){res.writeHead(503);res.end();return;}
   if(method==='notifications/initialized'){res.writeHead(202);res.end();return;}
   const current=structuredClone(tool);current.inputSchema.oneOf[0].properties.payload.properties.motion={const:mode};
+  if(append){
+   const branch=structuredClone(appendBranch);
+   if(invalidSource)delete branch.properties.payload.properties.source.properties.sha256;
+   current.inputSchema.oneOf.push(branch);
+  }
   const result=method==='initialize'?{protocolVersion:'2025-06-18',capabilities:{tools:{}}}:
    {tools:duplicate?[current,current]:[current]};
   res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({jsonrpc:'2.0',id,result}));
  });
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));t.after(()=>new Promise(ok=>server.close(ok)));
- const read=createRSStaticPropReadiness({url:'http://127.0.0.1:'+server.address().port+'/mcp'});
+ const read=createRSPropReadiness({url:'http://127.0.0.1:'+server.address().port+'/mcp'});
  assert.deepEqual(await read(),['generate','regenerate']);
+ append=true;assert.deepEqual(await read(),['generate','regenerate','animation']);
+ invalidSource=true;assert.deepEqual(await read(),['generate','regenerate']);
  mode='subtle';assert.deepEqual(await read(),['regenerate']);
  duplicate=true;assert.deepEqual(await read(),[]);
  available=false;assert.deepEqual(await read(),[]);
- assert.deepEqual(requests,['initialize','notifications/initialized','tools/list','tools/list','tools/list','tools/list']);
+ assert.deepEqual(requests,['initialize','notifications/initialized','tools/list','tools/list','tools/list','tools/list','tools/list','tools/list']);
 });
 test('exact success is acknowledged, lost ACK resumes without another submit, unrelated request progresses',async()=>{
  const a=makeQueue('A'),b=makeQueue('B'),rows=new Map([[a.queueId,a],[b.queueId,b]]);

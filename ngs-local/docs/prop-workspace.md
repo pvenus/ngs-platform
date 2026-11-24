@@ -11,8 +11,10 @@ Writes use the existing authenticated `/api/requests` queue. On native
 Mac NGS, the private server checks the actual Request Service MCP
 `request_submit` schema (read-only `tools/list`) before showing the Add or
 Regenerate controls, and rechecks before enqueueing. It accepts only the
-confirmed static `still` mode; an inaccessible or mismatched schema produces
-no active control. The normal RS-MCP relay must be at this same release before
+confirmed static `still` mode for creation/regeneration. A separate
+`prop.animation.generate` schema with the selected source revision and SHA
+enables only the existing-prop animation action, never a create/regenerate
+mode. An inaccessible or mismatched schema produces no active control. The normal RS-MCP relay must be at this same release before
 activating the native app. It forwards the typed request; there is no direct
 browser call to the Request Service.
 

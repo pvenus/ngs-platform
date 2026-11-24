@@ -16,9 +16,6 @@ function field(label,input){
 function input(text,max){
  const n=node('input');n.required=true;n.maxLength=max;if(text)n.placeholder=text;return n;
 }
-function select(options){
- const n=node('select');for(const [value,label] of options){const opt=node('option',label);opt.value=value;n.append(opt);}return n;
-}
 function textarea(label,max){
  const n=node('textarea');n.required=true;n.maxLength=max;n.rows=5;n.placeholder=label;return n;
 }
@@ -165,9 +162,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   const id=action==='generate'?input('예: paper-collar-candle',80):null;
   const motionId=action==='animation'?input('예: candle-flicker',80):null;
   const intent=textarea(action==='animation'?'어떻게 움직이는지 적어 주세요.':'용도, 형태, 상태 또는 바꿀 내용을 적어 주세요.',action==='animation'?2000:4000);
-  const motion=action!=='animation'&&can('animation')?select([['still','정지 프랍'],['subtle','짧은 움직임도 포함']]):null;
   if(id)form.append(field('프랍 폴더 이름',id));
-  if(motion)form.append(field('기본 구성',motion));
   if(action==='regenerate')form.append(node('p','완성된 새 프랍으로 교체합니다. 이전 버전은 보존되며, 기존 애니메이션은 새 버전에 자동으로 가져오지 않습니다.','meta'));
   if(motionId)form.append(field('애니메이션 이름',motionId));
   form.append(field(action==='animation'?'움직임 프롬프트':'요청 내용',intent));
@@ -190,7 +185,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
     if(action==='animation')Object.assign(body,{motionId:motionId.value.trim(),prompt:intent.value.trim()});
     else {
      body.intent=intent.value.trim();
-     body.motion=motion?.value??'still';
+     body.motion='still';
      body.designContextSha256=(await request(api({view:'design'}))).designContextSha256;
     }
     if(signal?.aborted||!modal.open)return;

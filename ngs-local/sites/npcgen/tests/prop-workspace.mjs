@@ -8,7 +8,7 @@ import {dirname,join} from 'node:path';
 import {createLocalProjectPageServer} from '../build/local-project-page-server.mjs';
 import {canonicalPropPackage} from '../build/prop-package-contract.mjs';
 import {propPayload,propTypes,validPropPayload} from '../build/prop-workspace-contract.mjs';
-import {propWorkspaceRead} from '../build/prop-workspace.mjs';
+import {admitPropRequest,propWorkspaceRead} from '../build/prop-workspace.mjs';
 
 const pin='1'.repeat(64),digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const propId='paper-candle',p='props/'+propId;
@@ -163,11 +163,23 @@ test('shared Prop DOM matches NPC cards and isolates animation folders and media
   const [preview]=walk(animated.detail,x=>x.tag==='img');
   assert.equal(preview.alt,'불꽃 떨림 픽셀');
   assert.equal(preview.src,second.media.pixel.url);
+  const allowed=await mount({propTab:'animation',actions:['generate','regenerate','animation']});
+  assert.equal(walk(allowed.detail,x=>x.textContent==='애니메이션 생성 요청').length,1);
+  assert.equal(walk(allowed.detail,x=>x.tag==='img').length,0);
   const empty=await mount({propTab:'animation',propAnimation:'not-published'},[]);
   assert.equal(walk(empty.detail,x=>x.textContent==='게시된 애니메이션이 없습니다.').length,1);
   assert.equal(walk(empty.detail,x=>x.tag==='img').length,0);
  }finally{
   if(own)Object.defineProperty(globalThis,'document',own);
   else delete globalThis.document;
+ }
+});
+
+test('existing-prop animation capability does not authorize animated create/regenerate',async()=>{
+ const actions=['generate','regenerate','animation'];
+ for(const k of ['generate','regenerate']){
+  const payload=propPayload(k,{propId,...(k==='regenerate'?{source}:{}),intent:'정적 소품 수정',designContextSha256:pin,motion:'subtle'});
+  await assert.rejects(admitPropRequest({openProject:()=>assert.fail('no source read for unavailable motion'),
+   actions,command:{requestType:propTypes[k],payload}}),{status:404});
  }
 });
