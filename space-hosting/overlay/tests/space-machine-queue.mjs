@@ -365,3 +365,24 @@ test('Space prop mutation requires its own explicit capability and existing brow
  assert.equal(good.status,202);assert.equal((await good.json()).status,'queued');
  assert.equal(seen.at(-1).payload.prompt,'Flame flickers once.');
 });
+
+test('cinematic queue requires opt-in and exact source admission under existing Site auth',async t=>{
+ const db=store(t),a=headers('a'),seen=[];
+ const options={db,secret:token,authorize:async()=>true,authorizeWrite:async user=>user.userId==='a',
+  replicaReads:true,workspaceReady:true,admitCinematic:async(user,cmd)=>{
+   assert.equal(user.userId,'a');seen.push(cmd.payload.sourceSha256);
+   if(cmd.payload.sourceSha256!=='a'.repeat(64))throw Object.assign(Error('CINEMATIC_SOURCE_NOT_FOUND'),{status:404});
+  }};
+ const call=(on,...args)=>browserQueueResponse(request(...args),{...options,cinematicEnabled:on});
+ const cfg=async on=>(await (await call(on,'/__npcgen_session','GET',a)).json());
+ const payload={schemaVersion:'ngs.cinematic-generate.v1',projectId:'binari',sourceSha256:'a'.repeat(64),motionPrompt:'The folded jacket opens.'};
+ const send=(on,cfg,payload)=>call(on,'/api/requests','POST',{...a,Origin:origin,'X-NPCGen-Csrf':cfg.csrfToken,
+  'X-NPCGen-Frontend-Context':cfg.contextId},{requestType:'cinematic.generate',idempotencyKey:'one-cinematic',payload});
+ const off=await cfg(false),on=await cfg(true);
+ assert.equal(off.cinematicEnabled,undefined);assert.equal(on.cinematicEnabled,true);
+ assert.equal((await send(false,off,payload)).status,404);
+ assert.equal((await send(true,on,{...payload,sourceSha256:'b'.repeat(64)})).status,404);
+ const accept=await send(true,on,payload);assert.equal(accept.status,202);
+ const {queueId}=await accept.json();assert.deepEqual((await new SpaceRequestQueue(db).get({queueId})).payload,payload);
+ assert.deepEqual(seen,['b'.repeat(64),'a'.repeat(64)]);
+});

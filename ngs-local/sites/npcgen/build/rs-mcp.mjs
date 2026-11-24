@@ -10,8 +10,9 @@ import {createSpaceMachineMcp,spaceMachineConfiguration} from './space-machine-m
 const rsTool='request_submit',spaceRsTool='request_submit_space';
 const projectId='binari',limit=16;
 const storedStatuses=new Set(['registered','planned','completed','failed','cancelled']);
+import {cinematicType} from './cinematic-contract.mjs';
 import {propTypes} from './prop-workspace-contract.mjs';
-const kinds=new Set([...Object.values(propTypes),'npc.workflow','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
+const kinds=new Set([cinematicType,...Object.values(propTypes),'npc.workflow','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const queueId=(v,source)=>typeof v==='string'&&v.length===46&&v.startsWith('ngs.'+source+'.')&&uuid.test(v.slice(10));
@@ -20,6 +21,7 @@ const falseReceipt=()=>Error('NGS_RS_RECEIPT_UNCONFIRMED');
 const localUnavailable=()=>Error('NGS_RS_MCP_UNAVAILABLE');
 const invalid=()=>Error('NGS_REQUEST_QUEUE_RESPONSE_INVALID');
 const definitive=new Map([
+ ['NGS_CINEMATIC_PAYLOAD_INVALID',400],['CINEMATIC_SOURCE_NOT_FOUND',404],
  ['REQUEST_SUBMIT_INVALID',400],['NGS_ONE_STOP_PAYLOAD_INVALID',400],['NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID',400],['NGS_CONCEPT_CATEGORY_PAYLOAD_INVALID',400],
  ['NGS_NPC_PLANNING_ADD_PAYLOAD_INVALID',400],['NGS_NPC_PLANNING_UPDATE_PAYLOAD_INVALID',400],
  ['NGS_AUDIO_GENERATE_PAYLOAD_INVALID',400],['NGS_AUDIO_DELETE_PAYLOAD_INVALID',400],

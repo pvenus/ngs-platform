@@ -8,6 +8,7 @@ import { objectAudioSeparationSource } from "../ngs-local/sites/npcgen/build/obj
 import { spaceReplicaView } from "./space-replica-view.mjs";
 import { dispatchWorkspaceRead } from "../ngs-local/sites/npcgen/build/workspace-read-registry.mjs";
 import { propEnabledActions } from "../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs";
+import { admitCinematicRequest } from "../ngs-local/sites/npcgen/build/cinematic-workspace.mjs";
 import { admitPropRequest } from "../ngs-local/sites/npcgen/build/prop-workspace.mjs";
 import { openSpaceWorkspaceProject } from "./space-workspace-read-storage.mjs";
 import { spaceWorkspaceReadResponse } from "./space-workspace-read-response.mjs";
@@ -61,7 +62,7 @@ export default {
         // The new prop folder is not a legacy PromptService logical resource.
         // Only the existing active Binari participant roster can read it.
         // In particular, a queue-only additional email is not a prop grant.
-        if(resource==="props")return spaceQueueParticipant(await masterPrincipal(user));
+        if(resource==="props"||resource==="cinematics")return spaceQueueParticipant(await masterPrincipal(user));
         await new PromptService(db!,user.userId,undefined,siteAppMaster(user)).resourcePolicy(projectId,resource);
         return true;
       } catch { return false; }
@@ -81,6 +82,14 @@ export default {
       return result.npcs.some((npc:{id:string})=>npc.id===npcId);
     } : undefined;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
+      cinematicEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_ENABLED?:string}).NGS_CINEMATIC_ENABLED==="1",
+      admitCinematic:replicaReads?async (user,command)=>admitCinematicRequest({
+        openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),command,
+        authorize:async (projectId,resource)=>{
+          if(!await workspaceAuthorize(user,projectId,resource))
+            throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
+        },
+      }):undefined,
       propActions:propEnabledActions(env),
       admitProp:replicaReads?async (user,command,actions)=>admitPropRequest({
         openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),command,actions,

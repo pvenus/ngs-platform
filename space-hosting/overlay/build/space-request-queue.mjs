@@ -5,6 +5,7 @@ import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} 
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
 import {isSelectionSchema,validNpcMotionSelectionRequest,validNpcWorkflowIdentity,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 import {propAction,validPropPayload} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
+import {cinematicType,validCinematicPayload} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
 const table='ngs_space_request_queue_v1';
 const cap=128,maxList=16,receiptTTL=24*60*60*1000;
 const queuePattern=/^ngs\.space\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
@@ -49,6 +50,7 @@ function commandOK(cmd){
     !clientPattern.test(cmd.idempotencyKey)||!record(cmd.payload)||cmd.payload.projectId!=='binari')return false;
  const p=cmd.payload;
  switch(cmd.requestType){
+ case cinematicType:return validCinematicPayload(p);
  case 'audio.generate':return validLocalAudioPayload(p);
  case audioSeparationType:return validAudioSeparationPayload(p);
  case 'audio.delete':return exact(p,['schemaVersion','projectId','officialRequestId'])&&p.schemaVersion==='ngs.audio-delete.v1'&&

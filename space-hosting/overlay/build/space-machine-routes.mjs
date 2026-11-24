@@ -7,6 +7,7 @@ export const machineTokenConfigured=validMachineToken;
 // Only call with the server-resolved participant, never browser-supplied roles.
 export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
  ['owner','editor','viewer'].includes(grant.role);
+import {cinematicType} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
 import {propAction,validPropActions} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
 const chunkTool='ngs_file_sync_file_chunk',small=32*1024;
@@ -133,7 +134,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,admitCinematic}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -144,11 +145,12 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   need(typeof authorize==='function'&&await authorize({userId:id,email})===true,403,'PROJECT_OR_RESOURCE_DENIED');
   const actor=await hash(JSON.stringify(['space.queue.actor.v1',id])),tokens=await csrf(secret,actor),service=new SpaceRequestQueue(db);
   const activeProps=replicaReads&&workspaceReady&&validPropActions(propActions)&&typeof admitProp==='function'?propActions:[];
+  const activeCinematic=replicaReads&&workspaceReady&&cinematicEnabled===true&&typeof admitCinematic==='function';
   if(url.pathname===session){
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
    const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...tokens});
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));
@@ -164,6 +166,10 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   const {value}=await body(request,small);
   if((value?.requestType==='npc.workflow'||value?.requestType==='npc.animation.regenerate')&&isPoseSelectionV2(value.payload?.schemaVersion))
    need(replicaReads&&workspaceReady&&poseSelectionV2Enabled===true,404,'NPC_POSE_SELECTION_V2_UNAVAILABLE');
+  if(value?.requestType===cinematicType){
+   need(activeCinematic,404,'CINEMATIC_GENERATION_UNAVAILABLE');
+   await admitCinematic({userId:id,email},value);
+  }
   const action=propAction(value?.requestType);
   if(action){
    need(activeProps.includes(action),404,'PROP_WORKSPACE_ACTION_UNAVAILABLE');

@@ -1,5 +1,6 @@
 /** Authenticate the existing hosted audience; delegate all DTOs to the common registry. */
 import {dispatchWorkspaceRead,workspaceReadResource,workspaceReadRoute} from '../ngs-local/sites/npcgen/build/workspace-read-registry.mjs';
+import {cinematicVideoResponse} from '../ngs-local/sites/npcgen/build/cinematic-workspace.mjs';
 import {openSpaceWorkspaceProject} from './space-workspace-read-storage.mjs';
 const headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin'};
 const failure=(code,status)=>Object.assign(Error(code),{status});
@@ -17,10 +18,14 @@ export async function spaceWorkspaceReadResponse(request,replica,{authorize,npcR
    mediaCache:!request.headers.has('Range')&&!request.headers.has('If-Range'),
    openProject:id=>openSpaceWorkspaceProject(replica,id),
    authorize:async (id,resource)=>{
-    if(id!=='binari'||await authorize?.({userId,email},id,route==='prop'?resource:workspaceReadResource(route==='npc'?'npcs':url.searchParams.get('tab')))!==true)
+    if(id!=='binari'||await authorize?.({userId,email},id,(route==='prop'||route==='cinematic')?resource:workspaceReadResource(route==='npc'?'npcs':url.searchParams.get('tab')))!==true)
      throw failure('PROJECT_OR_RESOURCE_DENIED',403);
    }});
   if(result.json)return Response.json(result.json,{headers});
+  if(route==='cinematic'&&result.mime==='video/mp4'){
+   const clip=cinematicVideoResponse(result.bytes,request.headers.get('Range'));
+   return new Response(clip.bytes,{status:clip.status,headers:{...headers,...clip.headers,'Content-Security-Policy':"sandbox; default-src 'none'"}});
+  }
   return new Response(result.bytes,{headers:{...headers,'Content-Type':result.mime,'Content-Length':String(result.bytes.length),
    'Content-Security-Policy':"sandbox; default-src 'none'"}});
  }catch(e){
