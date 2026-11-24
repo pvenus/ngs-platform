@@ -5,7 +5,8 @@ import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,rmSync,readFileSync} fr
 import {dirname,join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {localProjectWorkspace,openLocalWorkspaceProject} from '../ngs-local/sites/npcgen/build/local-project-workspace.mjs';
-import {workspaceReadRegistry} from '../ngs-local/sites/npcgen/build/workspace-read-registry.mjs';
+import {canonicalPropPackage} from '../ngs-local/sites/npcgen/build/prop-package-contract.mjs';
+import {workspaceReadRegistry,dispatchWorkspaceRead} from '../ngs-local/sites/npcgen/build/workspace-read-registry.mjs';
 import {spaceWorkspaceReadResponse} from '../build/space-workspace-read-response.mjs';
 import {openSpaceWorkspaceProject} from '../build/space-workspace-read-storage.mjs';
 
@@ -55,7 +56,7 @@ function fixture(t){
    size:x.length,etag:hash(x),customMetadata:{sha256:hash(x)},arrayBuffer:async()=>new Uint8Array(x).buffer,
   }:null;},
  };
- return {root,space,metric,prefixes,touches,asset:'npcs/da/assets/'+name,clip:'motion-presets/assets/'+mediaName};
+ return {root,space,metric,prefixes,touches,add,asset:'npcs/da/assets/'+name,clip:'motion-presets/assets/'+mediaName};
 }
 const request=(query,auth=true)=>new Request('https://fixture.invalid/api/project-workspace?'+query,{headers:auth?{
  'oai-authenticated-user-id':'fixture','oai-authenticated-user-email':'fixture@example.invalid',
@@ -141,4 +142,35 @@ test('Local and Space selection manifests match; neither probes MP4 assets',asyn
  assert.deepEqual(local.json.presets.map(row=>row.presetId),['walk-2d']);
  assert.ok(touches.every(path=>path.startsWith('motion-presets/presets/')&&path.endsWith('.json')));
  assert.deepEqual(prefixes,['motion-presets/presets']);
+});
+
+test('same prop roster and pinned detail across Local/Space; hosted denies before touching replica',async t=>{
+ const {root,space,metric,touches,add}=fixture(t);
+ const propId='paper-candle',p='props/'+propId, h='a'.repeat(64);
+ const img=(sha256,width)=>({assetId:sha256+'.png',sha256,bytes:80,width,height:width,
+  mediaType:'image/png',frameDurationsMs:[]});
+ const doc=Buffer.from(canonicalPropPackage({schemaVersion:'ngs.prop-package.v1',projectId:'binari',propId,revision:1,
+  officialRequestId:official,requestSha256:h,designContextSha256:h,title:'Candle fixture',parentSha256:null,
+  media:{detail:img(h,40),pixel:img('b'.repeat(64),20)},interaction:{pixelOpen:null,detailTrigger:null},animations:[]}));
+ const pointer={schemaVersion:'ngs.prop-pointer.v1',projectId:'binari',propId,title:'Candle fixture',revision:1,sha256:hash(doc)};
+ add(p+'/metadata.json',pointer);
+ add(p+'/releases/1/manifest.json',doc);
+ add(p+'/assets/'+h+'.png',Buffer.alloc(80));
+ const endpoint='/api/prop-workspace';
+ const get=qs=>new Request('https://fixture.invalid'+endpoint+'?'+qs,{headers:{
+  'oai-authenticated-user-id':'fixture','oai-authenticated-user-email':'fixture@example.invalid',
+ }});
+ assert.equal((await spaceWorkspaceReadResponse(get('projectId=binari'),space,{authorize:async()=>false})).status,403);
+ assert.deepEqual(metric,{list:0,head:0,get:0});
+ const authorize=async(_u,project,resource)=>project==='binari'&&resource==='props';
+ for(const q of ['projectId=binari','projectId=binari&propId='+propId]){
+  const actual=await spaceWorkspaceReadResponse(get(q),space,{authorize});
+  const local=await dispatchWorkspaceRead({pathname:endpoint,query:new URLSearchParams(q),
+    openProject:id=>openLocalWorkspaceProject(root,id),authorize:(project,resource)=>{
+     assert.equal(project,'binari');assert.equal(resource,'props');
+    }});
+  assert.equal(actual.status,200);
+  assert.deepEqual(await actual.json(),local.json);
+ }
+ assert.ok(touches.length>0&&touches.every(path=>path.startsWith(p+'/')&&!path.includes('/assets/')));
 });
