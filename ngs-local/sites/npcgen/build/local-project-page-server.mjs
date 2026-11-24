@@ -204,7 +204,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const command=parseRequestSubmission(await readSmallBody(req,64*1024));
     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     projectPermission(session.principal,command.payload.projectId,undefined,false);
-    if(propAction(command.requestType)){
+    if(command.requestType.startsWith('prop.')){
+     if(!propAction(command.requestType))throw failure('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
      await admitPropRequest({openProject,command,actions:activePropActions,authorize:id=>projectPermission(session.principal,id,undefined,false)});
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }

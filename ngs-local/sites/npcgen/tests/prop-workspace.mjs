@@ -87,7 +87,19 @@ test('exact no-preset named request, current pin, double submission protection d
  assert.equal((await post({...animation,motionId:'initial'})).status,409);
  assert.equal((await post(propPayload('generate',{propId:'new-prop',intent:'fixture',designContextSha256:pin}),propTypes.generate)).status,404);
  assert.equal((await post(animation,propTypes.animation,'invalid')).status,403);
+ assert.equal((await post(animation,'prop.update')).status,404);
+ assert.equal((await post(animation,'prop.image-generate')).status,404);
  assert.equal(sent.length,0);
  assert.equal((await post(animation)).status,202);
  assert.deepEqual(sent.map(r=>r.payload),[animation]);
+});
+
+test('regeneration binds the selected immutable source and full replacement intent, not edits or a scope picker',()=>{
+ const payload=propPayload('regenerate',{propId,source,intent:'같은 용도에 새 외형과 작동 상태'});
+ payload.designContextSha256=pin;
+ assert.equal(validPropPayload(propTypes.regenerate,payload),true);
+ assert.equal(validPropPayload(propTypes.regenerate,{...payload,motion:'subtle'}),true);
+ assert.equal(validPropPayload(propTypes.regenerate,{...payload,scope:'appearance'}),false);
+ assert.equal(validPropPayload('prop.update',payload),false);
+ assert.equal(validPropPayload(propTypes.animation,{...animation,prompt:'embedding: opaque'}),false);
 });

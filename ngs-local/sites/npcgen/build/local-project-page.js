@@ -16,7 +16,7 @@ const queuePanel=document.querySelector('#local-request-queue');
 const queueLabel={
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
  'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제','audio.separate':'BGM 반주 만들기',
- [motionPresetConvertType]:'2D 마네킹 프리셋 변환','prop.generate':'프랍 종합 생성','prop.update':'프랍 수정','prop.animation.generate':'프랍 애니메이션 생성',
+ [motionPresetConvertType]:'2D 마네킹 프리셋 변환','prop.generate':'프랍 종합 생성','prop.regenerate':'프랍 재생성','prop.animation.generate':'프랍 애니메이션 생성',
 };
 const queueTime=new Intl.DateTimeFormat('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 let queueSession,queueRefresh=()=>{};

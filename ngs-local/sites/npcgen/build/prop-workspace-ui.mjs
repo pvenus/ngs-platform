@@ -2,7 +2,7 @@ import {propPayload,propTypes,propWorkspacePath,propSlug,validPropPayload} from 
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const node=(tag,text,className)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(className)n.className=className;return n;};
 const api=fields=>propWorkspacePath+'?'+new URLSearchParams({projectId:'binari',...fields});
-const actionsLabel={generate:'프랍 종합 생성 요청',update:'수정 요청',animation:'애니메이션 생성 요청'};
+const actionsLabel={generate:'프랍 종합 생성 요청',regenerate:'재생성 요청',animation:'애니메이션 생성 요청'};
 const errors={
  PROP_WORKSPACE_SOURCE_STALE:'게시 버전이 바뀌었습니다. 목록에서 프랍을 다시 열어 주세요.',
  PROP_WORKSPACE_TARGET_EXISTS:'해당 폴더 이름은 이미 사용 중입니다.',
@@ -75,7 +75,7 @@ export async function mountPropWorkspace({items,detail,tools,item,navigate,reque
  const heading=node('div');heading.append(node('h3',prop.title),node('p',item+' · 버전 '+prop.source.revision,'meta'));
  bar.append(heading);
  const buttons=node('div',null,'prop-actions');
- for(const action of ['update','animation'])if(can(action)){
+ for(const action of ['regenerate','animation'])if(can(action)){
   const b=node('button',actionsLabel[action]);b.type='button';b.addEventListener('click',()=>open(action));buttons.append(b);
  }
  if(buttons.children.length)bar.append(buttons);
@@ -107,11 +107,10 @@ export async function mountPropWorkspace({items,detail,tools,item,navigate,reque
   const id=action==='generate'?input('예: paper-collar-candle',80):null;
   const motionId=action==='animation'?input('예: candle-flicker',80):null;
   const intent=textarea(action==='animation'?'어떻게 움직이는지 적어 주세요.':'용도, 형태, 상태 또는 바꿀 내용을 적어 주세요.',action==='animation'?2000:4000);
-  const motion=action==='generate'&&can('animation')?select([['still','정지 프랍'],['subtle','짧은 움직임도 포함']]):null;
-  const scope=action==='update'?select([['metadata','이름·상호작용'],['appearance','외형']]):null;
+  const motion=action!=='animation'&&can('animation')?select([['still','정지 프랍'],['subtle','짧은 움직임도 포함']]):null;
   if(id)form.append(field('프랍 폴더 이름',id));
   if(motion)form.append(field('기본 구성',motion));
-  if(scope)form.append(field('수정 범위',scope));
+  if(action==='regenerate')form.append(node('p','완성된 새 프랍으로 교체합니다. 이전 버전은 보존되며, 기존 애니메이션은 새 버전에 자동으로 가져오지 않습니다.','meta'));
   if(motionId)form.append(field('애니메이션 이름',motionId));
   form.append(field(action==='animation'?'움직임 프롬프트':'요청 내용',intent));
   const info=node('p',null,'meta');info.setAttribute('role','status');
@@ -133,7 +132,7 @@ export async function mountPropWorkspace({items,detail,tools,item,navigate,reque
     if(action==='animation')Object.assign(body,{motionId:motionId.value.trim(),prompt:intent.value.trim()});
     else {
      body.intent=intent.value.trim();
-     if(action==='generate')body.motion=motion?.value??'still';else body.scope=scope.value;
+     body.motion=motion?.value??'still';
      body.designContextSha256=(await request(api({view:'design'}))).designContextSha256;
     }
     if(signal?.aborted||!modal.open)return;

@@ -41,7 +41,7 @@ export async function admitPropRequest({openProject,command,actions=[],authorize
  if(!actions.includes(k))throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
  const p=command.payload;
  if(!validPropPayload(command.requestType,p))throw invalid();
- if(k==='generate'&&p.motion==='subtle'&&!actions.includes('animation'))throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
+ if(k!=='animation'&&p.motion==='subtle'&&!actions.includes('animation'))throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
  await authorize?.(p.projectId,'props');
  const project=await openProject(p.projectId);
  if(!project)throw unavailable();

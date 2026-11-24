@@ -1,9 +1,9 @@
 /** Same formal prop request envelopes in Local, Space and fixture. */
 export const propWorkspacePath='/api/prop-workspace';
 export const propTypes=Object.freeze({
- generate:'prop.generate',update:'prop.update',animation:'prop.animation.generate',
+ generate:'prop.generate',regenerate:'prop.regenerate',animation:'prop.animation.generate',
 });
-const schema={generate:'ngs.prop-generate.v1',update:'ngs.prop-update.v1',animation:'ngs.prop-animation-generate.v1'};
+const schema={generate:'ngs.prop-generate.v1',regenerate:'ngs.prop-regenerate.v1',animation:'ngs.prop-animation-generate.v1'};
 const names=Object.keys(propTypes);
 const utf8=new TextEncoder();
 export const propSlug=v=>typeof v==='string'&&v.length>=2&&v.length<=80&&/^[a-z0-9]+(?:[-._][a-z0-9]+)*$/u.test(v)&&v===v.trim();
@@ -24,12 +24,11 @@ export function validPropActions(v){
 export function validPropPayload(type,p){
  const k=propAction(type),base=['schemaVersion','projectId','propId'];
  if(!k||p?.schemaVersion!==schema[k]||p.projectId!=='binari'||!propSlug(p.propId))return false;
- if(k==='generate'){
-  const fields=[...base,'intent','designContextSha256',...(Object.hasOwn(p,'motion')?['motion']:[])];
-  return exactPropKeys(p,fields)&&text(p.intent,4000)&&propSha(p.designContextSha256)&&(!Object.hasOwn(p,'motion')||propMotion(p.motion));
+ if(k==='generate'||k==='regenerate'){
+  const fields=[...base,...(k==='regenerate'?['source']:[]),'intent','designContextSha256',...(Object.hasOwn(p,'motion')?['motion']:[])];
+  return exactPropKeys(p,fields)&&(k!=='regenerate'||source(p.source))&&
+   text(p.intent,4000)&&propSha(p.designContextSha256)&&(!Object.hasOwn(p,'motion')||propMotion(p.motion));
  }
- if(k==='update')return exactPropKeys(p,[...base,'source','scope','intent','designContextSha256'])&&source(p.source)&&
-  (p.scope==='metadata'||p.scope==='appearance')&&text(p.intent,4000)&&propSha(p.designContextSha256);
  return exactPropKeys(p,[...base,'source','motionId','prompt'])&&source(p.source)&&propSlug(p.motionId)&&text(p.prompt,2000)&&!/\bembedding:/iu.test(p.prompt);
 }
 export const propPayload=(action,input)=>({...input,schemaVersion:schema[action],projectId:'binari'});
