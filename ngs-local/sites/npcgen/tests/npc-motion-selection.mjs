@@ -117,7 +117,7 @@ test('open modal polls immediately, accepts mixed presets, and blocks stale unti
  const click=label=>buttons.find(b=>b.textContent===label).events.click();
  const check=id=>all(modal,'label').find(c=>c.children[1]?.textContent?.includes(' · '+id))?.children[0];
  const set=(id,checked)=>{const c=check(id);c.checked=checked;c.events.change();};
- assert.equal(timers.size,1);assert.equal(buttons.at(-1).disabled,true);
+ assert.equal(timers.size,1);assert.equal(buttons.at(-1).disabled,false);
  click('전투 기본');assert.equal(check('walk-flat').checked,true);assert.equal(check('run-flat').checked,true);assert.equal(check('sword-attack-flat').checked,true);
  set('run-flat',false);set('run-2d',true);
  catalog=[walk,run,choice('run-2d','idle','새 결과','2'),attack,choice('new'),...extra];
@@ -279,4 +279,14 @@ test('renaming a registered label keeps the source pin and existing output ident
  assert.equal(npcPublishedMotionLabel('idle','run-flat',[changed]),null);
  assert.deepEqual(npcAnimationRegenerateRequest('npc.ch1_dajeong',[motionSelectionOf(from)],[changed]),
   {...motionSelectionPayload([motionSelectionOf(from)]),schemaVersion:'ngs.npc-animation.regenerate.v1'});
+});
+
+test('empty selection only permits fresh NPC creation',()=>{
+ for(const flag of [false,true]){
+  const payload=newNpcOneStopRequest({...source,motionSelection:[]},[],flag);
+  assert.deepEqual(payload.motionSelection,[]);
+  assert.equal(validNpcMotionSelectionRequest(payload),true);
+  assert.equal(validNpcMotionSelectionRequest({...payload,schemaVersion:selectionReplaceSchemaVersion}),false);
+  assert.equal(validNpcAnimationRegenerate({...motionSelectionPayload([])}),false);
+ }
 });

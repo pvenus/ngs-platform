@@ -81,7 +81,7 @@ export function validNpcMotionSelectionRequest(value){
   validNpcWorkflowIdentity(character,value.schemaVersion)&&
   text(character.name,60)&&text(character.role,300)&&id(character.actId)&&id(character.chapterId)&&
   Array.isArray(value.sourceRefs)&&value.sourceRefs.length>=1&&value.sourceRefs.length<=64&&value.sourceRefs.every(ref=>text(ref,300))&&
-  validMotionSelection(value.motionSelection);
+  (validMotionSelection(value.motionSelection)||(Array.isArray(value.motionSelection)&&value.motionSelection.length===0&&!isNpcWorkflowReplaceSchema(value.schemaVersion)));
 }
 
 export async function publishedMotionChoice(id,meta,label){

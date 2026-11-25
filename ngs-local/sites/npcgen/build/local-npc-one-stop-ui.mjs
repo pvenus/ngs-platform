@@ -31,7 +31,7 @@ function oneStopRequest(values,motionCatalog,target,poseSelectionV2Enabled){
  const sourceRefs=typeof values.sourceRefs==='string'?values.sourceRefs.split('\n').map(s=>s.trim()).filter(Boolean):[];
  if(!sourceRefs.length||sourceRefs.length>64||sourceRefs.some(ref=>count(ref)>300))throw Error('근거 참조를 한 줄에 하나씩 입력해 주세요. 최대 64줄, 줄당 300자입니다.');
  const chosen=values.motionSelection;
- if(!validMotionSelection(chosen)||!chosen.every(choice=>motionCatalog.some(row=>sameMotionChoice(choice,row)))){
+ if((!validMotionSelection(chosen)&&!(Array.isArray(chosen)&&chosen.length===0&&!target))||!chosen.every(choice=>motionCatalog.some(row=>sameMotionChoice(choice,row)))){
   throw Error('게시된 모션 프리셋을 한 개 이상 선택하세요. 변경된 선택은 해제한 뒤 다시 골라 주세요.');
  }
  const schemaVersion=poseSelectionV2Enabled===true
@@ -166,7 +166,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   heading.id=headingId;close.type='button';header.append(heading,close);
   const intro=node('p','meta',target?
    `기존 NPC ${target.name} (${target.npcId})를 같은 ID로 재생성하도록 요청합니다. 새 NPC를 추가하지 않습니다.`:
-   '새 NPC의 기획, 포트레이트, 8방향과 프레임 생성을 한 번에 요청합니다.');
+   '새 NPC의 기획과 포트레이트를 생성합니다. 모션을 선택하면 애니메이션도 함께 생성합니다.');
   const form=node('form','one-stop-intake'),fields=node('fieldset'),notice=node('p','meta');
   fields.append(node('legend','',target?'기존 NPC 재생성':'새 NPC 생성'));
   const error=node('p','meta error');error.setAttribute('role','alert');notice.setAttribute('role','status');
@@ -205,7 +205,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
    const frozen=intake.waitingConfirmation,stale=[...selected.values()].filter(staleChoice).length;
    fields.disabled=pending||frozen||intake.accepted;
    fields.hidden=carry&&frozen;
-   send.disabled=pending||intake.accepted||(!frozen&&(catalogError||!motionCatalog||!selected.size||stale>0));
+   send.disabled=pending||intake.accepted||(!frozen&&(selected.size>0?(catalogError||!motionCatalog||stale>0):Boolean(target)));
    send.textContent=pending?'접수 중…':frozen?'같은 접수 다시 확인':action+' 요청';
    close.disabled=pending;
    noncombat.disabled=!quickMotionSelection('noncombat',motionCatalog??[])||catalogError;
@@ -218,7 +218,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
     label.textContent=row?row.label+' · '+row.presetId+(choice&&staleChoice(choice)?' · 게시 내용 변경, 다시 선택 필요':''):
      id+' · 현재 게시되지 않음, 선택 해제 필요';
    }
-   selectionInfo.textContent=selected.size+'개 선택'+(stale?' · '+stale+'개 다시 선택 필요':'');
+   selectionInfo.textContent=!target&&selected.size===0?'0개 선택 · 기획과 포트레이트만 생성':selected.size+'개 선택'+(stale?' · '+stale+'개 다시 선택 필요':'');
   }
   function renderMotions(){
    pick.replaceChildren();checkBoxes.clear();

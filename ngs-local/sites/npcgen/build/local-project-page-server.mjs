@@ -296,10 +296,12 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      const {character,includeCombat,combatMotionPresets,schemaVersion,motionSelection}=command.payload;
      if(isSelectionSchema(schemaVersion)){
       if(!validNpcMotionSelectionRequest(command.payload))throw failure('NGS_ONE_STOP_PAYLOAD_INVALID',400);
-      const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',view:'selection'});
-      const {json:{presets}}=await readWorkspace('/api/project-workspace',query,()=>{});
-      if(!motionSelection.every(choice=>presets.some(row=>sameMotionChoice(choice,row))))
-       throw failure('ONE_STOP_MOTION_SELECTION_STALE',409);
+      if(motionSelection.length){
+       const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',view:'selection'});
+       const {json:{presets}}=await readWorkspace('/api/project-workspace',query,()=>{});
+       if(!motionSelection.every(choice=>presets.some(row=>sameMotionChoice(choice,row))))
+        throw failure('ONE_STOP_MOTION_SELECTION_STALE',409);
+      }
      }else if(includeCombat===true&&(!Array.isArray(combatMotionPresets)||combatMotionPresets.length<1||combatMotionPresets.length>16||
        !((await Promise.all(combatMotionPresets.map(preset=>allowedCombat(preset).catch(()=>false)))).every(Boolean)))){
       throw failure('ONE_STOP_COMBAT_PRESETS_REQUIRED',400);
