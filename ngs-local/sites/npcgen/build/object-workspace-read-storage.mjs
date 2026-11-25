@@ -25,7 +25,10 @@ export function openObjectWorkspaceProject(replica,id){
  }
  async function head(path){
   if(!validWorkspacePath(path))throw replicaUnavailable();
-  const object=checkedMeta(await replica.head(path));return object?{size:object.size,sha256:object.customMetadata.sha256}:null;
+  const object=checkedMeta(await replica.head(path));
+  if(!object)return null;
+  const t=object.uploaded instanceof Date?object.uploaded.getTime():null;
+  return {size:object.size,sha256:object.customMetadata.sha256,...(Number.isSafeInteger(t)&&t>0?{modifiedAtMs:t}:{})};
  }
  return Object.freeze({
   head,listFiles,npcCache:replica.npcCache,readVerifiedPng:replica.readVerifiedPng,

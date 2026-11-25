@@ -28,7 +28,8 @@ function metadata(row){
  for(const [k,v] of Object.entries(options)){
   if(typeof v==='string')customMetadata[k.toLowerCase()]=v;
  }
- return {etag:row.ETag,size:row.ContentLength,customMetadata};
+ const uploaded=row.LastModified instanceof Date&&Number.isFinite(row.LastModified.getTime())?row.LastModified:null;
+ return {etag:row.ETag,size:row.ContentLength,customMetadata,...(uploaded?{uploaded}:{})};
 }
 function condition(onlyIf,put=false){
  if(onlyIf===undefined)return {};

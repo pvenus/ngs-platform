@@ -60,7 +60,7 @@ function head(root,relative){
  const st=stat(join(root,relative));
  if(!st)return null;
  if(!st.isFile()||!sameOwner(st)||st.nlink!==1n||st.size>BigInt(Number.MAX_SAFE_INTEGER))return null;
- return {size:Number(st.size)};
+ return {size:Number(st.size),modifiedAtMs:Number(st.mtimeNs/1_000_000n)};
 }
 function children(root,relative){
  if(relative&&!validWorkspacePath(relative))throw unavailable();

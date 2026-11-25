@@ -63,6 +63,52 @@ function requestForm(parent,{caption,send,makePayload,isValid,signal,body,notice
 }
 
 const sceneLabel=s=>s.title??'시놉시스 원본 '+short(s.sourceSha256);
+const normalizeSearch=value=>value.normalize('NFC').trim().toLocaleLowerCase();
+function mountSceneRoster({items,scenes,selected,go,projectId,signal}){
+ const storageKey='ngs:cinematic-roster:v1:'+projectId;
+ const get=()=>{try{return JSON.parse(globalThis.sessionStorage.getItem(storageKey))??{};}catch{return {};}};
+ const saved=get(),query=make('input',null,'npc-search cinematic-search');
+ query.id='cinematic-search';query.type='search';query.maxLength=120;query.placeholder='장면 이름 검색';
+ query.value=typeof saved.query==='string'?saved.query.slice(0,120):'';
+ const label=make('label','장면 검색','npc-search-label');label.htmlFor=query.id;
+ items.before(label,query);
+ const rows=new Map();
+ const y=node=>node.getBoundingClientRect().top-items.getBoundingClientRect().top+items.scrollTop;
+ function state(){
+  const top=Number(items.scrollTop)||0;
+  let anchor='',offset=0;
+  if(typeof items.getBoundingClientRect==='function'){
+   for(const [id,row] of rows){
+    const sy=y(row);
+    if(sy+row.getBoundingClientRect().height>top){anchor=id;offset=top-sy;break;}
+   }
+  }
+  return {query:query.value,top,anchor,offset};
+ }
+ function remember(){try{globalThis.sessionStorage.setItem(storageKey,JSON.stringify(state()));}catch{/* storage disabled */}}
+ function render(restore){
+  const filter=normalizeSearch(query.value).split(/\s+/u).filter(Boolean);
+  rows.clear();
+  const nodes=scenes.flatMap(scene=>{
+   const title=sceneLabel(scene);
+   if(!filter.every(term=>normalizeSearch(title).includes(term)))return [];
+   const li=make('li'),link=make('a',null,'request-item npc-roster-entry');
+   link.href=go({cineSource:scene.sourceSha256,item:''});
+   if(scene===selected)link.setAttribute('aria-current','page');
+   link.append(make('strong',title),make('span','애니메이션 '+(scene.sequences.length+scene.clips.length)+'개','meta'));
+   li.append(link);rows.set(scene.sourceSha256,li);return [li];
+  });
+  items.replaceChildren(...(nodes.length?nodes:[make('li',filter.length?'검색 결과가 없습니다.':'게시된 시네마틱이 없습니다.','meta')]));
+  const anchor=rows.get(restore?.anchor);
+  const top=anchor&&typeof items.getBoundingClientRect==='function'?y(anchor)+(Number(restore.offset)||0):Number(restore?.top)||0;
+  items.scrollTop=Math.max(0,top);
+ }
+ render(saved);
+ query.addEventListener('input',()=>{render();remember();},{signal});
+ items.addEventListener('scroll',remember,{passive:true,signal});
+ globalThis.addEventListener?.('pagehide',remember,{signal});
+ signal.addEventListener('abort',()=>{remember();label.remove();query.remove();},{once:true});
+}
 export async function mountCinematicWorkspace({items,detail,tools,request,submit,projectId,item,source,panel,navigate,signal,
  enabled,playbackEnabled=false,sourceEnabled=false,removeEnabled=false}){
  const {scenes}=await request(url(projectId,{grouped:'1'}));
@@ -90,14 +136,7 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
   add.setAttribute('aria-label','시네마틱 원본 생성');add.title='시네마틱 원본 생성';
   tools.replaceChildren(add);tools.hidden=false;
  }
- items.replaceChildren(...scenes.map(scene=>{
-  const li=make('li'),link=make('a',null,'request-item npc-roster-entry');
-  link.href=go({cineSource:scene.sourceSha256,item:''});
-  if(scene===selected)link.setAttribute('aria-current','page');
-  link.append(make('strong',sceneLabel(scene)),make('span','애니메이션 '+(scene.sequences.length+scene.clips.length)+'개','meta'));
-  li.append(link);return li;
- }));
- if(!scenes.length)items.append(make('li','게시된 시네마틱이 없습니다.','meta'));
+ mountSceneRoster({items,scenes,selected,go,projectId,signal});
  const heading=make('header',null,'npc-detail-heading prop-detail-heading');
  const title=make('div',null,'prop-identity'),actions=make('div',null,'prop-actions');
  heading.append(title,actions);

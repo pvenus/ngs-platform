@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync,utimesSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
@@ -118,8 +118,14 @@ test('formal source, native animation, timeline update and selected archive stay
  for(const [key,src] of [[sibling,source],[other,otherSource]]){
   const path=join(cine,'sequences',key);mkdirSync(path,{mode:0o700});json(join(path,'manifest.json'),{...sequence,officialRequestId:key,sourceSha256:src});
  }
+ const old=new Date('2026-01-01T00:00:00Z'),fresh=new Date('2026-01-02T00:00:00Z');
+ utimesSync(join(cine,'sources',source+'.png'),old,old);
+ utimesSync(join(cine,'sources',otherSource+'.png'),fresh,fresh);
+ utimesSync(join(out,'manifest.json'),old,old);
+ utimesSync(join(cine,'sequences',sibling,'manifest.json'),fresh,fresh);
  const grouped=(await (await get('&grouped=1')).json()).scenes;
- assert.deepEqual(grouped.find(row=>row.sourceSha256===source),{...sourcePublished,sequences:[id,sibling],clips:[]});
+ assert.deepEqual(grouped.map(row=>row.sourceSha256),[otherSource,source]);
+ assert.deepEqual(grouped.find(row=>row.sourceSha256===source),{...sourcePublished,sequences:[sibling,id],clips:[]});
  assert.deepEqual(grouped.find(row=>row.sourceSha256===otherSource),{sourceSha256:otherSource,title:null,sequences:[other],clips:[]});
  assert.deepEqual(Buffer.from(await (await get('&sequence='+id+'&frame=0')).arrayBuffer()),frame);
  const revised={...playback,cameraCurve:[{frame:0,zoom:1,x:.5,y:.5},{frame:100,zoom:1.2,x:.52,y:.48}]};
@@ -152,6 +158,7 @@ test('prop-style scene controls create a single original and add only versions o
   addEventListener(k,v){this.events[k]=v;}
   append(...els){for(const e of els){e.parentElement=this;this.children.push(e);}}
   replaceChildren(...els){this.children=[];this.append(...els);}
+  before(...els){const i=this.parentElement.children.indexOf(this);for(const e of els)e.parentElement=this.parentElement;this.parentElement.children.splice(i,0,...els);}
   click(){if(!this.disabled)return this.events.click?.({});}
   focus(){}
   showModal(){this.open=true;}
@@ -209,4 +216,11 @@ test('prop-style scene controls create a single original and add only versions o
   assert.equal(c.payload.motionPrompt,'문이 조금 열린다');
  }
  assert.notEqual(submissions[1].idempotencyKey,submissions[2].idempotencyKey);
+});
+
+test('object-store upload time is carried to the shared scene sort',async()=>{
+ const {openObjectWorkspaceProject}=await import('../build/object-workspace-read-storage.mjs');
+ const date=new Date('2026-11-25T03:04:05Z');
+ const port=openObjectWorkspaceProject({head:async()=>({size:100,etag:'pin',uploaded:date,customMetadata:{sha256:sourceSha256}})},'binari');
+ assert.deepEqual(await port.head('cinematics/sources/file.png'),{size:100,sha256:sourceSha256,modifiedAtMs:date.getTime()});
 });

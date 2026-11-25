@@ -66,11 +66,16 @@ export async function admitCinematicRequest({command,openProject,authorize}){
   if(sequence.revision!==p.expectedRevision)throw failure('CINEMATIC_PLAYBACK_REVISION_CONFLICT',409);
  }else if(!storage||!await sourceMeta(storage,p.sourceSha256))throw failure('CINEMATIC_SOURCE_NOT_FOUND',404);
 }
-async function sceneList(p,sources,clips,sequences){
+const stamp=meta=>Number.isSafeInteger(meta?.modifiedAtMs)&&meta.modifiedAtMs>0?meta.modifiedAtMs:0;
+const newest=(times)=>(a,b)=>(times.get(b)??0)-(times.get(a)??0)||a.localeCompare(b);
+async function sceneList(p,sources,clips,sequences,sequenceTimes){
+ const sourceTimes=new Map(),clipTimes=new Map();
  const bySource=new Map(sources.map(sourceSha256=>[sourceSha256,{sourceSha256,title:null,sequences:[],clips:[]}]));
  const jobs=[
   ...sources.map(id=>async()=>{
-   const info=await readReplicaObject(p,cinematicSourcePrefix+'/'+id+'.json',4096);
+   const path=cinematicSourcePrefix+'/'+id+'.json';
+   const [info,sourceHead]=await Promise.all([readReplicaObject(p,path,4096),p.head(cinematicSourcePath(id))]);
+   sourceTimes.set(id,stamp(sourceHead));
    if(info!==null&&(!validCinematicSourceResult(info)||info.sha256!==id))throw replicaUnavailable();
    if(info)bySource.get(id).title=info.title;
   }),
@@ -82,11 +87,15 @@ async function sceneList(p,sources,clips,sequences){
   }),
   ...clips.map(id=>async()=>{
    const m=await result(p,id);
-   if(m)bySource.get(m.sourceSha256)?.clips.push(id);
+   if(m){
+    bySource.get(m.sourceSha256)?.clips.push(id);
+    clipTimes.set(id,stamp(await p.head(cinematicResultPrefix+'/'+id+'.mp4')));
+   }
   })
  ];
  for(let i=0;i<jobs.length;i+=12)await Promise.all(jobs.slice(i,i+12).map(job=>job()));
- return [...bySource.values()].map(s=>({...s,sequences:s.sequences.sort(),clips:s.clips.sort()}));
+ return [...bySource.values()].sort((a,b)=>newest(sourceTimes)(a.sourceSha256,b.sourceSha256))
+  .map(s=>({...s,sequences:s.sequences.sort(newest(sequenceTimes)),clips:s.clips.sort(newest(clipTimes))}));
 }
 export async function cinematicWorkspaceRead({query,openProject,authorize}){
  if(!params(query,['projectId','source','sourceInfo','clip','video','sequence','frame','grouped'])||query.get('projectId')!=='binari')
@@ -144,13 +153,14 @@ export async function cinematicWorkspaceRead({query,openProject,authorize}){
  const clips=resultRows.flatMap(({name,kind})=>kind==='file'&&name.endsWith('.json')&&cinematicId(name.slice(0,-5))&&videos.has(name.slice(0,-5))?[name.slice(0,-5)]:[]).sort();
  const sequenceRows=await p.listChildren(cinematicSequencePrefix);
  if(sequenceRows.length>4096)throw replicaUnavailable();
- const sequences=[],archived=await archivedSequences(p);
+const sequences=[],sequenceTimes=new Map(),archived=await archivedSequences(p);
  for(const {name,kind} of sequenceRows){
   if(kind!=='directory'||!cinematicId(name)||archived.has(name))continue;
   // File replication may expose a parent directory before its commit manifest.
-  if(await p.head(cinematicSequencePrefix+'/'+name+'/manifest.json'))sequences.push(name);
+  const meta=await p.head(cinematicSequencePrefix+'/'+name+'/manifest.json');
+  if(meta){sequences.push(name);sequenceTimes.set(name,stamp(meta));}
  }
- if(grouped==='1')return {json:{scenes:await sceneList(p,sources,clips,sequences)}};
+ if(grouped==='1')return {json:{scenes:await sceneList(p,sources,clips,sequences,sequenceTimes)}};
  return {json:{sources,clips,sequences:sequences.sort()}};
 }
 // Only used for a verified bounded MP4. Ignore non-single-range syntaxes per
