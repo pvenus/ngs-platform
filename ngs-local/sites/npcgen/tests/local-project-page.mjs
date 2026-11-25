@@ -24,6 +24,9 @@ test('browser auth and exact read-only catalog contract do not depend on legacy 
  mkdirSync(root,{mode:0o700});
  t.after(()=>rmSync(parent,{recursive:true,force:true}));
  assert.equal(configuration({}).port,5274);
+ assert.equal(configuration({}).npcBasicPortraitEnabled,true);
+ assert.equal(configuration({NGS_NPC_BASIC_PORTRAIT_ENABLED:"0"}).npcBasicPortraitEnabled,false);
+ assert.equal(configuration({}).npcScopedPortraitEnabled,false);
  assert.throws(()=>configuration({NGS_PROJECT_LISTEN_PORT:'0'}),/LOCAL_PROJECT_PORT_INVALID/);
  const origin=await listen(t,createLocalProjectPageServer({root,mcpUrl:'https://invalid.example/mcp',fileSyncMode:'pull'}));
  const home=await fetch(origin);

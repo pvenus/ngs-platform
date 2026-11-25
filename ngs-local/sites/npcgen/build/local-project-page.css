@@ -200,6 +200,7 @@ ul{padding:0;list-style:none}
 .one-stop-intake input:not([type=checkbox]),.one-stop-intake textarea{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground);font:inherit}
 .one-stop-intake textarea{min-height:118px;resize:vertical}
 .one-stop-options label{display:block}
+.one-stop-options label[hidden]{display:none}
 .one-stop-options fieldset{margin-top:8px;border:1px solid var(--border);border-radius:8px}
 .npc-one-stop-dialog .npc-one-stop-submit{display:block;margin-left:auto;background:#153f30;color:var(--card);border-color:#b88d3c}
 @media(max-width:640px){.npc-one-stop-dialog{width:calc(100vw - 16px);padding:12px}.one-stop-basic,.one-stop-location,.one-stop-planning{grid-template-columns:minmax(0,1fr)}}

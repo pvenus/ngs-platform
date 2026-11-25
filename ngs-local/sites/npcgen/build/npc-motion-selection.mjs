@@ -72,11 +72,15 @@ export function validNpcWorkflowIdentity(character,schema){
 
 export const npcBasicSchema='ngs.npc-one-stop.basic.v1';
 export function validNpcBasicRequest(value){
- const common=['schemaVersion','projectId','intent','character','sourceRefs','includeCombat'];
+ const hasExtra=value!=null&&Object.hasOwn(value,'combatRequirements');
+ const common=['schemaVersion','projectId','intent','character','sourceRefs','includeCombat',...(hasExtra?['combatRequirements']:[])];
  if(!exact(value,common)||value.schemaVersion!==npcBasicSchema||typeof value.includeCombat!=='boolean'||
     typeof value.character?.slug!=='string'||value.character.slug.length<2||value.character.slug.length>80||
     !['act1','act01'].includes(value.character?.actId)||!(/^(?:ch[1-5]|chapter0[1-5])$/u.test(value.character?.chapterId)))return false;
- const {includeCombat,...body}=value;
+ const {includeCombat,combatRequirements,...body}=value;
+ if(hasExtra&&(!includeCombat||typeof combatRequirements!=='string'||!combatRequirements.isWellFormed()||
+    !combatRequirements.trim()||combatRequirements!==combatRequirements.trim()||[...combatRequirements].length>900||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(combatRequirements)))return false;
  return validNpcMotionSelectionRequest({...body,schemaVersion:selectionLegacySchemaVersion,motionSelection:[]});
 }
 

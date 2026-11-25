@@ -13,6 +13,7 @@ const choice=(presetId,posePreset='idle',label=presetId,marker='1')=>({presetId,
 const walk=choice('walk-flat'),run=choice('run-flat'),run2d=choice('run-2d'),attack=choice('sword-attack-flat','combat');
 const extra=Array.from({length:8},(_,i)=>choice('extra-'+i));
 const direct=['walk-flat','run-flat','run-2d','sword-attack-flat'];
+const brief={goal:'실종된 가족을 찾음',behavior:'조용히 단서를 확인함',palette:'먹색, 회청색',appearance:'단정한 회색 겉옷'};
 const source={name:'오리',slug:'duck',role:'농부',actId:'act1',chapterId:'ch01',intent:'마을에서 논다.',sourceRefs:'마을기록'};
 function manifest(presetId,posePreset='idle',extras={}){
  return {schemaVersion:'ngs.motion-preset.v1',presetId,posePreset,label:presetId,
@@ -193,7 +194,7 @@ test('Local browser queue validates selected publication hashes without reading 
  const accepted=await sendRegen('npc-motion-only',regen);assert.equal(accepted.status,202,JSON.stringify(await accepted.json()));
  assert.equal(regen.schemaVersion,'ngs.npc-animation.regenerate.v2');
  assert.deepEqual(queue.list().requests.find(row=>row.requestType===animationRegenerateType).payload,regen);
- const base=newNpcBasicRequest({...source,slug:'seojin-v2',chapterId:'chapter01',includeCombat:true});
+ const base=newNpcBasicRequest({...source,...brief,slug:'seojin-v2',chapterId:'chapter01',includeCombat:true});
  assert.equal((await send('basic-v2',base)).status,202);
  assert.deepEqual(queue.list().requests.at(-1).payload,base);
  assert.equal((await send('basic-extra',{...base,priorNpcId:'character.seojin'})).status,400);
@@ -305,12 +306,18 @@ test('empty selection only permits fresh NPC creation',()=>{
 
 test('basic creation is self-contained with optional combat and no inherited version or motion field',()=>{
  for(const includeCombat of [false,true]){
-  const body=newNpcBasicRequest({...source,slug:'seojin-v3',name:'서진 v3',chapterId:'chapter01',includeCombat});
+  const body=newNpcBasicRequest({...source,...brief,slug:'seojin-v3',name:'서진 v3',chapterId:'chapter01',includeCombat});
   assert.equal(body.character.npcId,'npc.seojin-v3');
-  assert.equal(body.intent,source.intent);assert.equal(body.includeCombat,includeCombat);
+  for(const value of Object.values(brief))assert.ok(body.intent.includes(value));assert.equal(body.includeCombat,includeCombat);
   assert.deepEqual(Object.keys(body).sort(),['character','includeCombat','intent','projectId','schemaVersion','sourceRefs']);
  }
- assert.throws(()=>newNpcBasicRequest({...source,includeCombat:'yes'}));
+ assert.throws(()=>newNpcBasicRequest({...source,...brief,chapterId:'chapter01',includeCombat:'yes'}));
+ for(const key of Object.keys(brief)){
+  assert.throws(()=>newNpcBasicRequest({...source,...brief,chapterId:'chapter01',includeCombat:false,[key]:'  '}));
+ }
+ const optional=newNpcBasicRequest({...source,...brief,chapterId:'chapter01',includeCombat:false,notes:'과한 장신구 금지'});
+ assert.match(optional.intent,/추가 요청: 과한 장신구 금지/);
+ assert.deepEqual(optional.sourceRefs,['사용자 기획 요청']);
 });
 test('scoped portrait commands accept just the two mutable poses and two original scopes',()=>{
  const scoped={schemaVersion:portraitRegenerateSchema,projectId:'binari',npcId:'character.seojin',intent:''};
@@ -318,4 +325,46 @@ test('scoped portrait commands accept just the two mutable poses and two origina
   assert.equal(validNpcPortraitRegeneration({...scoped,posePreset,scope}),true);
  assert.equal(validNpcPortraitRegeneration({...scoped,posePreset:'representative',scope:'directions'}),false);
  assert.equal(validNpcPortraitRegeneration({...scoped,posePreset:'idle',scope:'pixel'}),false);
+});
+
+test('combat request box opens only when selected and is sent apart from the common brief',async t=>{
+ class Element{
+  constructor(tag){this.tag=tag;this.children=[];this.events={};this.dataset={};this.textContent='';this.isConnected=true;}
+  append(...items){this.children.push(...items);}
+  before(el){this.parent?.append(el);}
+  querySelector(sel){return sel==='h3'?this.children.find(c=>c.tag==='h3'):null;}
+  replaceChildren(...items){this.children=items;}
+  addEventListener(name,fn){this.events[name]=fn;}
+  setAttribute(){}
+  showModal(){this.open=true;}
+  close(){this.open=false;}
+  remove(){this.isConnected=false;}
+  focus(){}
+ }
+ const previous=globalThis.document;
+ globalThis.document={createElement:tag=>new Element(tag),createTextNode:text=>({textContent:text})};
+ t.after(()=>{globalThis.document=previous;});
+ const ac=new AbortController(),owner=new Element('div'),heading=new Element('h3'),seen=[];
+ heading.parent=owner;owner.append(heading);
+ const all=(el,tag)=>[...(el.tag===tag?[el]:[]),...el.children.flatMap(next=>next?.children?all(next,tag):[])];
+ const trigger=mountNpcOneStop(owner,{signal:ac.signal,basic:true,request:()=>assert.fail('no motion catalog access'),
+  submit:async command=>{seen.push(command);return Response.json({queueId:'ngs.local.00000000-0000-4000-8000-000000000000',status:'queued'},{status:202});}});
+ trigger.events.click();
+ const form=all(owner,'form')[0],labels=all(form,'label');
+ const combat=all(form,'input').find(el=>el.type==='checkbox');
+ const box=labels.find(el=>el.textContent.startsWith('전투 추가 요청'));
+ assert.equal(box.hidden,true);assert.equal(box.children[0].disabled,true);
+ combat.checked=true;combat.events.change();assert.equal(box.hidden,false);assert.equal(box.children[0].disabled,false);
+ box.children[0].value='오른손 환도';
+ combat.checked=false;combat.events.change();assert.equal(box.hidden,true);
+ combat.checked=true;combat.events.change();
+ for(const [label,value] of Object.entries({'이름':'서진 v2','ID (식별 이름)':'seojin-v2','직업·이야기 속 역할 (필수)':'별감',
+  '목표·등장 이유 (필수)':brief.goal,'성격·평소 행동 (필수)':brief.behavior,'퍼스널 컬러 (필수)':brief.palette,'외형·복식의 단서 (필수)':brief.appearance})){
+  labels.find(el=>el.textContent===label).children[0].value=value;
+ }
+ await form.events.submit({preventDefault(){}});
+ assert.equal(seen.length,1);assert.equal(seen[0].payload.includeCombat,true);
+ assert.equal(seen[0].payload.combatRequirements,'오른손 환도');assert.doesNotMatch(seen[0].payload.intent,/환도/);
+ assert(!Object.hasOwn(newNpcBasicRequest({...source,...brief,chapterId:'chapter01',includeCombat:false,combatRequirements:'오른손 환도'}),'combatRequirements'));
+ ac.abort();
 });

@@ -47,6 +47,12 @@ visible selection.
 
 ### NPC original portrait authoring
 
-- Enable the local basic creation interface only after the matching Request Service, Planner, PDS/Filex and document/image workers are installed. Set `NGS_NPC_BASIC_PORTRAIT_ENABLED=1`.
+- Deploy the local basic creation interface only after the matching Request Service, Planner, PDS/Filex and document/image workers are installed. Basic creation is on for Local by default; set `NGS_NPC_BASIC_PORTRAIT_ENABLED=0` to keep it off. This does not enable scoped portrait editing.
 - Each basic request creates a fresh unique folder and uses its own intent, not a previous NPC as a template. The new workflow creates the four planning documents, representative and idle original; combat planning/original is optional. No animation or pixel processing.
 - Scoped editing is separately gated by `NGS_NPC_SCOPED_PORTRAIT_ENABLED=1`. Keep it off until the matching end-to-end scoped publisher is available. It targets idle or combat only, with reference plus directions or just directions. The representative and other pose stay unchanged.
+
+Basic NPC brief: enter a short occupation/story role in `character.role`. In
+`intent`, provide one or two lines each for 목표·등장 이유, 성격·평소 행동,
+퍼스널 컬러, and 외형·복식의 단서. Keep any extra instructions under 추가 요청.
+If canon is undecided, mark it explicitly and specify where proposals are allowed.
+Use a fresh ID and do not include previous NPC assets or backup references.

@@ -22,17 +22,42 @@ const knownRejections=new Set([
  'NGS_NPC_PORTRAIT_REGENERATE_PAYLOAD_INVALID','NPC_PORTRAIT_EDIT_UNAVAILABLE','NPC_PORTRAIT_EDIT_TARGET_NOT_FOUND','NPC_PORTRAIT_EDIT_SOURCE_NOT_FOUND','NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID','NPC_ANIMATION_REGENERATE_TARGET_NOT_FOUND','NPC_ANIMATION_REGENERATE_PRESETS_STALE',
 ]);
 
+const basicBriefFields=Object.freeze([
+ {key:'goal',label:'목표·등장 이유',example:'예: 실종된 딸을 찾고 있다. 처음에는 마을 사람에게 실종 사실을 숨긴다.'},
+ {key:'behavior',label:'성격·평소 행동',example:'예: 말이 짧고 낯선 사람의 말을 바로 믿지 않는다. 아이 앞에서는 한 걸음 물러선다.'},
+ {key:'palette',label:'퍼스널 컬러',example:'예: 먹색과 바랜 남색을 주로, 탁한 붉은색은 허리끈에만.'},
+ {key:'appearance',label:'외형·복식의 단서',example:'예: 30대 후반, 각진 어깨, 단정하고 검소한 별감 차림.'},
+]);
+const basicBriefLimit=450;
+
+export function composeNpcBasicIntent(values){
+ const lines=basicBriefFields.map(({key,label})=>{
+  const value=typeof values[key]==='string'?values[key].trim():'';
+  if(!text(value,basicBriefLimit))throw Error(label+'을(를) 한두 줄로 입력해 주세요.');
+  return label+': '+value;
+ });
+ const notes=typeof values.notes==='string'?values.notes.trim():'';
+ if(notes){
+  if(!text(notes,900))throw Error('추가 요청은 900자 이내로 입력해 주세요.');
+  lines.push('추가 요청: '+notes);
+ }
+ return lines.join('\n\n');
+}
+
 function oneStopRequest(values,motionCatalog,target,poseSelectionV2Enabled,basic=false){
- const {name,role,actId,chapterId}=values,slug=target?.slug??values.slug?.trim(),intent=values.intent?.trim();
+ const {name,role,actId,chapterId}=values,slug=target?.slug??values.slug?.trim();
  if(!text(name,60)||!text(role,300)||!validId(slug)||!slugPattern.test(slug)||(!target&&!validId('npc.'+slug))||!validId(actId)||!validId(chapterId)){
   throw Error('이름, 식별 이름, 역할과 스토리 위치를 확인해 주세요.');
  }
+ const intent=basic?composeNpcBasicIntent(values):values.intent?.trim();
  if(!text(intent,3500)||count(intent)<5)throw Error('기획 요청은 5~3,500자로 입력해 주세요.');
  const sourceRefs=basic?['사용자 기획 요청']:typeof values.sourceRefs==='string'?values.sourceRefs.split('\n').map(s=>s.trim()).filter(Boolean):[];
  if(!sourceRefs.length||sourceRefs.length>64||sourceRefs.some(ref=>count(ref)>300))throw Error('근거 참조를 한 줄에 하나씩 입력해 주세요. 최대 64줄, 줄당 300자입니다.');
  const character={npcId:target?.npcId??'npc.'+slug,name:name.trim(),slug,role:role.trim(),actId,chapterId};
  if(basic){
-  const body={schemaVersion:npcBasicSchema,projectId:'binari',character,intent,sourceRefs,includeCombat:values.includeCombat};
+  const combatRequirements=typeof values.combatRequirements==='string'?values.combatRequirements.trim():'';
+  const body={schemaVersion:npcBasicSchema,projectId:'binari',character,intent,sourceRefs,includeCombat:values.includeCombat,
+   ...(values.includeCombat===true&&combatRequirements?{combatRequirements}:{})};
   if(target||!validNpcBasicRequest(body))throw Error('요청 입력 내용을 확인해 주세요.');
   return body;
  }
@@ -182,14 +207,19 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   const name=field('이름','input',{...required,maxLength:60,autocomplete:'off',value:target?.name??''});
   const slug=field(target?'기존 NPC ID':'ID (식별 이름)','input',{...required,maxLength:target?128:124,
    autocomplete:'off',spellcheck:false,readOnly:Boolean(target),value:target?.npcId??''});
-  const role=field('직업·간략 역할','input',{...required,maxLength:300,value:target?.role??''});
+  const role=field(basic?'직업·이야기 속 역할 (필수)':'직업·간략 역할','input',{...required,maxLength:300,
+   placeholder:basic?'예: 실종 사건을 조사하는 별감이자 아이의 아버지':'',value:target?.role??''});
   const act=field('Act ID','input',{...required,maxLength:128,value:target?.actId??(basic?'act01':'story.main.act01'),spellcheck:false});
   const chapter=field('챕터 ID','input',{...required,maxLength:128,value:target?.chapterId??'chapter01',spellcheck:false});
   const intent=field('기획 요청','textarea',{...required,minLength:5,maxLength:3500});
   const refs=field('근거 참조 · 한 줄에 하나','textarea',required);
   section(fields,'기본 정보','one-stop-basic',[name,slug,role]);
   section(fields,'스토리 위치','one-stop-location',[act,chapter]);
-  section(fields,'기획 요청','one-stop-planning',basic?[intent]:[intent,refs]);
+  const briefInputs=basic?Object.fromEntries(basicBriefFields.map(({key,label,example})=>
+   [key,field(label+' (필수)','textarea',{...required,rows:2,maxLength:basicBriefLimit,placeholder:example})])):{};
+  const extraNotes=field('추가 요청 (선택)','textarea',{rows:2,maxLength:900,placeholder:'예: 왼쪽 눈썹의 흉터는 유지. 갑옷이나 과한 장신구는 피하기.'});
+  if(basic)fields.append(node('p','meta','항목마다 한두 줄이면 충분합니다. 정해지지 않았다면 미정이라고 쓰고, 모델이 제안해도 되는 범위를 적어 주세요.'));
+  section(fields,'기획 요청','one-stop-planning',basic?[...Object.values(briefInputs),extraNotes]:[intent,refs]);
   const options=node('section','one-stop-section one-stop-options');
   const presets=node('fieldset'),legend=node('legend','','모션 프리셋 선택');
   const quick=node('div','one-stop-motion-quick'),noncombat=node('button','','비전투 기본'),combat=node('button','','전투 기본');
@@ -198,11 +228,22 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   motionInfo.setAttribute('role','status');selectionInfo.setAttribute('role','status');
   presets.append(legend,quick,motionInfo,pick,selectionInfo);
   const combatChoice=node('input');combatChoice.type='checkbox';
+  const combatRequest=field('전투 추가 요청 (선택)','textarea',{rows:3,maxLength:900,
+   placeholder:'예: 오른손에 환도를 낮게 들고, 반 걸음 물러서 경계하는 자세. 장부나 장식품은 제외.'});
+  function toggleCombatRequest(){
+   const enabled=basic&&combatChoice.checked===true;
+   combatRequest.root.hidden=!enabled;combatRequest.input.disabled=!enabled;
+   combatChoice.setAttribute('aria-expanded',String(enabled));
+  }
+  combatRequest.root.id=headingId+'-combat-request';
+  combatChoice.setAttribute('aria-controls',combatRequest.root.id);
+  combatChoice.addEventListener('change',toggleCombatRequest);
+  toggleCombatRequest();
   if(basic){
    const extra=node('label','one-stop-motion-option');
-   extra.append(combatChoice,node('span','','전투 포즈 기획과 포트레이트 추가'));
+   extra.append(combatChoice,node('span','','전투 대표 포트레이트 추가'));
    options.append(node('h3','','생성 항목'),
-    node('p','meta','필수: 인물 개요 · 포트레이트 아트 · 대표/아이들 포즈 기획 · 대표/아이들 원본 각 1장'),extra);
+    node('p','meta','대표·아이들 원본은 기본으로 만들고, 8방향은 이후 별도로 요청합니다.'),extra,combatRequest.root);
   }else options.append(node('h3','','생성 옵션'),presets);
   fields.append(options);
   const send=node('button','npc-one-stop-submit',action+' 요청');send.type='submit';
@@ -310,7 +351,8 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
     const receipt=await intake.send(()=>{
      const body=oneStopRequest({name:name.input.value,slug:slug.input.value,role:role.input.value,actId:act.input.value,
       chapterId:chapter.input.value,intent:intent.input.value,sourceRefs:refs.input.value,
-      motionSelection:[...selected.values()],includeCombat:combatChoice.checked===true},motionCatalog??[],target,poseSelectionV2Enabled,basic);
+      ...(basic?{...Object.fromEntries(Object.entries(briefInputs).map(([key,control])=>[key,control.input.value])),notes:extraNotes.input.value}:{}),
+      motionSelection:[...selected.values()],includeCombat:combatChoice.checked===true,combatRequirements:combatRequest.input.value},motionCatalog??[],target,poseSelectionV2Enabled,basic);
      requestBuilt=true;return body;
     });
     if(receipt&&!ended){
