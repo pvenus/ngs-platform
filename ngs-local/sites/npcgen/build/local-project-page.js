@@ -748,7 +748,7 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='npcs'){
-   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace,poseSelectionV2Enabled:session.poseSelectionV2Enabled===true});
+   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace,poseSelectionV2Enabled:session.poseSelectionV2Enabled===true,basicPortraitRequests:!hosted&&session.npcBasicPortraitEnabled===true,scopedPortraitRequests:!hosted&&session.npcScopedPortraitEnabled===true});
    return;
   }
   if(tab==='concept'&&projectId==='binari'){

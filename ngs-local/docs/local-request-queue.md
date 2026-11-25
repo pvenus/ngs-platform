@@ -44,3 +44,9 @@ creation uses the `npc.*` namespace only. The movement picker accepts any
 nonempty selection of different, currently published presets, subject to
 the existing transport payload size. The two default buttons only edit the
 visible selection.
+
+### NPC original portrait authoring
+
+- Enable the local basic creation interface only after the matching Request Service, Planner, PDS/Filex and document/image workers are installed. Set `NGS_NPC_BASIC_PORTRAIT_ENABLED=1`.
+- Each basic request creates a fresh unique folder and uses its own intent, not a previous NPC as a template. The new workflow creates the four planning documents, representative and idle original; combat planning/original is optional. No animation or pixel processing.
+- Scoped editing is separately gated by `NGS_NPC_SCOPED_PORTRAIT_ENABLED=1`. Keep it off until the matching end-to-end scoped publisher is available. It targets idle or combat only, with reference plus directions or just directions. The representative and other pose stay unchanged.

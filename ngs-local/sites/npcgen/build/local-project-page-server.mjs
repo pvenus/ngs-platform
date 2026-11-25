@@ -30,7 +30,7 @@ import {audioResponseRange,localAudioResults,localAudioSeparationSource} from '.
 import {openPuzzleBundle,puzzlePrefix} from './local-puzzle-media.mjs';
 import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from './local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from './motion-preset-convert-2d.mjs';
-import {isSelectionSchema,isPoseSelectionV2,isNpcWorkflowReplaceSchema,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate} from './npc-motion-selection.mjs';
+import {isSelectionSchema,isPoseSelectionV2,isNpcWorkflowReplaceSchema,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate,npcBasicSchema,validNpcBasicRequest,portraitRegenerateType,validNpcPortraitRegeneration} from './npc-motion-selection.mjs';
 
 const canonicalPolicy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const assets=new Map([
@@ -137,10 +137,10 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
   ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady}:{}),
-  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
+  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',npcBasicPortraitEnabled:env.NGS_NPC_BASIC_PORTRAIT_ENABLED==='1',npcScopedPortraitEnabled:env.NGS_NPC_SCOPED_PORTRAIT_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readCinematicRemoveReady,readPropAnimationRemoveReady,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readCinematicRemoveReady,readPropAnimationRemoveReady,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -292,9 +292,19 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      if(!motionSelection.every(choice=>presets.some(row=>sameMotionChoice(choice,row))))
       throw failure('NPC_ANIMATION_REGENERATE_PRESETS_STALE',409);
     }
+    if(command.requestType===portraitRegenerateType){
+     if(!npcScopedPortraitEnabled)throw failure('NPC_PORTRAIT_EDIT_UNAVAILABLE',404);
+     if(!validNpcPortraitRegeneration(command.payload))throw failure('NGS_NPC_PORTRAIT_REGENERATE_PAYLOAD_INVALID',400);
+     const {projectId,npcId}=command.payload;
+     const {json:{npcs}}=await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId}),()=>{});
+     if(!npcs?.some(npc=>npc.id===npcId))throw failure('NPC_PORTRAIT_EDIT_TARGET_NOT_FOUND',404);
+    }
     if(command.requestType==='npc.workflow'){
      const {character,includeCombat,combatMotionPresets,schemaVersion,motionSelection}=command.payload;
-     if(isSelectionSchema(schemaVersion)){
+     if(schemaVersion===npcBasicSchema){
+      if(!npcBasicPortraitEnabled)throw failure('NPC_BASIC_PORTRAIT_UNAVAILABLE',404);
+      if(!validNpcBasicRequest(command.payload))throw failure('NGS_ONE_STOP_PAYLOAD_INVALID',400);
+     }else if(isSelectionSchema(schemaVersion)){
       if(!validNpcMotionSelectionRequest(command.payload))throw failure('NGS_ONE_STOP_PAYLOAD_INVALID',400);
       if(motionSelection.length){
        const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',view:'selection'});
@@ -336,6 +346,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      ...(sequenceCine?{cinematicSequenceEnabled:true}:{}),...(playbackCine?{cinematicPlaybackEnabled:true}:{}),
      ...(sourceCine?{cinematicSourceEnabled:true}:{}),...(removeCine?{cinematicRemoveEnabled:true}:{}),...(removeProp?{propAnimationRemoveEnabled:true}:{}),
      ...(poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),
+     ...(queue&&npcBasicPortraitEnabled===true?{npcBasicPortraitEnabled:true}:{}),
+     ...(queue&&npcScopedPortraitEnabled===true?{npcScopedPortraitEnabled:true}:{}),
      ...(queue&&audioWorkspaceEnabled===true&&audioSeparationEnabled===true?{audioSeparationEnabled:true}:{})});
    }
    if(url.pathname===replicaSyncProgressPath){

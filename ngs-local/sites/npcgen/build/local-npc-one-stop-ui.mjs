@@ -1,6 +1,6 @@
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {motionCatalogSchema,motionSelectionOf,npcReplacementSlug,quickMotionSelection,sameMotionChoice,selectionReplaceSchemaVersion,
- selectionSchemaVersion,selectionLegacySchemaVersion,selectionLegacyReplaceSchemaVersion,validMotionChoice,validMotionSelection,validNpcMotionSelectionRequest} from './npc-motion-selection.mjs';
+ selectionSchemaVersion,selectionLegacySchemaVersion,selectionLegacyReplaceSchemaVersion,validMotionChoice,validMotionSelection,validNpcMotionSelectionRequest,npcBasicSchema,validNpcBasicRequest} from './npc-motion-selection.mjs';
 /** The roster '+' creates a new NPC; the detail action targets the selected NPC ID. */
 const directions=['n','ne','e','se','s','sw','w','nw'];
 const identifier=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -17,19 +17,25 @@ const knownRejections=new Set([
  'COMMON_INVALID_IDENTIFIER','ORIGIN_OR_CSRF_REJECTED','CSRF_INVALID','PROJECT_OR_RESOURCE_DENIED',
  'LOCAL_SIGN_IN_REQUIRED','LOCAL_SESSION_EXPIRED_OR_REVOKED','FRONTEND_SESSION_CONTEXT_CHANGED',
  'PAYLOAD_TOO_LARGE','NGS_REQUEST_QUEUE_INPUT_TOO_LARGE','SPACE_BODY_TOO_LARGE',
- 'REQUEST_SUBMIT_INVALID','NPC_POSE_SELECTION_V2_UNAVAILABLE','NGS_ONE_STOP_PAYLOAD_INVALID','OFFICIAL_REQUEST_NPC_ALREADY_REGISTERED',
+ 'REQUEST_SUBMIT_INVALID','NPC_BASIC_PORTRAIT_UNAVAILABLE','NPC_POSE_SELECTION_V2_UNAVAILABLE','NGS_ONE_STOP_PAYLOAD_INVALID','OFFICIAL_REQUEST_NPC_ALREADY_REGISTERED',
  'ONE_STOP_REPLACE_TARGET_NOT_FOUND','ONE_STOP_REPLACE_IDENTITY_INVALID','ONE_STOP_MOTION_SELECTION_STALE',
- 'NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID','NPC_ANIMATION_REGENERATE_TARGET_NOT_FOUND','NPC_ANIMATION_REGENERATE_PRESETS_STALE',
+ 'NGS_NPC_PORTRAIT_REGENERATE_PAYLOAD_INVALID','NPC_PORTRAIT_EDIT_UNAVAILABLE','NPC_PORTRAIT_EDIT_TARGET_NOT_FOUND','NPC_PORTRAIT_EDIT_SOURCE_NOT_FOUND','NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID','NPC_ANIMATION_REGENERATE_TARGET_NOT_FOUND','NPC_ANIMATION_REGENERATE_PRESETS_STALE',
 ]);
 
-function oneStopRequest(values,motionCatalog,target,poseSelectionV2Enabled){
+function oneStopRequest(values,motionCatalog,target,poseSelectionV2Enabled,basic=false){
  const {name,role,actId,chapterId}=values,slug=target?.slug??values.slug?.trim(),intent=values.intent?.trim();
  if(!text(name,60)||!text(role,300)||!validId(slug)||!slugPattern.test(slug)||(!target&&!validId('npc.'+slug))||!validId(actId)||!validId(chapterId)){
   throw Error('이름, 식별 이름, 역할과 스토리 위치를 확인해 주세요.');
  }
  if(!text(intent,3500)||count(intent)<5)throw Error('기획 요청은 5~3,500자로 입력해 주세요.');
- const sourceRefs=typeof values.sourceRefs==='string'?values.sourceRefs.split('\n').map(s=>s.trim()).filter(Boolean):[];
+ const sourceRefs=basic?['사용자 기획 요청']:typeof values.sourceRefs==='string'?values.sourceRefs.split('\n').map(s=>s.trim()).filter(Boolean):[];
  if(!sourceRefs.length||sourceRefs.length>64||sourceRefs.some(ref=>count(ref)>300))throw Error('근거 참조를 한 줄에 하나씩 입력해 주세요. 최대 64줄, 줄당 300자입니다.');
+ const character={npcId:target?.npcId??'npc.'+slug,name:name.trim(),slug,role:role.trim(),actId,chapterId};
+ if(basic){
+  const body={schemaVersion:npcBasicSchema,projectId:'binari',character,intent,sourceRefs,includeCombat:values.includeCombat};
+  if(target||!validNpcBasicRequest(body))throw Error('요청 입력 내용을 확인해 주세요.');
+  return body;
+ }
  const chosen=values.motionSelection;
  if((!validMotionSelection(chosen)&&!(Array.isArray(chosen)&&chosen.length===0&&!target))||!chosen.every(choice=>motionCatalog.some(row=>sameMotionChoice(choice,row)))){
   throw Error('게시된 모션 프리셋을 한 개 이상 선택하세요. 변경된 선택은 해제한 뒤 다시 골라 주세요.');
@@ -38,12 +44,14 @@ function oneStopRequest(values,motionCatalog,target,poseSelectionV2Enabled){
   ?(target?selectionReplaceSchemaVersion:selectionSchemaVersion)
   :(target?selectionLegacyReplaceSchemaVersion:selectionLegacySchemaVersion);
  const body={schemaVersion,projectId:'binari',
-  character:{npcId:target?.npcId??'npc.'+slug,name:name.trim(),slug,role:role.trim(),actId,chapterId},intent,sourceRefs,
+  character,intent,sourceRefs,
   motionSelection:chosen.map(motionSelectionOf)};
  if(!validNpcMotionSelectionRequest(body))throw Error('요청 입력 내용을 확인해 주세요.');
  return body;
 }
 export const newNpcOneStopRequest=(values,motionCatalog=[],poseSelectionV2Enabled=false)=>oneStopRequest(values,motionCatalog,null,poseSelectionV2Enabled);
+
+export const newNpcBasicRequest=values=>oneStopRequest(values,[],null,false,true);
 
 export function npcReplacementTarget(npc){
  const npcId=npc?.id;
@@ -140,19 +148,19 @@ function npcRegenerateIcon(){
  icon.append(path);return icon;
 }
 
-export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwner=owner,poseSelectionV2Enabled=false}){
+export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwner=owner,poseSelectionV2Enabled=false,basic=false,newVersion=false}){
  const target=replaceNpc===undefined?null:npcReplacementTarget(replaceNpc);
  if(replaceNpc!==undefined&&!target)return null;
- const action=target?'종합 재생성':'종합 생성',titleText='NPC '+action;
- const headingId=target?'npc-one-stop-replace-heading':'npc-one-stop-heading';
+ const action=target?'종합 재생성':newVersion?'새 버전 생성':basic?'기본 생성':'종합 생성',titleText='NPC '+action;
+ const headingId=target?'npc-one-stop-replace-heading':newVersion?'npc-one-stop-version-heading':'npc-one-stop-heading';
  let bar=owner;
- if(!target){
+ if(!target&&!newVersion){
   const title=owner.querySelector('h3');
   bar=owner.querySelector('.npc-one-stop-roster-heading');
   if(!bar){bar=node('div','npc-one-stop-roster-heading');title.before(bar);bar.append(title);}
   owner.querySelector('.npc-one-stop-trigger')?.remove();
  }
- const trigger=node('button',target?'npc-one-stop-replace-trigger':'npc-one-stop-trigger',target?'':'+');
+ const trigger=node('button',target?'npc-one-stop-replace-trigger':newVersion?'npc-portrait-scoped-trigger':'npc-one-stop-trigger',target?'':newVersion?'새 버전':'+');
  if(target)trigger.append(npcRegenerateIcon());
  trigger.type='button';trigger.setAttribute('aria-haspopup','dialog');
  trigger.setAttribute('aria-label',titleText);trigger.title=titleText;
@@ -166,7 +174,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   heading.id=headingId;close.type='button';header.append(heading,close);
   const intro=node('p','meta',target?
    `기존 NPC ${target.name} (${target.npcId})를 같은 ID로 재생성하도록 요청합니다. 새 NPC를 추가하지 않습니다.`:
-   '새 NPC의 기획과 포트레이트를 생성합니다. 모션을 선택하면 애니메이션도 함께 생성합니다.');
+   basic?'새 폴더에 입력한 기획으로 처음부터 생성합니다. 기존 NPC 기획·이미지를 복제하지 않습니다.':'새 NPC의 기획과 포트레이트를 생성합니다. 모션을 선택하면 애니메이션도 함께 생성합니다.');
   const form=node('form','one-stop-intake'),fields=node('fieldset'),notice=node('p','meta');
   fields.append(node('legend','',target?'기존 NPC 재생성':'새 NPC 생성'));
   const error=node('p','meta error');error.setAttribute('role','alert');notice.setAttribute('role','status');
@@ -175,13 +183,13 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   const slug=field(target?'기존 NPC ID':'ID (식별 이름)','input',{...required,maxLength:target?128:124,
    autocomplete:'off',spellcheck:false,readOnly:Boolean(target),value:target?.npcId??''});
   const role=field('직업·간략 역할','input',{...required,maxLength:300,value:target?.role??''});
-  const act=field('Act ID','input',{...required,maxLength:128,value:target?.actId??'story.main.act01',spellcheck:false});
+  const act=field('Act ID','input',{...required,maxLength:128,value:target?.actId??(basic?'act01':'story.main.act01'),spellcheck:false});
   const chapter=field('챕터 ID','input',{...required,maxLength:128,value:target?.chapterId??'chapter01',spellcheck:false});
   const intent=field('기획 요청','textarea',{...required,minLength:5,maxLength:3500});
   const refs=field('근거 참조 · 한 줄에 하나','textarea',required);
   section(fields,'기본 정보','one-stop-basic',[name,slug,role]);
   section(fields,'스토리 위치','one-stop-location',[act,chapter]);
-  section(fields,'기획 요청','one-stop-planning',[intent,refs]);
+  section(fields,'기획 요청','one-stop-planning',basic?[intent]:[intent,refs]);
   const options=node('section','one-stop-section one-stop-options');
   const presets=node('fieldset'),legend=node('legend','','모션 프리셋 선택');
   const quick=node('div','one-stop-motion-quick'),noncombat=node('button','','비전투 기본'),combat=node('button','','전투 기본');
@@ -189,7 +197,14 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   const pick=node('div','one-stop-motion-choices'),motionInfo=node('p','meta'),selectionInfo=node('p','meta');
   motionInfo.setAttribute('role','status');selectionInfo.setAttribute('role','status');
   presets.append(legend,quick,motionInfo,pick,selectionInfo);
-  options.append(node('h3','','생성 옵션'),presets);fields.append(options);
+  const combatChoice=node('input');combatChoice.type='checkbox';
+  if(basic){
+   const extra=node('label','one-stop-motion-option');
+   extra.append(combatChoice,node('span','','전투 포즈 기획과 포트레이트 추가'));
+   options.append(node('h3','','생성 항목'),
+    node('p','meta','필수: 인물 개요 · 포트레이트 아트 · 대표/아이들 포즈 기획 · 대표/아이들 원본 각 1장'),extra);
+  }else options.append(node('h3','','생성 옵션'),presets);
+  fields.append(options);
   const send=node('button','npc-one-stop-submit',action+' 요청');send.type='submit';
   form.append(fields,send);modal.append(header,intro,form,error,notice);
 
@@ -295,7 +310,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
     const receipt=await intake.send(()=>{
      const body=oneStopRequest({name:name.input.value,slug:slug.input.value,role:role.input.value,actId:act.input.value,
       chapterId:chapter.input.value,intent:intent.input.value,sourceRefs:refs.input.value,
-      motionSelection:[...selected.values()]},motionCatalog??[],target,poseSelectionV2Enabled);
+      motionSelection:[...selected.values()],includeCombat:combatChoice.checked===true},motionCatalog??[],target,poseSelectionV2Enabled,basic);
      requestBuilt=true;return body;
     });
     if(receipt&&!ended){
@@ -307,7 +322,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
      :'접수 응답을 확인하지 못했습니다. 같은 접수를 다시 확인해 주세요.';
    }finally{if(!ended){pending=false;updateControls();if(intake.accepted)close.focus({preventScroll:true});}}
   });
-  updateControls();modalOwner.append(modal);modal.showModal();void pollCatalog();
+  updateControls();modalOwner.append(modal);modal.showModal();if(!basic)void pollCatalog();
   if(carry)send.focus();else name.input.focus();
  }
  trigger.addEventListener('click',open);

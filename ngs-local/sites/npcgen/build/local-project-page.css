@@ -89,6 +89,7 @@ ul{padding:0;list-style:none}
 .npc-detail{padding:0;overflow:hidden;min-height:315px}
 .npc-detail-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 18px 8px}
 .npc-one-stop-replace-trigger{display:inline-grid;place-items:center;flex:none;width:36px;height:36px;padding:0;color:var(--primary)}
+.npc-portrait-scoped-trigger{flex:none;min-height:36px;padding:4px 8px;color:var(--primary);white-space:nowrap}
 .npc-detail-heading h3{font-size:1.3rem}
 .npc-character-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
 .npc-character-badges span{padding:1px 8px;border-radius:20px;background:#eaf0e2;color:var(--primary);font-size:.78rem}

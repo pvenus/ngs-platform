@@ -4,9 +4,9 @@ import {createHash} from 'node:crypto';
 import {mkdir,mkdtemp,rm,writeFile} from 'node:fs/promises';import {realpathSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';import {createLocalProjectPageServer} from '../build/local-project-page-server.mjs';import {openLocalRequestQueue} from '../build/local-request-queue.mjs';
 import {workspaceRead} from '../build/project-workspace-view.mjs';
 import {mountNpcAnimationRegenerate} from '../build/local-npc-workspace-ui.mjs';
-import {mountNpcOneStop,newNpcOneStopRequest,npcReplacementTarget,readOneStopMotionPresets} from '../build/local-npc-one-stop-ui.mjs';
+import {mountNpcOneStop,newNpcOneStopRequest,newNpcBasicRequest,npcReplacementTarget,readOneStopMotionPresets} from '../build/local-npc-one-stop-ui.mjs';
 import {animationRegenerateSchema,animationRegenerateType,npcAnimationRegenerateRequest,npcPublishedMotionLabel,validNpcAnimationRegenerate,motionCatalogSchema,motionDirections,motionSelectionOf,publishedMotionChoice,quickMotionSelection,
- selectionReplaceSchemaVersion,selectionSchemaVersion,validMotionSelection,validNpcMotionSelectionRequest} from '../build/npc-motion-selection.mjs';
+ selectionReplaceSchemaVersion,selectionSchemaVersion,validMotionSelection,validNpcMotionSelectionRequest,validNpcPortraitRegeneration,portraitRegenerateType,portraitRegenerateSchema} from '../build/npc-motion-selection.mjs';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const variant={kind:'2d',sourcePresetId:'run',sourcePresetHash:'a'.repeat(64)};
 const choice=(presetId,posePreset='idle',label=presetId,marker='1')=>({presetId,posePreset,label,assetSetSha256:marker.repeat(64)});
@@ -148,7 +148,7 @@ test('Local browser queue validates selected publication hashes without reading 
   const raw=manifest(selected.presetId,selected.posePreset,selected===run2d?{variant}:{});
   await writeFile(join(presets,selected.presetId+'.json'),JSON.stringify(raw),{mode:0o600});
  }
- const queue=openLocalRequestQueue(join(tmp,'queue.sqlite')),server=createLocalProjectPageServer({root,requestQueue:queue,poseSelectionV2Enabled:true});
+ const queue=openLocalRequestQueue(join(tmp,'queue.sqlite')),server=createLocalProjectPageServer({root,requestQueue:queue,poseSelectionV2Enabled:true,npcBasicPortraitEnabled:true,npcScopedPortraitEnabled:true});
  t.after(async()=>{await new Promise(resolve=>server.close(resolve));queue.close();await rm(tmp,{recursive:true,force:true});});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const origin='http://127.0.0.1:'+server.address().port;
@@ -193,6 +193,18 @@ test('Local browser queue validates selected publication hashes without reading 
  const accepted=await sendRegen('npc-motion-only',regen);assert.equal(accepted.status,202,JSON.stringify(await accepted.json()));
  assert.equal(regen.schemaVersion,'ngs.npc-animation.regenerate.v2');
  assert.deepEqual(queue.list().requests.find(row=>row.requestType===animationRegenerateType).payload,regen);
+ const base=newNpcBasicRequest({...source,slug:'seojin-v2',chapterId:'chapter01',includeCombat:true});
+ assert.equal((await send('basic-v2',base)).status,202);
+ assert.deepEqual(queue.list().requests.at(-1).payload,base);
+ assert.equal((await send('basic-extra',{...base,priorNpcId:'character.seojin'})).status,400);
+ const scoped={schemaVersion:portraitRegenerateSchema,projectId:'binari',npcId:'character.seojin',posePreset:'idle',scope:'directions',intent:'정면과 실루엣 유지'};
+ const sendPortrait=(key,payload)=>fetch(origin+'/api/requests',{method:'POST',headers,
+  body:JSON.stringify({requestType:portraitRegenerateType,idempotencyKey:key,payload})});
+ assert.equal((await sendPortrait('scoped-no-target',{...scoped,npcId:'npc.missing'})).status,404);
+ assert.equal((await sendPortrait('scoped-representative',{...scoped,posePreset:'representative'})).status,400);
+ assert.equal((await sendPortrait('scoped-pixel-pin',{...scoped,pixel:true})).status,400);
+ assert.equal((await sendPortrait('scoped-idle',scoped)).status,202);
+ assert.deepEqual(queue.list().requests.at(-1).payload,scoped);
  const legacyRegen={...regen,schemaVersion:'ngs.npc-animation.regenerate.v1'};
  assert.equal((await sendRegen('legacy-npc-motion-only',legacyRegen)).status,202);
  assert.deepEqual(queue.list().requests.filter(row=>row.requestType===animationRegenerateType).at(-1).payload,legacyRegen);
@@ -289,4 +301,21 @@ test('empty selection only permits fresh NPC creation',()=>{
   assert.equal(validNpcMotionSelectionRequest({...payload,schemaVersion:selectionReplaceSchemaVersion}),false);
   assert.equal(validNpcAnimationRegenerate({...motionSelectionPayload([])}),false);
  }
+});
+
+test('basic creation is self-contained with optional combat and no inherited version or motion field',()=>{
+ for(const includeCombat of [false,true]){
+  const body=newNpcBasicRequest({...source,slug:'seojin-v3',name:'서진 v3',chapterId:'chapter01',includeCombat});
+  assert.equal(body.character.npcId,'npc.seojin-v3');
+  assert.equal(body.intent,source.intent);assert.equal(body.includeCombat,includeCombat);
+  assert.deepEqual(Object.keys(body).sort(),['character','includeCombat','intent','projectId','schemaVersion','sourceRefs']);
+ }
+ assert.throws(()=>newNpcBasicRequest({...source,includeCombat:'yes'}));
+});
+test('scoped portrait commands accept just the two mutable poses and two original scopes',()=>{
+ const scoped={schemaVersion:portraitRegenerateSchema,projectId:'binari',npcId:'character.seojin',intent:''};
+ for(const posePreset of ['idle','combat'])for(const scope of ['reference-and-directions','directions'])
+  assert.equal(validNpcPortraitRegeneration({...scoped,posePreset,scope}),true);
+ assert.equal(validNpcPortraitRegeneration({...scoped,posePreset:'representative',scope:'directions'}),false);
+ assert.equal(validNpcPortraitRegeneration({...scoped,posePreset:'idle',scope:'pixel'}),false);
 });

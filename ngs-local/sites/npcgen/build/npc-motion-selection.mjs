@@ -70,6 +70,16 @@ export function validNpcWorkflowIdentity(character,schema){
   character.chapterId===character.chapterId.trim()&&/^(?:ch|chapter0)[1-5]$/u.test(character.chapterId));
 }
 
+export const npcBasicSchema='ngs.npc-one-stop.basic.v1';
+export function validNpcBasicRequest(value){
+ const common=['schemaVersion','projectId','intent','character','sourceRefs','includeCombat'];
+ if(!exact(value,common)||value.schemaVersion!==npcBasicSchema||typeof value.includeCombat!=='boolean'||
+    typeof value.character?.slug!=='string'||value.character.slug.length<2||value.character.slug.length>80||
+    !['act1','act01'].includes(value.character?.actId)||!(/^(?:ch[1-5]|chapter0[1-5])$/u.test(value.character?.chapterId)))return false;
+ const {includeCombat,...body}=value;
+ return validNpcMotionSelectionRequest({...body,schemaVersion:selectionLegacySchemaVersion,motionSelection:[]});
+}
+
 export function validNpcMotionSelectionRequest(value){
  const id=v=>typeof v==='string'&&v===v.trim()&&/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(v);
  const text=(v,max)=>typeof v==='string'&&v.isWellFormed()&&v===v.trim()&&v.length>0&&[...v].length<=max&&
@@ -109,4 +119,15 @@ export function quickMotionSelection(kind,rows){
  if(!want)return null;
  const picked=want.map((id,i)=>rows.find(row=>row.presetId===id&&row.posePreset===(i===2?'combat':'idle')));
  return picked.some(row=>!row)?null:picked.map(motionSelectionOf);
+}
+
+export const portraitRegenerateType='npc.portrait.regenerate';
+export const portraitRegenerateSchema='ngs.npc-portrait.regenerate.v1';
+export const npcPortraitEditScopes=Object.freeze(['reference-and-directions','directions']);
+export function validNpcPortraitRegeneration(value){
+ return exact(value,['schemaVersion','projectId','npcId','posePreset','scope','intent'])&&
+  value.schemaVersion===portraitRegenerateSchema&&value.projectId==='binari'&&validNpcAnimationTarget(value.npcId)&&
+  ['idle','combat'].includes(value.posePreset)&&npcPortraitEditScopes.includes(value.scope)&&
+  typeof value.intent==='string'&&value.intent.isWellFormed()&&value.intent===value.intent.trim()&&[...value.intent].length<=3500&&
+  !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(value.intent);
 }

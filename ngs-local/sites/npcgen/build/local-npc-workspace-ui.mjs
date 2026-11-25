@@ -1,7 +1,7 @@
 import {createNpcPlanningEditor,editableNpcPlanningDocument,npcPlanningSelection,renderNpcPlanningDocument} from './local-npc-planning-ui.mjs';
 import {createNpcOneStopIntake,mountNpcOneStop,readOneStopMotionPresets} from './local-npc-one-stop-ui.mjs';
 import {animationRegenerateType,motionSelectionOf,npcAnimationRegenerateRequest,
- npcPublishedMotionLabel,validNpcAnimationTarget} from './npc-motion-selection.mjs';
+ npcPublishedMotionLabel,validNpcAnimationTarget,portraitRegenerateType,portraitRegenerateSchema,validNpcPortraitRegeneration} from './npc-motion-selection.mjs';
 
 /* Only the typed NPC read model is used here; no generic files or legacy transport. */
 function nodeOf(tag,className,text){
@@ -183,10 +183,67 @@ function openMediaPreview(owner,trigger,image,{label,kind,pixel=false,toolbar,on
  return {dialog,image,note,close};
 }
 
-export function renderNpcPortraitPanel(data,panel,{variants=new Map(),poses=new Map()}={}){
- const folders=groupNpcPortraits((data.portraits??[]).filter(asset=>npcAsset(asset.url)));
- if(!folders.length){panel.append(nodeOf('p','meta','게시된 포트레이트가 없습니다.'));return ()=>{};}
+export function scopedPortraitAction(data,owner,submit,intakes,poses){
+ const npcId=data.npc.id;
+ if(!validNpcAnimationTarget(npcId))return null;
+ const button=nodeOf('button','npc-portrait-scoped-trigger','추가·재생성');
+ button.type='button';button.setAttribute('aria-haspopup','dialog');
+ button.setAttribute('aria-label','아이들·전투 포트레이트 추가 또는 재생성');
+ let dialog=null,close=()=>{};
+ button.addEventListener('click',()=>{
+  if(dialog)return;
+  const intake=intakes.get(npcId)??createNpcOneStopIntake(submit,{requestType:portraitRegenerateType});
+  intakes.set(npcId,intake);
+  dialog=nodeOf('dialog','npc-one-stop-dialog');
+  const title=nodeOf('h3','','포트레이트 추가·재생성'),form=nodeOf('form','one-stop-intake');
+  const notice=nodeOf('p','meta');notice.setAttribute('role','status');
+  const pose=nodeOf('select'),scope=nodeOf('select'),intent=nodeOf('textarea');
+  pose.setAttribute('aria-label','포트레이트 포즈');scope.setAttribute('aria-label','생성 범위');
+  intent.setAttribute('aria-label','수정 요청');intent.placeholder='바꾸려는 내용을 입력하세요 (선택)';intent.maxLength=3500;
+  function option(select,value,label){const option=nodeOf('option','',label);option.value=value;select.append(option);return option;}
+  option(pose,'idle','아이들');option(pose,'combat','전투');
+  option(scope,'reference-and-directions','기준 원본 + 8방향');const directionOnly=option(scope,'directions','8방향만');
+  pose.value=poses.get(npcId)==='combat'?'combat':'idle';scope.value='reference-and-directions';
+  const explain=nodeOf('p','meta'),send=nodeOf('button','npc-one-stop-submit','생성 요청'),cancel=nodeOf('button','','닫기');
+  send.type='submit';cancel.type='button';
+  let pending=false;
+  function available(){
+   directionOnly.disabled=!(data.portraits??[]).some(p=>p.posePreset===pose.value&&p.referenceType==='portrait'&&(p.direction??'center')==='center');
+   if(directionOnly.disabled&&scope.value==='directions')scope.value='reference-and-directions';
+   explain.textContent=directionOnly.disabled?'원본이 아직 없어 기준 원본과 8방향을 함께 생성합니다.':scope.value==='directions'
+    ?'기준 원본을 그대로 두고 8방향만 바꿉니다.':'기준 원본을 새로 만들고 그 원본으로 8방향도 바꿉니다.';
+  }
+  function controls(){
+   pose.disabled=scope.disabled=intent.disabled=pending||intake.waitingConfirmation||intake.accepted;
+   send.disabled=pending||intake.accepted;
+   send.textContent=intake.waitingConfirmation?'접수 다시 확인':'생성 요청';
+  }
+  pose.addEventListener('change',available);scope.addEventListener('change',available);available();controls();
+  form.append(nodeOf('p','meta','대표 포트레이트와 다른 포즈는 그대로 유지합니다.'),pose,scope,explain,intent,send,cancel,notice);
+  dialog.append(title,form);dialog.setAttribute('aria-label',title.textContent);owner.append(dialog);dialog.showModal();
+  const opened=dialog;
+  close=()=>{if(dialog!==opened)return;dialog=null;opened.close();opened.remove();if(!intake.waitingConfirmation)intakes.delete(npcId);};
+  cancel.addEventListener('click',close);opened.addEventListener('cancel',e=>{e.preventDefault();close();});
+  form.addEventListener('submit',async e=>{
+   e.preventDefault();if(pending||intake.accepted)return;
+   const payload={schemaVersion:portraitRegenerateSchema,projectId:'binari',npcId,posePreset:pose.value,scope:scope.value,intent:intent.value.trim()};
+   if(!intake.waitingConfirmation&&(!validNpcPortraitRegeneration(payload)||(directionOnly.disabled&&payload.scope==='directions'))){notice.textContent='포즈와 생성 범위를 다시 확인해 주세요.';return;}
+   pending=true;controls();
+   try{const receipt=await intake.send(()=>payload);if(dialog===opened&&receipt)notice.textContent='포트레이트 생성 요청을 접수했습니다.';}
+   catch(error){if(dialog===opened)notice.textContent=error.definitive?'요청을 접수하지 못했습니다: '+error.message:'접수 응답을 확인하지 못했습니다. 같은 접수를 다시 확인해 주세요.';}
+   finally{pending=false;if(dialog===opened)controls();else if(!intake.waitingConfirmation)intakes.delete(npcId);}
+  });
+ });
+ return {button,close:()=>close()};
+}
+
+export function renderNpcPortraitPanel(data,panel,{variants=new Map(),poses=new Map(),portraitActions=null,originalOnly=false}={}){
+ const folders=groupNpcPortraits((data.portraits??[]).filter(asset=>npcAsset(asset.url)&&(!originalOnly||asset.referenceType==='portrait')));
+ const row=nodeOf('div','npc-one-stop-roster-heading');
  const tabs=nodeOf('div','npc-portrait-pose-tabs');
+ if(portraitActions){row.append(tabs,portraitActions.button);panel.append(row);}
+ if(!folders.length){panel.append(nodeOf('p','meta','게시된 포트레이트가 없습니다.'));return ()=>portraitActions?.close();}
+
  tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','포트레이트 포즈');
  const activePanel=nodeOf('div','npc-portrait-pose-panel');
  activePanel.id='npc-portrait-pose-panel';activePanel.setAttribute('role','tabpanel');activePanel.tabIndex=0;
@@ -204,7 +261,8 @@ export function renderNpcPortraitPanel(data,panel,{variants=new Map(),poses=new 
   return button;
  });
  tabs.append(...buttons);
- panel.append(tabs,activePanel);
+ if(!portraitActions)panel.append(tabs);
+ panel.append(activePanel);
  let current=-1,preview=null;
  const closePreview=()=>preview?.close({restoreFocus:false});
  function select(index,moveFocus=false){
@@ -271,7 +329,7 @@ export function renderNpcPortraitPanel(data,panel,{variants=new Map(),poses=new 
    picker.value=selected;picker.addEventListener('change',()=>show(picker.value));header.append(picker);
   }else{
    const label=pose==='representative'&&!references.length?'원본 미게시':
-    pose!=='representative'&&!pixelAvailable?portraitReferenceLabels[selected]+' · 픽셀 미게시':
+    !originalOnly&&pose!=='representative'&&!pixelAvailable?portraitReferenceLabels[selected]+' · 픽셀 미게시':
     portraitReferenceLabels[selected];
    header.append(nodeOf('span','meta',label));
   }
@@ -281,7 +339,7 @@ export function renderNpcPortraitPanel(data,panel,{variants=new Map(),poses=new 
  const remembered=folders.findIndex(folder=>folder.pose===poses.get(data.npc.id));
  const representative=folders.findIndex(folder=>folder.pose==='representative');
  select(remembered>=0?remembered:Math.max(0,representative));
- return closePreview;
+ return ()=>{closePreview();portraitActions?.close();};
 }
 
 const npcMediaDetailTabs=new Set(['portraits','animations']);
@@ -394,13 +452,13 @@ export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,mo
  return ()=>{mounted=false;disposeDialog();actions.remove();};
 }
 
-export async function loadNpcFolder({search,projectId,signal,request,post,submitOneStop,submitPlanning,note,items,detail,workspace,poseSelectionV2Enabled=false}){
+export async function loadNpcFolder({search,projectId,signal,request,post,submitOneStop,submitPlanning,note,items,detail,workspace,poseSelectionV2Enabled=false,basicPortraitRequests=false,scopedPortraitRequests=false}){
  const planEditor=projectId==='binari'&&typeof submitPlanning==='function'?createNpcPlanningEditor({owner:workspace,submit:submitPlanning,signal}):null;
  const listPane=items.parentElement;
  listPane.classList.add('npc-roster-list');
  detail.classList.add('npc-detail');
  listPane.querySelector('h3').textContent='NPC';
- if(projectId==='binari'&&typeof submitOneStop==='function')mountNpcOneStop(listPane,{submit:submitOneStop,request,signal,poseSelectionV2Enabled});
+ if(projectId==='binari'&&typeof submitOneStop==='function')mountNpcOneStop(listPane,{submit:submitOneStop,request,signal,poseSelectionV2Enabled,basic:basicPortraitRequests});
  const heading=workspace.querySelector('.project-content-heading');
  workspace.querySelector('.npc-hierarchy-nav')?.remove();
  listPane.querySelector('.npc-search-label')?.remove();
@@ -415,7 +473,7 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
  const wanted=search.get('item');
  const chapter=search.get('npcChapter')??'all';
  let selected='',disposeMedia=()=>{},replacementAction=null;
- const animationSettings=new Map(),animationIntakes=new Map();
+ const animationSettings=new Map(),animationIntakes=new Map(),portraitIntakes=new Map();
  signal.addEventListener('abort',()=>{disposeMedia();replacementAction?.controller.abort();},{once:true});
  const nav=values=>navigation({projectId,catalogArea:'npcs',npcChapter:chapter==='all'?'':chapter,...values});
  const get=(npcId='')=>request('/api/npc-workspace?'+new URLSearchParams({projectId,...(npcId?{npcId}:{})}));
@@ -553,7 +611,7 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
     const controller=new AbortController(),holder=nodeOf('div','npc-replacement-action');
     const rosterNpc=data.npcs?.find(row=>row.id===npc.id);
     const target={...rosterNpc,...npc,actId:npc.actId??rosterNpc?.actId??data.actId};
-    const trigger=mountNpcOneStop(holder,{submit:submitOneStop,request,signal:controller.signal,replaceNpc:target,modalOwner:workspace,poseSelectionV2Enabled});
+    const trigger=mountNpcOneStop(holder,{submit:submitOneStop,request,signal:controller.signal,...(basicPortraitRequests?{basic:true,newVersion:true}:{replaceNpc:target}),modalOwner:workspace,poseSelectionV2Enabled});
     replacementAction={npcId:npc.id,controller,holder,trigger};
    }
    if(replacementAction.trigger)header.append(replacementAction.holder);
@@ -574,7 +632,12 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
   const panel=nodeOf('section','npc-tab-panel');panel.id='npc-tab-panel';panel.setAttribute('role','tabpanel');
   panel.setAttribute('aria-labelledby','npc-tab-'+tab);panel.tabIndex=0;
   detail.replaceChildren(header,tabs,panel);
-  if(tab==='portraits')disposeMedia=renderNpcPortraitPanel(data,panel,{variants:portraitVariantPreferences,poses:portraitPosePreferences});
+  if(tab==='portraits'){
+   const portraitActions=projectId==='binari'&&scopedPortraitRequests&&typeof submitOneStop==='function'?
+    scopedPortraitAction(data,workspace,submitOneStop,portraitIntakes,portraitPosePreferences):null;
+   disposeMedia=renderNpcPortraitPanel(data,panel,{variants:portraitVariantPreferences,poses:portraitPosePreferences,portraitActions,
+    originalOnly:basicPortraitRequests||scopedPortraitRequests});
+  }
   else if(tab==='traits')traitsPanel(data,panel);
   else if(tab==='animations'){
    if(!animationSettings.has(npc.id))animationSettings.set(npc.id,{percent:100,intervalMs:null});
