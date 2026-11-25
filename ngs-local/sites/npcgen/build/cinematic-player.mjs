@@ -1,4 +1,4 @@
-import {MASTER_FPS,validCinematicPlayback,compileCinematicTimeline,cinematicStageRect} from './cinematic-timeline.mjs';
+import {MASTER_FPS,validCinematicPlayback,compileCinematicTimeline,cinematicSpeedAt,cinematicStageRect} from './cinematic-timeline.mjs';
 
 export function layoutTimelineControls(parent,initial,onValid,{signal,onSaveRequest,allowDownload=true}={}){
  const d=parent.ownerDocument,make=(tag,text)=>{const n=d.createElement(tag);if(text)n.textContent=text;return n;};
@@ -7,7 +7,7 @@ export function layoutTimelineControls(parent,initial,onValid,{signal,onSaveRequ
  const speeds=make('textarea');speeds.rows=4;speeds.value=initial.speedCurve.map(p=>[p.frame/MASTER_FPS,p.rate].join(', ')).join('\n');
  const cameras=make('textarea');cameras.rows=4;cameras.value=initial.cameraCurve.map(p=>[p.frame/MASTER_FPS,p.zoom,p.x,p.y].join(', ')).join('\n');
  const label=(s,input)=>{const l=make('label',s);l.style.display='grid';l.append(input);return l;};
- const note=make('p','시간은 24fps 프레임에 맞춥니다. 0배속은 정지, 0.333배속은 그림마다 약 3프레임을 유지합니다.');
+ const note=make('p','입력한 시점의 배속을 기준으로 그 사이를 부드럽게 가감속해요. 같은 배속을 두 시점에 적으면 그 구간은 일정하고, 둘 다 0이면 멈춰요.');
  const hint=make('p','');hint.setAttribute('role','status');
  const svgns='http://www.w3.org/2000/svg',svg=d.createElementNS(svgns,'svg');
  svg.setAttribute('viewBox','0 0 360 96');svg.setAttribute('role','img');svg.setAttribute('aria-label','시간별 재생 속도와 줌 곡선');
@@ -19,7 +19,7 @@ export function layoutTimelineControls(parent,initial,onValid,{signal,onSaveRequ
  let sending=false,sent=false,valid=true;
  const frameSec=raw=>Math.round(Number(raw)*MASTER_FPS);
  let current=structuredClone(initial);
- const tail=(rows,df)=>[...rows,{...rows.at(-1),frame:df}];
+
  function plot(t){
   svg.replaceChildren();
   const line=(points,max,color)=>{
@@ -28,7 +28,12 @@ export function layoutTimelineControls(parent,initial,onValid,{signal,onSaveRequ
    p.setAttribute('fill','none');p.setAttribute('stroke',color);p.setAttribute('stroke-width','2');
    svg.append(p);
   };
-  line(tail(t.speedCurve,t.durationFrames).map(p=>({frame:p.frame,value:p.rate})),4,'#5ac9ff');
+  const speedPoints=t.speedCurve.flatMap(({frame},i)=>{
+   const end=t.speedCurve[i+1]?.frame??t.durationFrames;
+   return Array.from({length:12},(_,n)=>frame+(end-frame)*n/12);
+  });
+  speedPoints.push(t.durationFrames);
+  line(speedPoints.map(frame=>({frame,value:cinematicSpeedAt(t.speedCurve,frame)})),4,'#5ac9ff');
   // The camera curve is smoothly interpolated at runtime. Plot the same samples.
   const sample=compileCinematicTimeline(t,45);
   const cameraPoints=Array.from({length:49},(_,i)=>({frame:i*t.durationFrames/48,value:sample(i*t.durationFrames/48).zoom-1}));

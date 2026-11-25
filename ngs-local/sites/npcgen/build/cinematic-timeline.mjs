@@ -4,6 +4,7 @@ export const MAX_DURATION_FRAMES=1440;
 const exact=(o,keys)=>o!==null&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 const between=(x,a,b)=>typeof x==='number'&&Number.isFinite(x)&&a<=x&&x<=b;
 const bound=(n,a,b)=>Math.min(b,Math.max(a,n));
+const smoothStep=u=>u*u*(3-2*u);
 function validKeys(rows,duration,keys,extra){
  if(!Array.isArray(rows)||rows.length<1||rows.length>128||rows[0]?.frame!==0)return false;
  return rows.every((row,i)=>exact(row,keys)&&Number.isInteger(row.frame)&&row.frame<duration&&
@@ -23,8 +24,15 @@ function cameraAt(keys,t){
  const n=keys.findIndex(k=>k.frame>t);
  if(n<1)return keys.at(-1);
  const a=keys[n-1],b=keys[n];
- const u=(t-a.frame)/(b.frame-a.frame),ease=u*u*(3-2*u);
+ const u=(t-a.frame)/(b.frame-a.frame),ease=smoothStep(u);
  return {zoom:a.zoom+(b.zoom-a.zoom)*ease,x:a.x+(b.x-a.x)*ease,y:a.y+(b.y-a.y)*ease};
+}
+export function cinematicSpeedAt(rates,t){
+ const j=rates.findIndex(k=>k.frame>t);
+ if(j===0)return rates[0].rate;
+ if(j<0)return rates.at(-1).rate;
+ const a=rates[j-1],b=rates[j],u=(t-a.frame)/(b.frame-a.frame);
+ return a.rate+(b.rate-a.rate)*smoothStep(u);
 }
 function integral(rates,t){
  let value=0;
@@ -32,7 +40,10 @@ function integral(rates,t){
   const a=rates[i],b=rates[i+1];
   if(a.frame>=t)break;
   const dt=(b?Math.min(b.frame,t):t)-a.frame;
-  value+=a.rate*dt+(b?(b.rate-a.rate)*dt*dt/(2*(b.frame-a.frame)):0);
+  // Integrate the same cubic S-curve exactly so seeking and playback agree.
+  const u=b?dt/(b.frame-a.frame):0;
+  const weight=u*u*(1-u/2);
+  value+=dt*(a.rate+(b?(b.rate-a.rate)*weight:0));
  }
  return value;
 }
