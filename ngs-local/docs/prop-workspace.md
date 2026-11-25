@@ -4,7 +4,9 @@ The Local and Space shell serve the same browser module and use the shared
 workspace replica registry. `프랍 설계` lists published folders and small latest
 pointers (`props/<propId>/metadata.json`) without opening packages or images.
 A selection verifies the actual immutable manifest SHA and resolves only its
-typed assets. Preview URLs are same-origin; individual APNGs are only fetched
+typed assets. The inline Detail and Pixel previews loop until stopped or the page changes.
+Only the browser preview copy loops; published files and puzzle playback remain
+one-shot. Preview URLs are same-origin; individual APNGs are only fetched
 on play. No Local draft, fixture overlay, generic file query or NPC video route.
 
 Writes use the existing authenticated `/api/requests` queue. On native

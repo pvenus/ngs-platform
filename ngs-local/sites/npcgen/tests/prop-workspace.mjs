@@ -9,17 +9,29 @@ import {createLocalProjectPageServer} from '../build/local-project-page-server.m
 import {canonicalPropPackage} from '../build/prop-package-contract.mjs';
 import {propPayload,propTypes,validPropPayload} from '../build/prop-workspace-contract.mjs';
 import {admitPropRequest,propWorkspaceRead} from '../build/prop-workspace.mjs';
+import {loopingPropPreview} from '../build/prop-workspace-ui.mjs';
 
 const pin='1'.repeat(64),digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const propId='paper-candle',p='props/'+propId;
-const png=(w,h)=>{
+const png=(w,h,animated=false)=>{
  const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(w);ihdr.writeUInt32BE(h,4);ihdr[8]=8;ihdr[9]=6;
  const chunk=(name,data)=>{
   const payload=Buffer.concat([Buffer.from(name),data]),head=Buffer.alloc(4),tail=Buffer.alloc(4);head.writeUInt32BE(data.length);tail.writeUInt32BE(crc32(payload));
   return Buffer.concat([head,payload,tail]);
  };
  const raw=Buffer.alloc(h*(w*4+1));raw[4]=255;
- return Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]);
+ const list=[Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',ihdr)];
+ const fcTL=seq=>{
+  const ctl=Buffer.alloc(26);ctl.writeUInt32BE(seq);ctl.writeUInt32BE(w,4);ctl.writeUInt32BE(h,8);
+  ctl.writeUInt16BE(50,20);ctl.writeUInt16BE(1000,22);return chunk('fcTL',ctl);
+ };
+ if(animated)list.push(chunk('acTL',Buffer.from([0,0,0,2,0,0,0,1])),fcTL(0));
+ list.push(chunk('IDAT',deflateSync(raw)));
+ if(animated){
+  raw[1]=255;
+  list.push(fcTL(1),chunk('fdAT',Buffer.concat([Buffer.from([0,0,0,2]),deflateSync(raw)])));
+ }
+ list.push(chunk('IEND',Buffer.alloc(0)));return Buffer.concat(list);
 };
 const bytes=png(40,40);
 const still=(size,body=bytes)=>({assetId:digest(body)+'.png',sha256:digest(body),bytes:body.length,
@@ -109,7 +121,23 @@ test('regeneration binds the selected immutable source and full replacement inte
  assert.equal(validPropPayload(propTypes.animation,{...animation,prompt:'embedding: opaque'}),false);
 });
 
-test('shared Prop DOM keeps tabs and URL selection with inline previews and verified batch requests',async()=>{
+test('only the inline APNG copy loops: checksum valid, original frame bytes and timing unchanged',async()=>{
+ const input=png(40,40,true),before=Buffer.from(input);
+ const preview=loopingPropPreview(input,2);
+ assert.equal(preview.type,'image/apng');
+ const output=Buffer.from(await preview.arrayBuffer()),at=33;
+ assert.deepEqual(input,before);
+ assert.deepEqual(output.subarray(0,at+12),input.subarray(0,at+12));
+ assert.equal(input.readUInt32BE(at+12),1);
+ assert.equal(output.readUInt32BE(at+12),0);
+ assert.equal(output.readUInt32BE(at+16),crc32(output.subarray(at+4,at+16)));
+ assert.deepEqual(output.subarray(at+20),input.subarray(at+20));
+ for(const invalid of [input.subarray(0,at+19),png(40,40),Buffer.alloc(0)])
+  assert.throws(()=>loopingPropPreview(invalid,2),/PROP_PREVIEW_INVALID/);
+ assert.throws(()=>loopingPropPreview(input,3),/PROP_PREVIEW_INVALID/);
+});
+
+test('shared Prop DOM keeps tabs, independently loops and stops previews, and verifies batch requests',async t=>{
  const {mountPropWorkspace}=await import('../build/prop-workspace-ui.mjs');
  class Element{
   constructor(tag){
@@ -155,7 +183,11 @@ test('shared Prop DOM keeps tabs and URL selection with inline previews and veri
   assert.equal(walk(basic.detail,x=>x.tag==='img').length,2);
   assert.equal(walk(basic.detail,x=>x.attributes['aria-label']==='프랍 애니메이션 목록').length,0);
   assert.equal(walk(basic.detail,x=>x.textContent==='재생성 요청').length,1);
-  const animated=await mount({propTab:'animation',propAnimation:second.id});
+  const previewController=new AbortController(),nativeFetch=fetch,fetches=[];
+  t.mock.method(globalThis,'fetch',async (url,opts)=>{
+   fetches.push({url,opts});return new Response(png(20,20,true));
+  });
+  const animated=await mount({propTab:'animation',propAnimation:second.id,signal:previewController.signal});
   const menu=walk(animated.detail,x=>x.attributes['aria-label']==='프랍 애니메이션 목록')[0];
   const [firstRow,secondRow]=menu.children;
   assert.deepEqual(menu.children.map(x=>[x.children[1].children[1].textContent,x.children[1].attributes['aria-current']??null]),
@@ -164,13 +196,28 @@ test('shared Prop DOM keeps tabs and URL selection with inline previews and veri
   assert.equal(walk(animated.detail,x=>x.tag==='img').length,0);
   assert.equal(walk(animated.detail,x=>x.textContent==='재생성 요청'||x.textContent==='애니메이션 생성 요청').length,0);
   assert.equal(walk(animated.detail,x=>x.textContent==='선택 삭제 요청')[0].disabled,true);
-  walk(secondRow,x=>x.textContent==='픽셀 재생')[0].click();
+  const play=walk(secondRow,x=>x.textContent==='픽셀 재생')[0];await play.click();
   assert.equal(walk(firstRow,x=>x.tag==='img').length,0);
   const [preview]=walk(secondRow,x=>x.tag==='img');
   assert.equal(preview.alt,'불꽃 떨림 픽셀');
-  assert.equal(preview.src,second.media.pixel.url);
-  const nonSelected=walk(firstRow,x=>x.textContent==='디테일 재생')[0];nonSelected.click();
-  assert.equal(walk(firstRow,x=>x.tag==='img')[0].src,first.media.detail.url);
+  assert.match(preview.src,/^blob:/);
+  assert.equal(Buffer.from(await (await nativeFetch(preview.src)).arrayBuffer()).readUInt32BE(45),0);
+  assert.equal(fetches[0].url,second.media.pixel.url);
+  assert.equal(fetches[0].opts.credentials,'same-origin');
+  assert.equal(play.textContent,'픽셀 정지');
+  const nonSelected=walk(firstRow,x=>x.textContent==='디테일 재생')[0];await nonSelected.click();
+  const [detailPreview]=walk(firstRow,x=>x.tag==='img');
+  assert.equal(fetches[1].url,first.media.detail.url);
+  assert.equal(Buffer.from(await (await nativeFetch(detailPreview.src)).arrayBuffer()).readUInt32BE(45),0);
+  await play.click();
+  assert.equal(walk(secondRow,x=>x.tag==='img').length,0);
+  assert.equal(play.textContent,'픽셀 재생');
+  assert.equal(walk(firstRow,x=>x.tag==='img').length,1);
+  await assert.rejects(nativeFetch(preview.src));
+  previewController.abort();
+  assert.equal(walk(firstRow,x=>x.tag==='img').length,0);
+  await assert.rejects(nativeFetch(detailPreview.src));
+  assert.equal(fetches.length,2);
 
   const controller=new AbortController();
   let allow=false,releasePending;

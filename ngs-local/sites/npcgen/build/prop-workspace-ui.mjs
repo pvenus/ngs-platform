@@ -1,4 +1,5 @@
 import {propPayload,propTypes,propWorkspacePath,propSlug,validPropPayload} from './prop-workspace-contract.mjs';
+import {propPackageMediaLimit} from './prop-package-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const node=(tag,text,className)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(className)n.className=className;return n;};
 const api=fields=>propWorkspacePath+'?'+new URLSearchParams({projectId:'binari',...fields});
@@ -28,13 +29,69 @@ function staticImage(media,label){
  if(!src||media.mediaType!=='image/png')return node('p','이미지 미게시','meta');
  const img=node('img');img.src=src;img.alt=label;img.loading='lazy';img.decoding='async';return img;
 }
-function animationPreview(clip,lane){
+/** A browser-only copy: change APNG num_plays to zero and update that chunk's checksum. */
+export function loopingPropPreview(bytes,frameCount){
+ if(bytes.length>propPackageMediaLimit||![137,80,78,71,13,10,26,10].every((v,i)=>bytes[i]===v))
+  throw Error('PROP_PREVIEW_INVALID');
+ const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+ for(let at=8;at+12<=bytes.length;){
+  const len=view.getUint32(at),end=at+12+len;
+  if(end>bytes.length)break;
+  const kind=view.getUint32(at+4);
+  if(kind===0x6163544c){ // acTL
+   if(len!==8||!Number.isInteger(frameCount)||frameCount<2||view.getUint32(at+8)!==frameCount)break;
+   const control=Uint8Array.from(bytes.subarray(at,end));
+   const chunk=new DataView(control.buffer,control.byteOffset,control.byteLength);
+   chunk.setUint32(12,0);
+   let crc=0xffffffff;
+   for(let i=4;i<16;i++){
+    crc^=control[i];
+    for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);
+   }
+   chunk.setUint32(16,(crc^0xffffffff)>>>0);
+   return new Blob([bytes.subarray(0,at),control,bytes.subarray(end)],{type:'image/apng'});
+  }
+  if(kind===0x49444154||kind===0x49454e44)break; // acTL must precede IDAT.
+  at=end;
+ }
+ throw Error('PROP_PREVIEW_INVALID');
+}
+function animationPreview(clip,lane,signal){
  const frame=node('div',null,'prop-animation-preview'),m=clip.media?.[lane],src=verifiedURL(m);
  if(!src||m.mediaType!=='image/apng')return frame;
  const label=lane==='detail'?'디테일':'픽셀',button=node('button',label+' 재생','prop-control');
- button.type='button';const image=node('span');frame.append(button,image);
- button.addEventListener('click',()=>{
-  const img=node('img');img.src=src;img.alt=clip.title+' '+label;img.decoding='async';image.replaceChildren(img);
+ button.type='button';button.setAttribute('aria-pressed','false');
+ const image=node('span');frame.append(button,image);
+ let played=null;
+ function stop(){
+  const prev=played;played=null;
+  signal?.removeEventListener('abort',stop);
+  prev?.controller.abort();
+  image.replaceChildren();
+  if(prev?.url)URL.revokeObjectURL(prev.url);
+  button.textContent=label+' 재생';button.setAttribute('aria-pressed','false');
+ }
+ function fail(run){
+  if(played!==run)return;
+  stop();image.append(node('span','미리보기를 읽지 못했습니다.','meta'));
+ }
+ button.addEventListener('click',async()=>{
+  if(played){stop();return;}
+  if(signal?.aborted)return;
+  const run={controller:new AbortController(),url:null};played=run;
+  signal?.addEventListener('abort',stop,{once:true});
+  image.replaceChildren();
+  button.textContent=label+' 정지';button.setAttribute('aria-pressed','true');
+  try{
+   const res=await fetch(src,{signal:run.controller.signal,credentials:'same-origin',redirect:'error'});
+   if(!res.ok||Number(res.headers.get('content-length'))>propPackageMediaLimit)throw Error('PROP_PREVIEW_READ');
+   const bytes=new Uint8Array(await res.arrayBuffer());
+   if(played!==run)return;
+   run.url=URL.createObjectURL(loopingPropPreview(bytes,m.frameDurationsMs?.length));
+   const img=node('img');img.alt=clip.title+' '+label;img.decoding='async';
+   img.addEventListener('error',()=>fail(run),{once:true});
+   img.src=run.url;image.replaceChildren(img);
+  }catch{fail(run);}
  });
  return frame;
 }
@@ -174,7 +231,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
    const badge=node('span','삭제 요청됨','meta');
    badge.hidden=true;link.append(badge);
    const pair=node('div',null,'prop-preview-pair prop-animation-row-preview');
-   pair.append(animationPreview(clip,'detail'),animationPreview(clip,'pixel'));
+   pair.append(animationPreview(clip,'detail',signal),animationPreview(clip,'pixel',signal));
    row.append(check,link,pair);list.append(row);rows.set(clip.id,{check,badge});
   }
   all.addEventListener('click',()=>{
