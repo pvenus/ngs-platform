@@ -52,6 +52,8 @@ test('Local NGS authenticates and scopes ready cinematic intake plus verified re
  writeFileSync(join(lock,'results',id+'.mp4'),mp4,{mode:0o600});
  assert.deepEqual(await (await get(base)).json(),{clips:[id],sources:[sourceSha256],sequences:[]});
  assert.deepEqual(await (await get(base+'&clip='+id)).json(),{clip:result});
+ assert.deepEqual(await (await get(base+'&grouped=1')).json(),{scenes:[{sourceSha256,title:null,sequences:[],clips:[id]}]});
+ assert.equal((await get(base+'&grouped=1&clip='+id)).status,400);
  const video=await get(base+'&clip='+id+'&video=1',{range:'bytes=4-7'});
  assert.equal(video.status,206);
  assert.equal(video.headers.get('Content-Type'),'video/mp4');
@@ -111,6 +113,14 @@ test('formal source, native animation, timeline update and selected archive stay
  json(join(out,'manifest.json'),sequence);
  writeFileSync(join(out,'frames','0000.png'),frame,{mode:0o600});
  assert.deepEqual((await (await get('')).json()).sequences,[id]);
+ const sibling='request.official.'+'b'.repeat(64),other='request.official.'+'c'.repeat(64),otherSource=sha(png);
+ writeFileSync(join(cine,'sources',otherSource+'.png'),png,{mode:0o600});
+ for(const [key,src] of [[sibling,source],[other,otherSource]]){
+  const path=join(cine,'sequences',key);mkdirSync(path,{mode:0o700});json(join(path,'manifest.json'),{...sequence,officialRequestId:key,sourceSha256:src});
+ }
+ const grouped=(await (await get('&grouped=1')).json()).scenes;
+ assert.deepEqual(grouped.find(row=>row.sourceSha256===source),{...sourcePublished,sequences:[id,sibling],clips:[]});
+ assert.deepEqual(grouped.find(row=>row.sourceSha256===otherSource),{sourceSha256:otherSource,title:null,sequences:[other],clips:[]});
  assert.deepEqual(Buffer.from(await (await get('&sequence='+id+'&frame=0')).arrayBuffer()),frame);
  const revised={...playback,cameraCurve:[{frame:0,zoom:1,x:.5,y:.5},{frame:100,zoom:1.2,x:.52,y:.48}]};
  const timeline={schemaVersion:'ngs.cinematic-playback-update.v1',projectId:'binari',sequenceId:id,expectedRevision:0,playback:revised};
@@ -125,6 +135,78 @@ test('formal source, native animation, timeline update and selected archive stay
  assert.equal((await post('cinematic.sequences.remove',hide)).status,202);
  json(join(cine,'sequence-archive.json'),{schemaVersion:'ngs.cinematic-sequence-archive.v1',projectId:'binari',sequenceIds:[id]});
  assert.equal((await get('&sequence='+id+'&frame=0')).status,404);
- assert.deepEqual((await (await get('')).json()).sequences,[]);
+ assert.deepEqual((await (await get('')).json()).sequences,[sibling,other]);
+ assert.deepEqual((await (await get('&grouped=1')).json()).scenes.find(row=>row.sourceSha256===source).sequences,[sibling]);
  assert.ok((await get('&source='+source)).ok);
+});
+
+test('prop-style scene controls create a single original and add only versions of the selected source',async t=>{
+ const {mountCinematicWorkspace}=await import('../build/cinematic-workspace-ui.mjs');
+ const other='f'.repeat(64),sibling='request.official.'+'b'.repeat(64),otherId='request.official.'+'c'.repeat(64);
+ const sceneList=[{sourceSha256,title:'빈 문턱',sequences:[id,sibling],clips:[]},{sourceSha256:other,title:'다른 장면',sequences:[otherId],clips:[]}];
+ class Element{
+  constructor(tag,doc){this.tag=tag;this.ownerDocument=doc;this.events={};this.attrs={};this.children=[];this.style={};this.value='';
+   this.classList={add:(...c)=>{this.className=[this.className,...c].filter(Boolean).join(' ');}};
+  }
+  setAttribute(k,v){this.attrs[k]=v;}
+  addEventListener(k,v){this.events[k]=v;}
+  append(...els){for(const e of els){e.parentElement=this;this.children.push(e);}}
+  replaceChildren(...els){this.children=[];this.append(...els);}
+  click(){if(!this.disabled)return this.events.click?.({});}
+  focus(){}
+  showModal(){this.open=true;}
+  close(){if(!this.open)return;this.open=false;this.events.close?.();}
+  remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(e=>e!==this);}
+ }
+ const doc={createElement:tag=>new Element(tag,doc),createElementNS:(_,tag)=>new Element(tag,doc)};
+ const prior=Object.getOwnPropertyDescriptor(globalThis,'document');
+ Object.defineProperty(globalThis,'document',{value:doc,configurable:true});
+ t.after(()=>{if(prior)Object.defineProperty(globalThis,'document',prior);else delete globalThis.document;});
+ const walk=(el,keep)=>[...(keep(el)?[el]:[]),...el.children.flatMap(x=>walk(x,keep))];
+ const submissions=[];
+ async function mount(opts={}){
+  const items=doc.createElement('ul'),detail=doc.createElement('article'),tools=doc.createElement('div');
+  doc.createElement('section').append(items);
+  await mountCinematicWorkspace({items,detail,tools,projectId:'binari',signal:new AbortController().signal,
+   request:async path=>{assert.match(path,/grouped=1/);return {scenes:sceneList};},
+   navigate:params=>'/?'+new URLSearchParams(params),sourceEnabled:true,enabled:true,playbackEnabled:true,removeEnabled:true,
+   submit:async command=>{submissions.push(command);return Response.json({status:'queued',queueId:'ngs.local.a82bf7f5-c880-49e5-b490-3712b02eef72'},{status:202});},...opts});
+  return {items,detail,tools};
+ }
+ const overview=await mount();
+ assert.match(overview.items.parentElement.className,/npc-roster-list/);
+ assert.equal(walk(overview.items,x=>x.tag==='strong')[0].textContent,'빈 문턱');
+ assert.equal(walk(overview.detail,x=>x.tag==='form').length,0);
+ overview.tools.children[0].click();
+ const create=walk(overview.detail,x=>x.tag==='form')[0];
+ walk(create,x=>x.tag==='input')[0].value='새 장면';
+ walk(create,x=>x.tag==='textarea')[0].value='한 장의 풍경';
+ await create.events.submit({preventDefault(){}});
+ assert.equal(submissions.length,1);
+ assert.equal(submissions[0].requestType,'cinematic.source.generate');
+ assert.equal(submissions[0].payload.title,'새 장면');
+ const basic=await mount({source:sourceSha256,panel:'source'});
+ assert.equal(walk(basic.detail,x=>x.tag==='img').length,1);
+ assert.match(walk(basic.detail,x=>x.tag==='img')[0].src,new RegExp(sourceSha256));
+ assert.equal(walk(basic.detail,x=>x.tag==='form').length,0);
+ assert.equal(walk(basic.detail,x=>x.attrs.role==='tab').length,2);
+ const versions=await mount({source:sourceSha256,panel:'animations'});
+ assert.equal(walk(versions.detail,x=>x.type==='checkbox').length,2);
+ assert.equal(walk(versions.detail,x=>x.tag==='button'&&x.textContent==='수정').length,2);
+ assert.ok(!walk(versions.detail,x=>x.href?.includes(otherId)).length);
+ const add=walk(versions.detail,x=>x.attrs['aria-label']==='애니메이션 추가')[0];
+ for(let n=0;n<2;n++){
+  add.click();
+  const form=walk(versions.detail,x=>x.tag==='form')[0];
+  assert.equal(walk(form,x=>x.tag==='select').length,0);
+  walk(form,x=>x.tag==='textarea')[0].value='문이 조금 열린다';
+  await form.events.submit({preventDefault(){}});
+ }
+ assert.equal(submissions.length,3);
+ for(const c of submissions.slice(1)){
+  assert.equal(c.requestType,'cinematic.sequence.generate');
+  assert.equal(c.payload.sourceSha256,sourceSha256);
+  assert.equal(c.payload.motionPrompt,'문이 조금 열린다');
+ }
+ assert.notEqual(submissions[1].idempotencyKey,submissions[2].idempotencyKey);
 });

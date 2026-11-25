@@ -66,11 +66,34 @@ export async function admitCinematicRequest({command,openProject,authorize}){
   if(sequence.revision!==p.expectedRevision)throw failure('CINEMATIC_PLAYBACK_REVISION_CONFLICT',409);
  }else if(!storage||!await sourceMeta(storage,p.sourceSha256))throw failure('CINEMATIC_SOURCE_NOT_FOUND',404);
 }
+async function sceneList(p,sources,clips,sequences){
+ const bySource=new Map(sources.map(sourceSha256=>[sourceSha256,{sourceSha256,title:null,sequences:[],clips:[]}]));
+ const jobs=[
+  ...sources.map(id=>async()=>{
+   const info=await readReplicaObject(p,cinematicSourcePrefix+'/'+id+'.json',4096);
+   if(info!==null&&(!validCinematicSourceResult(info)||info.sha256!==id))throw replicaUnavailable();
+   if(info)bySource.get(id).title=info.title;
+  }),
+  ...sequences.map(id=>async()=>{
+   const m=await readReplicaObject(p,cinematicSequencePrefix+'/'+id+'/manifest.json',nativeMetadataLimit);
+   if(m===null)return;
+   if(!validCinematicSequenceResult(m)||m.officialRequestId!==id)throw replicaUnavailable();
+   bySource.get(m.sourceSha256)?.sequences.push(id);
+  }),
+  ...clips.map(id=>async()=>{
+   const m=await result(p,id);
+   if(m)bySource.get(m.sourceSha256)?.clips.push(id);
+  })
+ ];
+ for(let i=0;i<jobs.length;i+=12)await Promise.all(jobs.slice(i,i+12).map(job=>job()));
+ return [...bySource.values()].map(s=>({...s,sequences:s.sequences.sort(),clips:s.clips.sort()}));
+}
 export async function cinematicWorkspaceRead({query,openProject,authorize}){
- if(!params(query,['projectId','source','sourceInfo','clip','video','sequence','frame'])||query.get('projectId')!=='binari')
+ if(!params(query,['projectId','source','sourceInfo','clip','video','sequence','frame','grouped'])||query.get('projectId')!=='binari')
   throw failure('CINEMATIC_QUERY_INVALID',400);
  const sha=query.get('source'),id=query.get('clip'),video=query.get('video'),
-  sequenceId=query.get('sequence'),frame=query.get('frame'),sourceInfo=query.get('sourceInfo');
+  sequenceId=query.get('sequence'),frame=query.get('frame'),sourceInfo=query.get('sourceInfo'),grouped=query.get('grouped');
+ if(grouped!==null&&(grouped!=='1'||query.size!==2))throw failure('CINEMATIC_QUERY_INVALID',400);
  if(sourceInfo!==null&&(sourceInfo!=='1'||sha===null))throw failure('CINEMATIC_QUERY_INVALID',400);
  if(sequenceId!==null&&(!cinematicId(sequenceId)||sha!==null||id!==null||video!==null)||
    frame!==null&&(sequenceId===null||!/^(?:0|[1-9][0-9]?)$/.test(frame)))throw failure('CINEMATIC_QUERY_INVALID',400);
@@ -127,6 +150,7 @@ export async function cinematicWorkspaceRead({query,openProject,authorize}){
   // File replication may expose a parent directory before its commit manifest.
   if(await p.head(cinematicSequencePrefix+'/'+name+'/manifest.json'))sequences.push(name);
  }
+ if(grouped==='1')return {json:{scenes:await sceneList(p,sources,clips,sequences)}};
  return {json:{sources,clips,sequences:sequences.sort()}};
 }
 // Only used for a verified bounded MP4. Ignore non-single-range syntaxes per

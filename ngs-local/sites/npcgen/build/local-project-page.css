@@ -344,21 +344,23 @@ ul{padding:0;list-style:none}
 .prop-animation-preview>span{border:1px solid var(--border);border-radius:9px;overflow:hidden;background:repeating-conic-gradient(#f2f2ec 0% 25%,#fffdf8 0% 50%) 50%/20px 20px}
 @media(max-width:540px){.prop-preview-pair{grid-template-columns:1fr}.prop-workspace-dialog{width:calc(100vw - 16px);padding:12px}}
 
-.cinematic-version-line{
- display:flex;
- align-items:center;
- flex-wrap:wrap;
- gap:.6rem;
- min-height:3.2rem;
- padding:.45rem .2rem;
+.cinematic-refresh{display:inline-flex;align-items:center;text-decoration:none;box-sizing:border-box}
+.cinematic-source-image{display:block;max-width:100%;max-height:64vh;object-fit:contain;border-radius:8px}
+.cinematic-version{min-width:0;padding:8px;border:1px solid var(--border);border-radius:9px}
+.cinematic-version.prop-animation-row-current{border-color:var(--primary)}
+.cinematic-version-line{display:grid;grid-template-columns:auto minmax(80px,.45fr) minmax(0,1fr) auto;align-items:center;gap:10px}
+.cinematic-version-line:not(:has(input)){grid-template-columns:minmax(80px,.45fr) minmax(0,1fr) auto}
+.cinematic-version-line img{display:block;width:100%;height:auto;max-width:8rem;max-height:5.5rem;object-fit:contain;background:#171720;border-radius:6px}
+.cinematic-row-label{display:grid;gap:3px;min-width:0;overflow-wrap:anywhere;font:inherit}
+.cinematic-row-label a{color:inherit;font-weight:650}
+.cinematic-row-actions{justify-content:flex-end}
+.cinematic-version-line.cinematic-legacy-line{grid-template-columns:minmax(0,1fr) minmax(8rem,1fr)}
+.cinematic-legacy-line video{width:100%;max-height:14rem}
+.cinematic-inline-player:not(:empty){margin-top:8px}
+.cinematic-inline-player canvas,.cinematic-detail canvas,.prop-workspace-dialog canvas{max-height:60vh;object-fit:contain}
+.cinematic-request-settings{margin:.75rem 0;color:var(--primary)}
+@media(max-width:540px){
+ .cinematic-version-line,.cinematic-version-line:not(:has(input)){grid-template-columns:auto 72px minmax(0,1fr)}
+ .cinematic-version-line:not(:has(input)){grid-template-columns:72px minmax(0,1fr)}
+ .cinematic-row-actions{grid-column:1/-1;justify-content:flex-start}
 }
-.cinematic-version-line img,.cinematic-version-line video{
- width:6rem;
- max-width:31vw;
- height:auto;
- max-height:5rem;
- object-fit:contain;
- background:#171720;
-}
-.cinematic-version{border-bottom:1px solid rgba(128,128,128,.25)}
-.cinematic-inline-player canvas{max-height:60vh;object-fit:contain}

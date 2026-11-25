@@ -6,16 +6,16 @@ export function layoutTimelineControls(parent,initial,onValid,{signal,onSaveRequ
  const duration=make('input');duration.type='number';duration.step='0.041666667';duration.min='0.041666667';duration.max='60';duration.value=String(initial.durationFrames/MASTER_FPS);
  const speeds=make('textarea');speeds.rows=4;speeds.value=initial.speedCurve.map(p=>[p.frame/MASTER_FPS,p.rate].join(', ')).join('\n');
  const cameras=make('textarea');cameras.rows=4;cameras.value=initial.cameraCurve.map(p=>[p.frame/MASTER_FPS,p.zoom,p.x,p.y].join(', ')).join('\n');
- const label=(s,input)=>{const l=make('label',s);l.style.display='grid';l.append(input);return l;};
+ const label=(s,input)=>{const l=make('label',s);l.className='prop-form-field';l.append(input);return l;};
  const note=make('p','입력한 시점의 배속을 기준으로 그 사이를 부드럽게 가감속해요. 같은 배속을 두 시점에 적으면 그 구간은 일정하고, 둘 다 0이면 멈춰요.');
  const hint=make('p','');hint.setAttribute('role','status');
  const svgns='http://www.w3.org/2000/svg',svg=d.createElementNS(svgns,'svg');
  svg.setAttribute('viewBox','0 0 360 96');svg.setAttribute('role','img');svg.setAttribute('aria-label','시간별 재생 속도와 줌 곡선');
  svg.style.display='block';svg.style.width='min(100%, 420px)';svg.style.height='auto';
  const info=make('small','파랑: 배속 · 주황: 줌');
- const save=make('button','재생 메타 JSON 다운로드');save.type='button';
+ const save=make('button','재생 메타 JSON 다운로드');save.type='button';save.className='prop-control';
  const upload=make('input');upload.type='file';upload.accept='.json,application/json';
- const publish=make('button','메타 수정 요청');publish.type='button';publish.hidden=typeof onSaveRequest!=='function';
+ const publish=make('button','메타 수정 요청');publish.type='button';publish.className='prop-control prop-primary-control';publish.hidden=typeof onSaveRequest!=='function';
  let sending=false,sent=false,valid=true;
  const frameSec=raw=>Math.round(Number(raw)*MASTER_FPS);
  let current=structuredClone(initial);
@@ -114,7 +114,7 @@ export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit
  stage.style.maxWidth='100%';stage.style.display='block';stage.setAttribute('aria-label','시네마틱 전용 카메라 화면');
  const canvas=stage.getContext('2d',{alpha:false});
  const toggle=make('button','재생'),range=make('input'),status=make('p','시네마틱 PNG 프레임을 읽고 있어요.');
- toggle.type='button';toggle.disabled=true;
+ toggle.type='button';toggle.className='prop-control';toggle.disabled=true;
  range.type='range';range.min='0';range.max=String(manifest.playback.durationFrames-1);range.step='1';range.value='0';range.disabled=true;range.setAttribute('aria-label','시네마틱 시간');
  status.setAttribute('role','status');parent.append(stage,toggle,range,status);
  let playback=manifest.playback,evaluate=compileCinematicTimeline(playback,manifest.frameCount);

@@ -10,8 +10,8 @@ const make=(tag,text,css)=>{const el=document.createElement(tag);if(text)el.text
 const url=(projectId,values={})=>cinematicPath+'?'+new URLSearchParams({projectId,...values});
 const short=id=>id.slice(-10);
 const statusLine=()=>{const p=make('p',null,'meta');p.setAttribute('role','status');return p;};
-const labeled=(name,input)=>{const l=make('label',name);l.append(input);return l;};
-const action=(name,onclick,signal)=>{const b=make('button',name);b.type='button';b.addEventListener('click',onclick,{signal});return b;};
+const labeled=(name,input)=>{const l=make('label',name,'prop-form-field');l.append(input);return l;};
+const action=(name,onclick,signal,css='prop-control')=>{const b=make('button',name,css);b.type='button';b.addEventListener('click',onclick,{signal});return b;};
 
 function queueAction(submit,requestType){
  let last, key;
@@ -24,75 +24,151 @@ function queueAction(submit,requestType){
  };
 }
 
-function requestForm(parent,{caption,send,makePayload,isValid,signal,body}){
- const form=make('form',null,'workspace-detail-form'), submit=make('button',caption),notice=statusLine();
+function dialog(parent,heading,signal,afterClose){
+ const modal=make('dialog',null,'prop-workspace-dialog'),title=make('h3',heading);
+ title.id='cinematic-dialog-'+crypto.randomUUID();modal.setAttribute('aria-labelledby',title.id);
+ modal.append(title);parent.append(modal);
+ const close=()=>modal.close();
+ signal.addEventListener('abort',close,{once:true});
+ modal.addEventListener('close',()=>{
+  signal.removeEventListener('abort',close);afterClose?.();modal.remove();
+ },{once:true});
+ return modal;
+}
+
+function requestForm(parent,{caption,send,makePayload,isValid,signal,body,notice}){
+ const child=new AbortController();
+ const modal=dialog(parent,caption,signal,()=>child.abort()),form=make('form'),info=statusLine();
+ const submit=make('button','요청 보내기','prop-control prop-primary-control');
  submit.type='submit';
- let posting=false,sent=false;
- function changed(){if(!posting){sent=false;notice.textContent='';submit.disabled=!isValid(makePayload());}}
- body(form,changed);
- form.append(submit,notice);parent.append(form);
- form.addEventListener('input',changed,{signal});
+ const footer=make('div',null,'prop-actions');
+ footer.append(action('닫기',()=>modal.close(),child.signal),submit);
+ let posting=false;
+ function changed(){if(!posting){info.textContent='';submit.disabled=!isValid(makePayload());}}
+ body(form,changed,child.signal);
+ form.append(info,footer);modal.append(form);
+ form.addEventListener('input',changed,{signal:child.signal});
  form.addEventListener('submit',async event=>{
-  event.preventDefault(); if(posting||sent)return;
+  event.preventDefault();if(posting||!modal.open||child.signal.aborted)return;
   const payload=makePayload();
-  if(!isValid(payload)){notice.textContent='요청 입력과 메타데이터를 확인해 주세요.';return;}
+  if(!isValid(payload)){info.textContent='요청 입력과 메타데이터를 확인해 주세요.';return;}
   posting=true;submit.disabled=true;
   try{
    await send(payload);
-   if(!signal.aborted){sent=true;notice.textContent='정식 요청을 접수했어요. 반영 후 목록을 새로고침해 주세요.';}
-  }catch{if(!signal.aborted)notice.textContent='접수를 확인하지 못했어요. 다시 시도해 주세요.';}
-  finally{posting=false;if(!signal.aborted)submit.disabled=sent||!isValid(makePayload());}
- },{signal});
- submit.disabled=!isValid(makePayload());
+   if(!signal.aborted){notice.textContent='정식 요청을 접수했어요. 게시 후 목록을 새로고침해 주세요.';if(modal.open)modal.close();}
+  }catch{if(!child.signal.aborted)info.textContent='접수를 확인하지 못했어요. 다시 시도해 주세요.';}
+  finally{posting=false;if(!child.signal.aborted)submit.disabled=!isValid(makePayload());}
+ },{signal:child.signal});
+ submit.disabled=!isValid(makePayload());modal.showModal();
 }
 
-export async function mountCinematicWorkspace({items,detail,request,submit,projectId,item,source,panel,navigate,signal,
+const sceneLabel=s=>s.title??'시놉시스 원본 '+short(s.sourceSha256);
+export async function mountCinematicWorkspace({items,detail,tools,request,submit,projectId,item,source,panel,navigate,signal,
  enabled,playbackEnabled=false,sourceEnabled=false,removeEnabled=false}){
- const data=await request(url(projectId));
+ const {scenes}=await request(url(projectId,{grouped:'1'}));
  if(signal.aborted)return;
- const {sources,clips,sequences=[]}=data;
- if(!Array.isArray(sources)||!sources.every(cinematicHash)||!Array.isArray(clips)||!clips.every(cinematicId)||
-    !Array.isArray(sequences)||!sequences.every(cinematicId))throw Error('CINEMATIC_INDEX_INVALID');
- const tab=panel==='animations'||[...sequences,...clips].includes(item)?'animations':'source';
- const currentSource=sources.includes(source)?source:sources[0];
- const tabs=make('nav',null,'detail-file-nav');tabs.setAttribute('aria-label','시네마틱 탭');
- for(const [key,name] of [['source','원본 이미지'],['animations','애니메이션']]){
-  const a=make('a',name);
-  a.href=navigate({cineTab:key,cineSource:currentSource});if(tab===key)a.setAttribute('aria-current','page');tabs.append(a);
+ if(!Array.isArray(scenes)||!scenes.every(s=>s&&cinematicHash(s.sourceSha256)&&(s.title===null||typeof s.title==='string')&&
+  [s.sequences,s.clips].every(v=>Array.isArray(v)&&v.every(cinematicId))))throw Error('CINEMATIC_INDEX_INVALID');
+ const selected=source?scenes.find(s=>s.sourceSha256===source):
+  scenes.find(s=>s.sequences.includes(item)||s.clips.includes(item));
+ const sequences=selected?.sequences??[],clips=selected?.clips??[], currentSource=selected?.sourceSha256;
+ const tab=panel==='animations'||sequences.includes(item)||clips.includes(item)?'animations':'source';
+ const go=(options={})=>navigate({cineSource:currentSource,cineTab:tab,...options});
+ items.parentElement.classList.add('npc-roster-list','prop-roster');
+ detail.classList.add('npc-detail','prop-detail','cinematic-detail');
+ const notice=statusLine();notice.classList.add('prop-request-status');
+ if(sourceEnabled&&typeof submit==='function'){
+  const send=queueAction(submit,cinematicSourceGenerateType);
+  const add=action('+',()=>{
+   const title=make('input'),prompt=make('textarea');title.maxLength=120;prompt.maxLength=1000;prompt.rows=5;
+   requestForm(detail,{caption:'새 시네마틱 원본 생성',signal,send,notice,isValid:validCinematicSourceGenerate,
+    makePayload:()=>({schemaVersion:cinematicSourceGenerateSchema,projectId,title:title.value.trim(),prompt:prompt.value.trim()}),
+    body:form=>form.append(make('p','새 장면의 원본 이미지 한 장만 생성해요. 애니메이션은 게시 후 별도로 추가할 수 있어요.','meta'),
+     labeled('장면 이름',title),labeled('이미지 연출 지시',prompt))});
+   title.focus();
+  },signal,'npc-one-stop-trigger');
+  add.setAttribute('aria-label','시네마틱 원본 생성');add.title='시네마틱 원본 생성';
+  tools.replaceChildren(add);tools.hidden=false;
  }
- const refresh=make('a','목록 새로고침');refresh.href=navigate({cineTab:tab,cineSource:currentSource,...(item?{item}:{})});
- detail.replaceChildren(make('h3',tab==='source'?'원본 이미지':'시네마틱 애니메이션'),tabs,refresh);
- items.replaceChildren(...(sources.length?sources.map(id=>{
-  const a=make('a','원본 '+short(id),'workspace-nav-item');
-  a.href=navigate({cineTab:'source',cineSource:id});
-  if(id===currentSource&&tab==='source')a.setAttribute('aria-current','page');return a;
- }):[make('p','아직 등록된 원본이 없습니다.','meta')]));
+ items.replaceChildren(...scenes.map(scene=>{
+  const li=make('li'),link=make('a',null,'request-item npc-roster-entry');
+  link.href=go({cineSource:scene.sourceSha256,item:''});
+  if(scene===selected)link.setAttribute('aria-current','page');
+  link.append(make('strong',sceneLabel(scene)),make('span','애니메이션 '+(scene.sequences.length+scene.clips.length)+'개','meta'));
+  li.append(link);return li;
+ }));
+ if(!scenes.length)items.append(make('li','게시된 시네마틱이 없습니다.','meta'));
+ const heading=make('header',null,'npc-detail-heading prop-detail-heading');
+ const title=make('div',null,'prop-identity'),actions=make('div',null,'prop-actions');
+ heading.append(title,actions);
+ const refresh=make('a','목록 새로고침','prop-control cinematic-refresh');
+ refresh.href=go(selected&&item?{item}:{});actions.append(refresh);
+ const body=make('section',null,'npc-tab-panel prop-tab-panel');
+ body.append(notice);
+ if(!selected){
+  title.append(make('h3','시네마틱 설계'));
+  body.append(make('p',source||item?'선택한 장면이 현재 목록에 없습니다.':'왼쪽 목록에서 장면을 선택하거나 +로 원본을 생성하세요.','meta'));
+  detail.replaceChildren(heading,body);return;
+ }
+ const badges=make('div',null,'npc-character-badges');badges.append(make('span','원본 1장'),make('span','애니메이션 '+(sequences.length+clips.length)+'개'));
+ title.append(make('h3',sceneLabel(selected)),badges);
+ const tabs=make('nav',null,'npc-detail-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','시네마틱 상세 영역');
+ const options=[['source','원본 이미지'],['animations','애니메이션']];
+ const links=options.map(([key,name],i)=>{
+  const a=make('a',name);a.id='cinematic-tab-'+key;a.href=go({cineTab:key});
+  a.setAttribute('role','tab');a.setAttribute('aria-controls','cinematic-tab-panel');a.setAttribute('aria-selected',String(key===tab));a.tabIndex=key===tab?0:-1;
+  a.addEventListener('keydown',event=>{
+   const next=event.key==='ArrowRight'||event.key==='ArrowLeft'?1-i:event.key==='Home'?0:event.key==='End'?1:null;
+   if(next!==null){event.preventDefault();links[next].click();}
+  },{signal});
+  return a;
+ });
+ tabs.append(...links);
+ body.id='cinematic-tab-panel';body.tabIndex=0;body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby','cinematic-tab-'+tab);
+ detail.replaceChildren(heading,tabs,body);
  if(tab==='source'){
-  if(currentSource){
-   const {title}=await request(url(projectId,{source:currentSource,sourceInfo:'1'}));
-   if(signal.aborted)return;
-   const img=make('img');img.src=url(projectId,{source:currentSource});img.alt=title??'시놉시스 원본';
-   img.style.maxWidth='100%';
-   const next=make('a','이 원본의 애니메이션 요청으로');next.href=navigate({cineTab:'animations',cineSource:currentSource});
-   detail.append(make('h4',title??'시놉시스 원본'),img,next);
-  }
-  detail.append(make('p','이미지 생성과 애니메이션 생성은 별도 요청이에요. 원본을 확인한 뒤 연출을 결정하세요.','meta'));
-  if(sourceEnabled&&typeof submit==='function'){
-   const name=make('input'),prompt=make('textarea');
-   name.maxLength=120;prompt.maxLength=1000;prompt.rows=4;
-   requestForm(detail,{caption:'원본 이미지 생성 요청',signal,send:queueAction(submit,cinematicSourceGenerateType),
-    isValid:validCinematicSourceGenerate,makePayload:()=>({schemaVersion:cinematicSourceGenerateSchema,projectId,title:name.value.trim(),prompt:prompt.value.trim()}),
-    body:form=>form.append(labeled('장면 이름',name),labeled('이미지 연출 지시',prompt))});
-  }else detail.append(make('p','원본 이미지 생성은 이 환경에서 아직 준비되지 않았어요.','meta'));
-  return;
+  const card=make('section',null,'prop-surface');
+  const img=make('img',null,'cinematic-source-image');img.src=url(projectId,{source:currentSource});img.alt=sceneLabel(selected);
+  const next=make('a','애니메이션 보기','prop-control cinematic-refresh');next.href=go({cineTab:'animations'});
+  card.append(make('h4','원본 이미지','npc-media-heading'),img,
+   make('p','이 장면에서는 게시된 원본 한 장을 그대로 사용해 애니메이션을 추가해요.','meta'),next);
+  body.append(card);return;
  }
- const rows=make('section',null,'cinematic-versions'),edit=make('section'),checks=new Map(),picked=new Set(),notice=statusLine();
- const selectAll=make('input');selectAll.type='checkbox';
+ const card=make('section',null,'prop-surface'),bar=make('div',null,'prop-panel-heading');
+ bar.append(make('h4','애니메이션','npc-media-heading'));card.append(bar);body.append(card);
+ if(enabled&&typeof submit==='function'){
+  const add=action('+',()=>{
+   const send=queueAction(submit,cinematicSequenceType);
+   const motion=make('textarea');motion.rows=5;motion.maxLength=1000;
+   let playback;
+   requestForm(detail,{caption:'애니메이션 추가',signal,send,notice,isValid:validCinematicSequencePayload,
+    makePayload:()=>({schemaVersion:cinematicSequenceSchema,projectId,sourceSha256:currentSource,motionPrompt:motion.value.trim(),playback}),
+    body:(form,changed,formSignal)=>{
+     form.append(make('p',sceneLabel(selected)+' · 같은 원본 사용','meta'),labeled('움직임·연출 지시',motion));
+     const settings=make('details',null,'cinematic-request-settings');
+     settings.append(make('summary','속도·카메라 설정'));form.append(settings);
+     layoutTimelineControls(settings,defaultCinematicPlayback(),value=>{playback=value;changed();},{signal:formSignal,allowDownload:false});
+    }});
+   motion.focus();
+  },signal,'npc-one-stop-trigger');
+  add.setAttribute('aria-label','애니메이션 추가');add.title='애니메이션 추가';bar.append(add);
+ }else bar.append(make('span','이 환경에서는 애니메이션 추가가 준비되지 않았어요.','meta'));
+ const rows=make('ul',null,'prop-animation-list cinematic-versions'),checks=new Map(),picked=new Set();
+ const selectAll=make('button','전체 선택','prop-control');selectAll.type='button';
  const canRemove=removeEnabled&&typeof submit==='function';
  const archive=action('선택 버전 제거',async()=>{
-  if(!picked.size||picked.size>maxSelection)return;
-  if(!window.confirm('선택한 '+picked.size+'개 버전을 목록에서 제거할까요? 원본 파일은 보존됩니다.'))return;
-  const payload={schemaVersion:cinematicSequencesRemoveSchema,projectId,sequenceIds:[...picked].sort()};
+  if(archive.disabled||!picked.size||picked.size>maxSelection)return;
+  const ids=[...picked].sort();
+  const confirm=dialog(detail,'선택한 애니메이션 삭제',signal);
+  const footer=make('div',null,'prop-actions');
+  footer.append(action('취소',()=>confirm.close(),signal),action('삭제 요청',()=>{
+   confirm.close();void removeSelection(ids);
+  },signal,'prop-control prop-animation-delete'));
+  confirm.append(make('p','선택한 '+ids.length+'개 버전을 목록에서 제거할까요? 원본 파일은 보존됩니다.'),footer);
+  confirm.showModal();
+ },signal,'prop-control prop-animation-delete');
+ async function removeSelection(ids){
+  const payload={schemaVersion:cinematicSequencesRemoveSchema,projectId,sequenceIds:ids};
   if(!validCinematicSequencesRemove(payload))return;
   removing=true;selection();
   try{
@@ -100,25 +176,26 @@ export async function mountCinematicWorkspace({items,detail,request,submit,proje
    if(!signal.aborted){accepted=true;notice.textContent='정식 제거 요청을 접수했어요. 완료 후 새로고침해 주세요.';}
   }catch{if(!signal.aborted)notice.textContent='제거 요청 접수를 확인하지 못했어요.';}
   finally{removing=false;if(!signal.aborted)selection();}
- },signal);
+ }
  const remove=canRemove?queueAction(submit,cinematicSequencesRemoveType):null;
  let removing=false,accepted=false;
  function selection(){
   archive.disabled=removing||accepted||!picked.size||picked.size>maxSelection;
   selectAll.disabled=removing||accepted||checks.size===0||checks.size>maxSelection;
-  selectAll.checked=checks.size>0&&picked.size===checks.size;selectAll.indeterminate=picked.size>0&&picked.size<checks.size;
+  selectAll.textContent=checks.size>0&&picked.size===checks.size?'전체 선택 해제':'전체 선택';
   for(const c of checks.values())c.disabled=removing||accepted;
  }
  if(canRemove){
-  selectAll.addEventListener('change',()=>{
-   picked.clear();
-   for(const [id,c] of checks){c.checked=selectAll.checked;if(c.checked)picked.add(id);}
+  selectAll.addEventListener('click',()=>{
+   const uncheck=picked.size===checks.size;picked.clear();
+   for(const [id,c] of checks){c.checked=!uncheck;if(c.checked)picked.add(id);}
    selection();
   },{signal});
-  detail.append(labeled('모두 선택',selectAll),archive,notice);
+  const controls=make('div',null,'prop-animation-selection');
+  controls.append(selectAll,archive);card.append(controls);
  }
- detail.append(rows,edit);
- if(!sequences.length&&!clips.length)rows.append(make('p','아직 생성된 애니메이션이 없습니다.','meta'));
+ card.append(rows);
+ if(!sequences.length&&!clips.length)rows.append(make('li','아직 생성된 애니메이션이 없습니다.','meta'));
  let inline=null,editor=null;
  const startChild=(prior)=>{
   prior?.abort();const child=new AbortController();if(signal.aborted)child.abort();return child;
@@ -132,7 +209,7 @@ export async function mountCinematicWorkspace({items,detail,request,submit,proje
   try{
    const {sequence,revision,playback}=await request(url(projectId,{sequence:id}));
    if(abort.signal.aborted)return;
-   if(!validCinematicSequenceResult(sequence)||sequence.officialRequestId!==id||!validCinematicPlayback(playback)||
+   if(!validCinematicSequenceResult(sequence)||sequence.officialRequestId!==id||sequence.sourceSha256!==currentSource||!validCinematicPlayback(playback)||
       !Number.isSafeInteger(revision)||revision<0)throw Error('CINEMATIC_SEQUENCE_INVALID');
    if(editMode)host.replaceChildren(make('h4','속도·카메라 편집 · '+short(id)),make('p','게시 메타 버전 '+revision,'meta'));
    else host.replaceChildren();
@@ -146,37 +223,32 @@ export async function mountCinematicWorkspace({items,detail,request,submit,proje
   }catch{if(!abort.signal.aborted)host.replaceChildren(make('p','이 버전을 재생할 수 없어요. 사본 상태를 확인해 주세요.','meta error'));}
  }
  for(const id of sequences){
-  const row=make('article',null,'cinematic-version'),line=make('div',null,'cinematic-version-line'),player=make('div',null,'cinematic-inline-player');
+  const row=make('li',null,'cinematic-version'+(id===item?' prop-animation-row-current':'')),line=make('div',null,'cinematic-version-line'),player=make('div',null,'cinematic-inline-player');
   if(canRemove){
    const c=make('input');c.type='checkbox';c.setAttribute('aria-label','버전 '+short(id)+' 선택');checks.set(id,c);
    c.addEventListener('change',()=>{if(c.checked)picked.add(id);else picked.delete(id);selection();},{signal});line.append(c);
   }
   const still=make('img');still.alt='버전 '+short(id)+' 첫 프레임';still.src=url(projectId,{sequence:id,frame:0});still.loading='lazy';
   const permalink=make('a','PNG '+short(id));permalink.href=navigate({cineTab:'animations',cineSource:currentSource,item:id});
-  line.append(still,permalink,action('바로 재생',()=>void openNative(id,player,{autoplay:true}),signal),action('메타 편집',()=>void openNative(id,edit,{editMode:true}),signal));
+  const info=make('div',null,'cinematic-row-label'),controls=make('div',null,'prop-actions cinematic-row-actions');
+  info.append(permalink,make('span','PNG 프레임','meta'));
+  controls.append(action('재생',()=>void openNative(id,player,{autoplay:true}),signal));
+  if(playbackEnabled&&typeof submit==='function')controls.append(action('수정',()=>{
+   const pane=dialog(detail,'애니메이션 수정',signal,()=>editor?.abort()),content=make('div');
+   const footer=make('div',null,'prop-actions');
+   footer.append(action('닫기',()=>pane.close(),signal));pane.append(content,footer);pane.showModal();
+   void openNative(id,content,{editMode:true});
+  },signal));
+  line.append(still,info,controls);
   row.append(line,player);rows.append(row);
   if(id===item)void openNative(id,player);
  }
  // Historical MP4s stay visible and playable without exposing a new encode lane.
  for(const id of clips){
-  const line=make('div',null,'cinematic-version-line'),label=make('span','기존 MP4 '+short(id)),video=make('video');
+  const row=make('li',null,'cinematic-version'),line=make('div',null,'cinematic-version-line cinematic-legacy-line'),label=make('span','기존 MP4 '+short(id)),video=make('video');
   video.controls=true;video.playsInline=true;video.preload='none';video.src=url(projectId,{clip:id,video:'1'});
   video.setAttribute('aria-label','기존 MP4 '+short(id));
-  line.append(label,video);rows.append(line);
+  line.append(label,video);row.append(line);rows.append(row);
  }
  selection();
- if(!enabled||typeof submit!=='function'){
-  detail.append(make('p','PNG 시네마틱 생성은 이 환경에서 아직 준비되지 않았어요.','meta'));return;
- }
- if(!sources.length){detail.append(make('p','등록된 원본 이미지가 필요해요.','meta'));return;}
- const select=make('select'),motion=make('textarea');motion.rows=4;motion.maxLength=1000;
- for(const id of sources){const o=make('option','원본 '+short(id));o.value=id;select.append(o);}
- if(currentSource)select.value=currentSource;
- let playback;
- requestForm(detail,{caption:'이 원본으로 애니메이션 생성 요청',signal,send:queueAction(submit,cinematicSequenceType),
-  isValid:validCinematicSequencePayload,makePayload:()=>({schemaVersion:cinematicSequenceSchema,projectId,sourceSha256:select.value,motionPrompt:motion.value.trim(),playback}),
-  body:(form,changed)=>{
-   form.append(labeled('출발 원본',select),labeled('움직임·연출 지시',motion));
-   layoutTimelineControls(form,defaultCinematicPlayback(),value=>{playback=value;changed();},{signal,allowDownload:false});
-  }});
 }

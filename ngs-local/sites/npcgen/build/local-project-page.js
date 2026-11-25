@@ -487,9 +487,9 @@ async function loadWorkspace(search){
  let conceptActions=null,motionSubmit;
  const supported=(area,enabled)=>enabled&&(!['audio','production','props','cinematic'].includes(area)||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
- document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':'항목';
+ document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':tab==='cinematic'?'장면':'항목';
  document.querySelector('#app').classList.remove('project-home');
- workspace.classList.toggle('npc-folder-workspace',tab==='npcs'||tab==='props');
+ workspace.classList.toggle('npc-folder-workspace',['npcs','props','cinematic'].includes(tab));
  document.querySelector('#project-home').hidden=true;
  for(const id of ['#project-workspace','#workspace-identity','#workspace-tools'])document.querySelector(id).hidden=false;
  document.querySelector('#workspace-title').textContent=projectId;
@@ -666,7 +666,7 @@ async function loadWorkspace(search){
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
   if(tab==='cinematic'){
-   await mountCinematicWorkspace({items,detail,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true});
+   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true});
    if(!signal.aborted)note('');
    return;
   }
