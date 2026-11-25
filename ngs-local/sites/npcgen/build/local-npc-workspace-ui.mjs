@@ -470,13 +470,12 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
  const control=nodeOf('label','npc-search-label','인물 검색');control.htmlFor=query.id;
  items.before(control,query);
  const chapterLabels=new Map(),portraitVariantPreferences=new Map(),portraitPosePreferences=new Map();
- const wanted=search.get('item');
  const chapter=search.get('npcChapter')??'all';
  let selected='',disposeMedia=()=>{},replacementAction=null;
  const animationSettings=new Map(),animationIntakes=new Map(),portraitIntakes=new Map();
  signal.addEventListener('abort',()=>{disposeMedia();replacementAction?.controller.abort();},{once:true});
  const nav=values=>navigation({projectId,catalogArea:'npcs',npcChapter:chapter==='all'?'':chapter,...values});
- const get=(npcId='')=>request('/api/npc-workspace?'+new URLSearchParams({projectId,...(npcId?{npcId}:{})}));
+ const get=(npcId='',readSignal=signal)=>request('/api/npc-workspace?'+new URLSearchParams({projectId,...(npcId?{npcId}:{})}),{signal:readSignal});
  function showHierarchy(data){
   const bands=[];
   if(data.actId){
@@ -501,7 +500,20 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
   return (data.npcs??[]).filter(npc=>!data.actId||!npc.actId||npc.actId===data.actId)
    .filter(npc=>chapter==='all'||(chapter==='unclassified'?!npc.chapters?.length:!npc.chapters?.length||npc.chapters.includes(chapter)));
  }
- function roster(data){
+ const rosterLinks=new Map();
+ const rosterGroups=new Map();
+ function syncSelection(){
+  for(const [id,link] of rosterLinks){
+   link.href=nav({item:id,npcTab:search.get('npcTab')??''});
+   if(id===selected)link.setAttribute('aria-current','page');
+   else link.removeAttribute('aria-current');
+  }
+ }
+ function roster(data,{keepScroll=false}={}){
+  const scrollTop=items.scrollTop;
+  const groupScroll=new Map([...rosterGroups].map(([label,pool])=>[label,pool.scrollTop]));
+  const focused=[...rosterLinks].find(([,link])=>link===document.activeElement)?.[0];
+  rosterLinks.clear();rosterGroups.clear();
   const filter=query.value.trim().toLocaleLowerCase();
   const rows=visible(data).filter(npc=>[npc.name,npc.role].some(text=>typeof text==='string'&&text.toLocaleLowerCase().includes(filter)));
   const grouped=[['공통 인물',rows.filter(npc=>!npc.chapters?.length)],['등장 인물',rows.filter(npc=>npc.chapters?.length)]];
@@ -509,19 +521,22 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
   for(const [label,group] of grouped){
    if(!group.length)continue;
    const section=nodeOf('li','npc-roster-group'),pool=nodeOf('ul'),name=nodeOf('h4','',label);
-   section.append(name,pool);content.push(section);
+   section.append(name,pool);content.push(section);rosterGroups.set(label,pool);
    for(const npc of group){
     const entry=nodeOf('li'),link=nodeOf('a','request-item npc-roster-entry');
-    // Roster navigation keeps the visual tab, never the detail-only intent.
-    link.href=nav({item:npc.id,npcTab:search.get('npcTab')??''});
-    if(npc.id===selected)link.setAttribute('aria-current','page');
+    rosterLinks.set(npc.id,link);
     link.append(nodeOf('strong','',npc.name));
     if(present(npc.role))link.append(nodeOf('span','meta',npc.role));
     entry.append(link);pool.append(entry);
    }
   }
   if(!content.length)content.push(nodeOf('li','meta',filter?'검색 결과가 없습니다.':'조건에 맞는 NPC가 없습니다.'));
-  items.replaceChildren(...content);
+  items.replaceChildren(...content);syncSelection();
+  if(keepScroll){
+   if(focused)rosterLinks.get(focused)?.focus({preventScroll:true});
+   for(const [label,pool] of rosterGroups)pool.scrollTop=groupScroll.get(label)??0;
+   items.scrollTop=scrollTop;
+  }
  }
  function planPanel(data,panel){
   const npc=data.npc,plans=(data.planning??[]).filter(row=>typeof row.id==='string'&&typeof row.name==='string');
@@ -649,28 +664,115 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
   }
   else planPanel(data,panel);
  }
- let data;
- async function reload(){
-  const base=await get();
-  if(signal.aborted)return base;
-  selected=wanted&&visible(base).some(npc=>npc.id===wanted)?wanted:visible(base)[0]?.id??'';
-  data=base;showHierarchy(base);roster(base);
-  if(selected){data=await get(selected);if(signal.aborted)return base;}
-  showNpc(data);return base;
+ let base, detailData, detailRequest, rosterKey, rosterRead, syncQueue=Promise.resolve();
+ const rosterSignature=value=>JSON.stringify([value.actId,value.chapters,value.npcs]);
+ function renderRoster(value){
+  const key=rosterSignature(value);
+  base=value;
+  if(key===rosterKey)return;
+  rosterKey=key;showHierarchy(value);roster(value,{keepScroll:true});
  }
- query.addEventListener('input',()=>{if(data)roster(data);});
- const base=await reload();
+ function chooseId(){
+  const wanted=search.get('item'),rows=visible(base);
+  return rows.some(npc=>npc.id===wanted)?wanted:rows[0]?.id??'';
+ }
+ async function loadDetail(readSignal,selection){
+  const value=selection?await get(selection,readSignal):base;
+  if(readSignal.aborted)return;
+  detailData=value;showNpc(value);
+ }
+ async function refreshRoster(){
+  if(rosterRead)return rosterRead;
+  rosterRead=(async()=>{
+   const value=await get();
+   if(signal.aborted)return false;
+   const selection=selected;
+   renderRoster(value);
+   if(selection&&!visible(value).some(npc=>npc.id===selection)){
+    const fallback=chooseId();
+    const href=nav({item:fallback,npcTab:search.get('npcTab')??''});
+    history.replaceState(null,'',href);
+    void routeDetail(new URL(href,location.origin).searchParams,{compare:false});
+    return true;
+   }
+   if(!selection&&chooseId()){
+    void routeDetail(search,{compare:false});return true;
+   }
+   return false;
+  })().finally(()=>{rosterRead=null;});
+  return rosterRead;
+ }
+ async function routeDetail(params,{compare=true}={}){
+  if(signal.aborted||!base)return;
+  detailRequest?.abort();detailRequest=new AbortController();
+  const readSignal=AbortSignal.any([signal,detailRequest.signal]);
+  search=params;
+  const selection=chooseId();
+  if(selected!==selection){
+   disposeMedia();disposeMedia=()=>{};
+   replacementAction?.controller.abort();replacementAction=null;
+  }
+  selected=selection;syncSelection();
+  detail.setAttribute('aria-busy','true');
+  try{
+   await loadDetail(readSignal,selection);
+   if(readSignal.aborted||!compare)return;
+   const scopes=npcRefreshScopes({projectId,wanted:params.get('item'),selected:selection,roster:base.npcs,
+    npcTab:params.get('npcTab'),npcRefresh:params.get('npcRefresh'),mediaScopes:detailData?.mediaScopes});
+   if(!scopes.length){note('');return;}
+   const perform=async()=>{
+    if(readSignal.aborted)return;
+    note('파일 비교 중');
+    const result=await refreshNpcScopes(scopes,{post,signal:readSignal,onDownload:()=>note('동기화 중')});
+    if(readSignal.aborted)return;
+    if(result.changed&&!(await refreshRoster())&&!readSignal.aborted)await loadDetail(readSignal,selection);
+    if(readSignal.aborted)return;
+    if(result.failed)note(result.changed?'일부 파일을 갱신하지 못했습니다. 기존 사본을 표시합니다.'
+     :'파일을 갱신하지 못했습니다. 기존 사본을 표시합니다.',true);
+    else note('');
+   };
+   syncQueue=syncQueue.catch(()=>{}).then(perform);
+   await syncQueue;
+  }catch{
+   if(!readSignal.aborted){
+    note('NPC 상세를 읽지 못했습니다.',true);
+    detail.replaceChildren(nodeOf('p','meta','선택한 NPC 상세를 읽지 못했습니다.'));
+   }
+  }finally{if(!readSignal.aborted)detail.removeAttribute('aria-busy');}
+ }
+ function localNpcRoute(url){
+  const p=url.searchParams;
+  return url.origin===location.origin&&url.pathname===location.pathname&&p.get('projectId')===projectId&&
+   p.get('catalogArea')==='npcs'&&(p.get('npcChapter')??'all')===chapter;
+ }
+ function onClick(event){
+  if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+  const link=event.target.closest?.('a[href]');
+  if(!link||link.target||link.hasAttribute('download'))return;
+  const url=new URL(link.href,location.href);
+  if(!localNpcRoute(url)||!url.searchParams.has('item'))return;
+  event.preventDefault();
+  if(url.href!==location.href)history.pushState(null,'',url);
+  void routeDetail(url.searchParams);
+ }
+ items.addEventListener('click',onClick,{signal});
+ detail.addEventListener('click',onClick,{signal});
+ query.addEventListener('input',()=>{if(base)roster(base);},{signal});
+ window.addEventListener('popstate',()=>{
+  const url=new URL(location.href);
+  if(localNpcRoute(url))void routeDetail(url.searchParams);
+ },{signal});
+ const initial=await get();
  if(signal.aborted)return;
- const scopes=npcRefreshScopes({projectId,wanted,selected,roster:base.npcs,
-  npcTab:search.get('npcTab'),npcRefresh:search.get('npcRefresh'),mediaScopes:data?.mediaScopes});
- if(!scopes.length){note('');return;}
- note('파일 비교 중');
- const result=await refreshNpcScopes(scopes,{post,signal,onDownload:()=>note('동기화 중')});
- if(signal.aborted)return;
- if(result.changed)await reload();
- if(result.failed)note(result.changed?'일부 파일을 갱신하지 못했습니다. 기존 사본을 표시합니다.'
-  :'파일을 갱신하지 못했습니다. 기존 사본을 표시합니다.',true);
- else note('');
+ renderRoster(initial);
+ const timer=setInterval(()=>{
+  if(!document.hidden&&!signal.aborted)void refreshRoster().catch(()=>{});
+ },30_000);
+ signal.addEventListener('abort',()=>{
+  clearInterval(timer);detailRequest?.abort();
+ },{once:true});
+ window.addEventListener('focus',()=>{if(!signal.aborted)void refreshRoster().catch(()=>{});},{signal});
+ await routeDetail(search);
 }
 
 const npcPoseLabels={idle:'아이들',combat:'전투',representative:'대표'};
