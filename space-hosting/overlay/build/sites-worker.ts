@@ -110,6 +110,7 @@ export default {
             throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
         },
       }):undefined,
+      npcBasicPortraitEnabled:(env as Cloudflare.Env & {NGS_NPC_BASIC_PORTRAIT_ENABLED?:string}).NGS_NPC_BASIC_PORTRAIT_ENABLED!=="0",
       poseSelectionV2Enabled:(env as Cloudflare.Env & {NGS_POSE_SELECTION_V2_ENABLED?:string}).NGS_POSE_SELECTION_V2_ENABLED==="1",
       hasAudioSeparationSource:replicaReads&&env.NPCGEN_AUDIO_SEPARATION_ENABLED==="1"
         ?payload=>objectAudioSeparationSource(fileReplica!,payload):undefined,

@@ -215,8 +215,8 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,...session}=value??{};
- if([cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
+ const {npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,...session}=value??{};
+ if([npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
  if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
  return session?.state==='authenticated'&&session.backend==='space'&&
@@ -748,7 +748,7 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='npcs'){
-   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace,poseSelectionV2Enabled:session.poseSelectionV2Enabled===true,basicPortraitRequests:!hosted&&session.npcBasicPortraitEnabled===true,scopedPortraitRequests:!hosted&&session.npcScopedPortraitEnabled===true});
+   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace,poseSelectionV2Enabled:session.poseSelectionV2Enabled===true,basicPortraitRequests:session.npcBasicPortraitEnabled===true,scopedPortraitRequests:!hosted&&session.npcScopedPortraitEnabled===true});
    return;
   }
   if(tab==='concept'&&projectId==='binari'){

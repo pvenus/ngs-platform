@@ -458,7 +458,8 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
  listPane.classList.add('npc-roster-list');
  detail.classList.add('npc-detail');
  listPane.querySelector('h3').textContent='NPC';
- if(projectId==='binari'&&typeof submitOneStop==='function')mountNpcOneStop(listPane,{submit:submitOneStop,request,signal,poseSelectionV2Enabled,basic:basicPortraitRequests});
+ if(projectId==='binari'&&basicPortraitRequests&&typeof submitOneStop==='function')
+  mountNpcOneStop(listPane,{submit:submitOneStop,request,signal,basic:true});
  const heading=workspace.querySelector('.project-content-heading');
  workspace.querySelector('.npc-hierarchy-nav')?.remove();
  listPane.querySelector('.npc-search-label')?.remove();
@@ -620,13 +621,11 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
   }
   identity.append(badges);
   header.append(identity);
-  if(projectId==='binari'&&typeof submitOneStop==='function'){
+  if(projectId==='binari'&&basicPortraitRequests&&typeof submitOneStop==='function'){
    if(replacementAction?.npcId!==npc.id){
     replacementAction?.controller.abort();
     const controller=new AbortController(),holder=nodeOf('div','npc-replacement-action');
-    const rosterNpc=data.npcs?.find(row=>row.id===npc.id);
-    const target={...rosterNpc,...npc,actId:npc.actId??rosterNpc?.actId??data.actId};
-    const trigger=mountNpcOneStop(holder,{submit:submitOneStop,request,signal:controller.signal,...(basicPortraitRequests?{basic:true,newVersion:true}:{replaceNpc:target}),modalOwner:workspace,poseSelectionV2Enabled});
+    const trigger=mountNpcOneStop(holder,{submit:submitOneStop,request,signal:controller.signal,basic:true,newVersion:true,modalOwner:workspace});
     replacementAction={npcId:npc.id,controller,holder,trigger};
    }
    if(replacementAction.trigger)header.append(replacementAction.holder);

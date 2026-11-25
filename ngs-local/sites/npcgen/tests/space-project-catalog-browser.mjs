@@ -365,3 +365,19 @@ test('a published 2D variant is labeled and keeps its directional preview withou
  assert.equal(compass.children.length,9);
  assert.match(compass.children[1].children[1].children[0].src,/item=walk-2d&file=/);
 });
+
+test('Local and Space wire the same Basic NPC capability to shared UI, with no hosted bypass',async()=>{
+ for(const hosted of [false,true])for(const available of [false,true]){
+  const config={...(hosted?{...readyReplica,workspaceReady:true,requestWritable:true}:projectAuth),
+   ...(available?{npcBasicPortraitEnabled:true}:{})};
+  const seen=[];
+  const app=browser(url=>{
+   if(url==='/__npcgen_session')return Response.json(config);
+   if(url==='/api/project-folders')return Response.json({projects:[project]});
+   throw Error('unexpected '+url);
+  },'',{loadNpcFolder:async settings=>seen.push(settings)});
+  await app.context.loadWorkspace(new URLSearchParams('?projectId=binari&catalogArea=npcs'));
+  assert.equal(seen.length,1);
+  assert.equal(seen[0].basicPortraitRequests,available);
+ }
+});

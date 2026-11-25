@@ -386,3 +386,46 @@ test('cinematic queue requires opt-in and exact source admission under existing 
  const {queueId}=await accept.json();assert.deepEqual((await new SpaceRequestQueue(db).get({queueId})).payload,payload);
  assert.deepEqual(seen,['b'.repeat(64),'a'.repeat(64)]);
 });
+
+test('Space Basic NPC uses the same browser payload contract and relays it unchanged',async t=>{
+ const {newNpcBasicRequest}=await import('../ngs-local/sites/npcgen/build/local-npc-one-stop-ui.mjs');
+ const db=store(t),options={db,secret:token,replicaReads:true,workspaceReady:true,npcBasicPortraitEnabled:true,
+  authorize:async()=>true,authorizeWrite:async user=>user.userId==='basic-owner'};
+ const viewer=headers('read-only'),owner=headers('basic-owner');
+ const call=(opts,...args)=>browserQueueResponse(request(...args),opts);
+ const cfg=async(opts,h)=>(await(await call(opts,'/__npcgen_session','GET',h)).json());
+ assert.equal((await cfg(options,owner)).npcBasicPortraitEnabled,true);
+ assert.equal((await cfg(options,viewer)).npcBasicPortraitEnabled,undefined);
+ assert.equal((await cfg({...options,replicaReads:false},owner)).npcBasicPortraitEnabled,undefined);
+ assert.equal((await cfg({...options,workspaceReady:false},owner)).npcBasicPortraitEnabled,undefined);
+ assert.equal((await cfg({...options,npcBasicPortraitEnabled:false},owner)).npcBasicPortraitEnabled,undefined);
+ const session=await cfg(options,owner),h={...owner,Origin:origin,'X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId};
+ const submit=(opts,value)=>call(opts,'/api/requests','POST',h,value);
+ const input={name:'주모 테스트',slug:'tavern-keeper-test',role:'주막 주인',actId:'act01',chapterId:'chapter01',
+  goal:'소문을 모은다',behavior:'상대의 눈치를 본다',palette:'짙은 빨강',appearance:'걷어 올린 치마'};
+ const first=newNpcBasicRequest({...input,includeCombat:false});
+ const extra=newNpcBasicRequest({...input,slug:'tavern-keeper-test-combat',includeCombat:true,combatRequirements:'부채를 펼쳐 든다'});
+ const command=p=>({idempotencyKey:p.character.slug,requestType:'npc.workflow',payload:p});
+ const rejected=await submit({...options,npcBasicPortraitEnabled:false},command(first));
+ assert.equal(rejected.status,404);
+ assert.deepEqual(await rejected.json(),{error:'NPC_BASIC_PORTRAIT_UNAVAILABLE'});
+ for(const payload of [
+  {...first,character:{...first.character,actId:'story.main.act01'}},
+  {...first,motionSelection:[]},
+  {...first,combatRequirements:'전투 미선택'},
+  {...extra,combatRequirements:'  '},
+ ]){
+  assert.equal((await submit(options,command(payload))).status,400);
+ }
+ for(const payload of [first,extra]){
+  const r=await submit(options,command(payload)),receipt=await r.json();assert.equal(r.status,202);
+  assert.equal(receipt.status,'queued');assert.match(receipt.queueId,/^ngs\.space\./u);
+  assert.deepEqual(await (await submit(options,command(payload))).json(),receipt);
+  const live=await machineResponse(request('/api/space-machine-mcp','POST',{'X-NGS-Machine-Token':token},
+   {jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'space_requests_get',arguments:{queueId:receipt.queueId}}}),options);
+  const rpc=await live.json();assert.equal(rpc.result.isError,false);
+  assert.deepEqual(rpc.result.structuredContent,{queueId:receipt.queueId,idempotencyKey:receipt.queueId,requestType:'npc.workflow',payload});
+ }
+ const queue=new SpaceRequestQueue(db);
+ assert.equal((await queue.pending({})).requests.length,2);
+});

@@ -2,7 +2,7 @@
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
 import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from '../ngs-local/sites/npcgen/build/replica-whole-file-wire.mjs';
 import {audioSeparationType,validAudioSeparationPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
-import {isPoseSelectionV2,isNpcWorkflowReplaceSchema,validNpcWorkflowIdentity} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
+import {npcBasicSchema,isPoseSelectionV2,isNpcWorkflowReplaceSchema,validNpcWorkflowIdentity} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 export const machineTokenConfigured=validMachineToken;
 // Only call with the server-resolved participant, never browser-supplied roles.
 export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
@@ -135,7 +135,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,cinematicRemoveEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,cinematicRemoveEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -147,6 +147,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   const actor=await hash(JSON.stringify(['space.queue.actor.v1',id])),tokens=await csrf(secret,actor),service=new SpaceRequestQueue(db);
   const activeProps=replicaReads&&workspaceReady&&validPropActions(propActions)&&typeof admitProp==='function'?propActions:[];
   const nativeReady=replicaReads&&workspaceReady&&typeof admitCinematic==='function';
+  const activeNpcBasic=replicaReads&&workspaceReady&&npcBasicPortraitEnabled===true;
   const activeCinematic=nativeReady&&cinematicEnabled===true;
   const activeSequence=nativeReady&&cinematicSequenceEnabled===true;
   const activePlayback=nativeReady&&cinematicPlaybackEnabled===true;
@@ -157,7 +158,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
    const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...tokens});
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));
@@ -171,6 +172,8 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   need(await sameToken(request.headers.get('X-NPCGen-Csrf'),tokens.csrfToken)&&
     request.headers.get('X-NPCGen-Frontend-Context')===tokens.contextId,403,'CSRF_INVALID');
   const {value}=await body(request,small);
+  if(value?.requestType==='npc.workflow'&&value.payload?.schemaVersion===npcBasicSchema)
+   need(activeNpcBasic,404,'NPC_BASIC_PORTRAIT_UNAVAILABLE');
   if((value?.requestType==='npc.workflow'||value?.requestType==='npc.animation.regenerate')&&isPoseSelectionV2(value.payload?.schemaVersion))
    need(replicaReads&&workspaceReady&&poseSelectionV2Enabled===true,404,'NPC_POSE_SELECTION_V2_UNAVAILABLE');
   const cinematicCapabilities={[cinematicType]:activeCinematic,[cinematicSequenceType]:activeSequence,[cinematicPlaybackUpdateType]:activePlayback,[cinematicSourceGenerateType]:activeSource,[cinematicSequencesRemoveType]:activeRemove};

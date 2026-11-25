@@ -36,6 +36,16 @@ private Site queue. Browser status acknowledges durable registration, not
 generation success. Other requests keep progressing, and ambiguity never
 clears an undelivered draft.
 
+Local and Space advertise `npcBasicPortraitEnabled` for the same shared NPC
+create and new-version dialogs. Space advertises it only to authenticated
+queue writers when the project replica and workspace are ready; setting
+`NGS_NPC_BASIC_PORTRAIT_ENABLED=0` disables it on either frontend. A missing
+capability does not fall back to a legacy create dialog. The Site queue
+forwards `ngs.npc-one-stop.basic.v1` unchanged, including an optional combat
+brief, through the existing exact-ticket relay; the Mac Request Service and
+Planner still own registration and execution. Previously queued legacy
+envelopes keep their original schema and validation.
+
 The file loop reads Binari through the unchanged loopback PDS MCP and uses
 the exact existing `ngs_file_sync_*` change/chunk/finish/abort/remove
 contracts on the remote. PDS must reconfirm a prior hash and absence before

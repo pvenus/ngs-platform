@@ -3,7 +3,7 @@ import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
 import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
-import {isSelectionSchema,validNpcMotionSelectionRequest,validNpcWorkflowIdentity,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
+import {npcBasicSchema,validNpcBasicRequest,isSelectionSchema,validNpcMotionSelectionRequest,validNpcWorkflowIdentity,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 import {propAction,validPropPayload,propAnimationRemoveType,validPropAnimationRemove} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
 import {cinematicSequenceType,cinematicPlaybackUpdateType,validCinematicSequencePayload,validCinematicPlaybackUpdate,cinematicSourceGenerateType,validCinematicSourceGenerate,cinematicSequencesRemoveType,validCinematicSequencesRemove} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
 import {cinematicType,validCinematicPayload} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
@@ -34,6 +34,7 @@ function canonical(value,depth=0){
  return '{'+Object.keys(value).sort().map(k=>json(k)+':'+canonical(value[k],depth+1)).join(',')+'}';
 }
 function validOneStop(v){
+ if(v.schemaVersion===npcBasicSchema)return validNpcBasicRequest(v);
  if(isSelectionSchema(v.schemaVersion))return validNpcMotionSelectionRequest(v);
  const fields=['schemaVersion','projectId','character','intent','sourceRefs','includeCombat'];
  if(v.includeCombat===true)fields.push('combatMotionPresets');

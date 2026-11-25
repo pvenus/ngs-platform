@@ -35,7 +35,17 @@ test('NPC browser keeps search, nodes and scroll across selection and refresh', 
  };
  try{
   await loadNpcFolder({search:params,projectId:'binari',signal:control.signal,request:read,post:async()=>({groups:[]}),
-   note:()=>{},items,detail,workspace});
+   note:()=>{},items,detail,workspace,submitOneStop:()=>fail('no requests are sent'),basicPortraitRequests:params.get('basic')==='1'});
+  const create=document.querySelector('.npc-one-stop-trigger');
+  if(params.get('basic')==='1'){
+   if(!create||create.getAttribute('aria-label')!=='NPC 기본 생성')fail('Basic NPC trigger missing');
+   create.click();
+   const modal=document.querySelector('.npc-one-stop-dialog');
+   if(!modal?.open||!modal.textContent.includes('목표·등장 이유')||!modal.textContent.includes('퍼스널 컬러')||
+      !modal.textContent.includes('전투 대표 포트레이트 추가')||modal.textContent.includes('모션 프리셋 선택')||
+      modal.textContent.includes('근거 참조'))fail('Basic NPC popup incorrect');
+   modal.querySelector('header button').click();
+  }else if(create)fail('Basic unavailable must not fall back to legacy');
   const input=document.querySelector('#npc-search'); input.value='서진';input.dispatchEvent(new Event('input'));
   const list=items.querySelector('li ul');list.scrollTop=300;
   const scroll=list.scrollTop;if(scroll<=0)fail('fixture must scroll');
@@ -62,8 +72,10 @@ test('NPC browser keeps search, nodes and scroll across selection and refresh', 
   createReadStream(file).on('error',()=>res.end()).pipe(res);
  });
  await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>server.close());
- const url='http://127.0.0.1:'+server.address().port+'/?projectId=binari&catalogArea=npcs&item=npc.test-1';
- const {stdout}=await promisify(execFile)(browser,['--headless','--no-sandbox','--disable-gpu','--disable-background-networking','--no-first-run','--disable-dev-shm-usage',
-  '--user-data-dir='+profile,'--virtual-time-budget=4000','--dump-dom',url],{timeout:25000,maxBuffer:1024*1024});
- assert.match(stdout,/<p id="result">PASS<\/p>/,stdout.match(/<p id="result">.*?<\/p>/)?.[0]);
+ for(const basic of [0,1]){
+  const url='http://127.0.0.1:'+server.address().port+'/?projectId=binari&catalogArea=npcs&item=npc.test-1&basic='+basic;
+  const {stdout}=await promisify(execFile)(browser,['--headless','--no-sandbox','--disable-gpu','--disable-background-networking','--no-first-run','--disable-dev-shm-usage',
+   '--user-data-dir='+profile,'--virtual-time-budget=4000','--dump-dom',url],{timeout:25000,maxBuffer:1024*1024});
+  assert.match(stdout,/<p id="result">PASS<\/p>/,stdout.match(/<p id="result">.*?<\/p>/)?.[0]);
+ }
 });
