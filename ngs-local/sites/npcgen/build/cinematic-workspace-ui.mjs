@@ -308,7 +308,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
  if((enabled||pixelEnabled)&&submit){
   function trigger(pixel){
    const caption=pixel?'배경 원본 + 픽셀 제작 요청':'배경 생성 요청';
-   const add=action(pixel?'+ 픽셀':'+',()=>{
+   const add=action('+',()=>{
    const inputs={},examples={title:'예: 의식 전의 한옥 안채',timeOfDay:'예: 해가 진 직후',season:'예: 늦가을',
     mood:'예: 고요하지만 불길한 기운',color:'예: 먹색, 바랜 목재색, 옅은 등불색',
     location:'예: 한옥 안채에서 마당을 바라보는 구도',requirements:'예: 마루와 문턱이 분명하고 가운데에 이동 공간 확보',
@@ -327,7 +327,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   },signal,'npc-one-stop-trigger');
    add.setAttribute('aria-label',caption);add.title=caption;return add;
   }
-  tools.replaceChildren(...(enabled?[trigger(false)]:[]),...(pixelEnabled?[trigger(true)]:[]));tools.hidden=false;
+  tools.replaceChildren(trigger(Boolean(pixelEnabled)));tools.hidden=false;
  }
  const payload=await request(url({}));if(signal.aborted)return;
  const rows=Array.isArray(payload.backgrounds)?payload.backgrounds:[];
@@ -335,7 +335,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
  const edit=mountCatalogRosterEdit({items,tools,deleteItem,signal});
  mountSourceRoster({items,scenes:rows,selected,go:navigate,projectId,signal,area:'background',edit});
  if(!selected){
-  detail.replaceChildren(make('h3','배경 설계'),notice,make('p',enabled?'배경을 고르거나 +로 새 원본을 요청하세요.':'배경을 고르세요. 생성 기능이 아직 연결되지 않았습니다.','meta'));
+  detail.replaceChildren(make('h3','배경 설계'),notice,make('p',(enabled||pixelEnabled)?'배경을 고르거나 +로 새 배경을 요청하세요.':'배경을 고르세요. 생성 기능이 아직 연결되지 않았습니다.','meta'));
   return;
  }
  const img=make('img');img.alt=selected.title;img.src=url({image:selected.sha256});img.style.maxWidth='100%';img.style.height='auto';
