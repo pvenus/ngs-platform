@@ -11,12 +11,21 @@ export function validCinematicSequencePayload(p){
   p.projectId==='binari'&&cinematicHash(p.sourceSha256)&&cinematicMotion(p.motionPrompt)&&validCinematicPlayback(p.playback);
 }
 export function validCinematicSequenceResult(m){
- return exact(m,['schemaVersion','projectId','officialRequestId','sourceSha256','width','height','masterFps','frameCount','frames','playback'])&&
+ const upscale=Object.hasOwn(m??{},'upscale'),grouped=Object.hasOwn(m??{},'group');
+ const fields=['schemaVersion','projectId','officialRequestId','sourceSha256','width','height','masterFps','frameCount','frames','playback'];
+ if(grouped)fields.push('group');
+ if(upscale)fields.push('upscale');
+ const baseSize=n=>Number.isInteger(n)&&n>=128&&n<=512&&n%32===0;
+ const u=m?.upscale;
+ const dimensions=upscale?grouped&&exact(u,['model','scale','sourceWidth','sourceHeight'])&&
+  u.model==='seedvr2-7b-fp16'&&u.scale===2&&baseSize(u.sourceWidth)&&baseSize(u.sourceHeight)&&
+  m.width===u.sourceWidth*2&&m.height===u.sourceHeight*2:[m?.width,m?.height].every(baseSize);
+ return exact(m,fields)&&(!grouped||validBackgroundAnimationGroup(m.group))&&
   m.schemaVersion===cinematicSequenceResultSchema&&m.projectId==='binari'&&cinematicId(m.officialRequestId)&&cinematicHash(m.sourceSha256)&&
-  [m.width,m.height].every(n=>Number.isInteger(n)&&n>=128&&n<=512&&n%32===0)&&m.masterFps===MASTER_FPS&&
+  dimensions&&m.masterFps===MASTER_FPS&&
   m.frameCount===45&&Array.isArray(m.frames)&&m.frames.length===m.frameCount&&
   m.frames.every((f,i)=>exact(f,['index','sha256','bytes'])&&f.index===i&&cinematicHash(f.sha256)&&Number.isSafeInteger(f.bytes)&&f.bytes>=57&&f.bytes<=cinematicSequenceFrameLimit)&&
-  m.frames.reduce((a,b)=>a+b.bytes,0)<=64*1024*1024&&validCinematicPlayback(m.playback);
+  m.frames.reduce((a,b)=>a+b.bytes,0)<=(upscale?128:64)*1024*1024&&validCinematicPlayback(m.playback);
 }
 export const cinematicSequenceFramePath=(id,i)=>cinematicSequencePrefix+'/'+id+'/frames/'+String(i).padStart(4,'0')+'.png';
 

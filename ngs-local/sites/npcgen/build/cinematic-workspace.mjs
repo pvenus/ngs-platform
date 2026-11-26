@@ -1,6 +1,6 @@
 import {cinematicSequencePrefix,cinematicSequenceFramePath,cinematicSequenceFrameLimit,cinematicSequenceType,cinematicPlaybackUpdateType,
  validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,validCinematicPlaybackState,
- cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,validBackgroundAnimation,validBackgroundAnimationGroup,validBackgroundPixelRequest,validBackgroundRequest,cinematicSequencesRemoveType,cinematicArchivePath,validCinematicSourceGenerate,validCinematicSourceResult,
+ cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,validBackgroundAnimation,validBackgroundPixelRequest,validBackgroundRequest,cinematicSequencesRemoveType,cinematicArchivePath,validCinematicSourceGenerate,validCinematicSourceResult,
  validCinematicSequencesRemove,validCinematicArchive} from './cinematic-sequence-contract.mjs';
 import {admitBackgroundReferences} from './background-workspace.mjs';
 import {hashReplicaBytes,readReplicaObject,replicaUnavailable} from './workspace-read-storage.mjs';
@@ -27,7 +27,6 @@ async function result(project,id){
  if((h.sha256!==undefined&&h.sha256!==m.sha256)||h.size!==m.bytes)throw replicaUnavailable();
  return m;
 }
-const sequenceManifest=m=>Object.hasOwn(m??{},'group')?validBackgroundAnimationGroup(m.group)&&validCinematicSequenceResult(Object.fromEntries(Object.entries(m).filter(([k])=>k!=='group'))):validCinematicSequenceResult(m);
 const nativeMetadataLimit=128*1024;
 async function archivedSequences(p){
  const archive=await readReplicaObject(p,cinematicArchivePath,512*1024);
@@ -40,7 +39,7 @@ async function getSequence(p,id,{timeline=true}={}){
  const root=cinematicSequencePrefix+'/'+id;
  const m=await readReplicaObject(p,root+'/manifest.json',nativeMetadataLimit);
  if(!m)return null;
- if(!sequenceManifest(m)||m.officialRequestId!==id)throw replicaUnavailable();
+ if(!validCinematicSequenceResult(m)||m.officialRequestId!==id)throw replicaUnavailable();
  if(!timeline)return {sequence:m,revision:0,playback:m.playback};
  const state=await readReplicaObject(p,root+'/timeline.json',nativeMetadataLimit);
  if(state!==null&&(!validCinematicPlaybackState(state)||state.sequenceId!==id))throw replicaUnavailable();
@@ -85,7 +84,7 @@ async function sceneList(p,sources,clips,sequences,sequenceTimes){
   ...sequences.map(id=>async()=>{
    const m=await readReplicaObject(p,cinematicSequencePrefix+'/'+id+'/manifest.json',nativeMetadataLimit);
    if(m===null)return;
-   if(!sequenceManifest(m)||m.officialRequestId!==id)throw replicaUnavailable();
+   if(!validCinematicSequenceResult(m)||m.officialRequestId!==id)throw replicaUnavailable();
    if(!m.group)bySource.get(m.sourceSha256)?.sequences.push(id);
   }),
   ...clips.map(id=>async()=>{

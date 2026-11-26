@@ -162,7 +162,7 @@ test('one gallery item owns both published stills, never the draft, and accepts 
  writeFileSync(join(seqDir,'manifest.json'),JSON.stringify({schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',
   officialRequestId:seq,sourceSha256:cinematic,group:{requestId:group,variant:'cinematic',backgroundSha256:pixel},
   frameCount:45,frames:Array.from({length:45},(_,index)=>({index,sha256:'f'.repeat(64),bytes:80})),
-  masterFps:24,width:128,height:128,playback}),{mode:0o600});
+  masterFps:24,width:1024,height:704,upscale:{model:'seedvr2-7b-fp16',scale:2,sourceWidth:512,sourceHeight:352},playback}),{mode:0o600});
  assert.deepEqual((await (await fetch(origin+base+'&groups='+pixel,{headers:{cookie}})).json()).groups.map(x=>[x.requestId,x.variants]),
   [[group,{cinematic:{id:seq,sourceSha256:cinematic}}]]);
 });
@@ -204,7 +204,8 @@ test('background two-track comparison uses one submission and a shared timeline 
   if(params.has('sequence')){
    const id=params.get('sequence'),variant=id===co?'cinematic':'pixel';
    return {playback,sequence:{schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,
-    sourceSha256:refs[variant].sourceSha256,group:{requestId:pr,variant,backgroundSha256:pixel.sha256},width:128,height:128,
+    sourceSha256:refs[variant].sourceSha256,group:{requestId:pr,variant,backgroundSha256:pixel.sha256},width:1024,height:704,
+    upscale:{model:'seedvr2-7b-fp16',scale:2,sourceWidth:512,sourceHeight:352},
     masterFps:24,frameCount:45,frames:Array.from({length:45},(_,index)=>({index,sha256:'f'.repeat(64),bytes:90})),playback}};
   }
   return {backgrounds};
@@ -242,7 +243,7 @@ test('background two-track comparison uses one submission and a shared timeline 
    const popup=document.querySelector('dialog.background-media-dialog[open]');
    assert(popup?.querySelector('h3')?.textContent===label+' 애니메이션','wrong individual popup');
    const frames=await untilReady(popup,'[aria-label="PNG 원본 프레임"]:enabled');
-   assert(popup.querySelectorAll('canvas').length===1&&frames&&!frames.disabled&&frames.max==='45','not one frame player');
+   assert(popup.querySelectorAll('canvas').length===1&&frames&&!frames.disabled&&frames.max==='45'&&popup.querySelector('canvas').width===1024&&popup.textContent.includes('2× 업스케일'),'not one upscaled frame player');
    frames.value='4';frames.dispatchEvent(new Event('input',{bubbles:true}));
    assert(popup.textContent.includes('PNG 원본 프레임 4 / 45'),'native scrub did not seek');
    [...popup.querySelectorAll('button')].find(b=>b.textContent==='다음 프레임').click();

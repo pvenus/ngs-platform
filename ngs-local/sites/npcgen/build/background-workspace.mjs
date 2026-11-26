@@ -1,4 +1,4 @@
-import {cinematicSequencePrefix,cinematicArchivePath,validCinematicArchive,validCinematicSequenceResult,validBackgroundAnimationGroup,validBackgroundResult} from './cinematic-sequence-contract.mjs';
+import {cinematicSequencePrefix,cinematicArchivePath,validCinematicArchive,validCinematicSequenceResult,validBackgroundResult} from './cinematic-sequence-contract.mjs';
 import {validBackgroundLoopPlayback} from './cinematic-timeline.mjs';
 import {cinematicHash,cinematicId,maxCinematicBytes} from './cinematic-contract.mjs';
 import {hashReplicaBytes,readReplicaObject,replicaUnavailable} from './workspace-read-storage.mjs';
@@ -62,11 +62,11 @@ async function readGroups(p,backgroundSha256){
   const m=await readReplicaObject(p,cinematicSequencePrefix+'/'+name+'/manifest.json',128*1024);
   if(m?.group?.backgroundSha256!==backgroundSha256)return null;
   if(!validBackgroundLoopPlayback(m.playback))return null; // Superseded one-shot previews stay stored but are not offered as backgrounds.
-  const {group,...sequence}=m;
-  if(!validBackgroundAnimationGroup(group)||!validCinematicSequenceResult(sequence)||sequence.officialRequestId!==name||
+  const {group}=m;
+  if(!validCinematicSequenceResult(m)||m.officialRequestId!==name||
      name!==await publicationId(group.requestId,'background_animation_'+group.variant))throw replicaUnavailable();
   const info=await p.head(cinematicSequencePrefix+'/'+name+'/manifest.json');
-  return {group,id:name,sourceSha256:sequence.sourceSha256,modifiedAtMs:info?.modifiedAtMs??0};
+  return {group,id:name,sourceSha256:m.sourceSha256,modifiedAtMs:info?.modifiedAtMs??0};
  })))if(item){
   const entry=groups.get(item.group.requestId)??{requestId:item.group.requestId,variants:{},modifiedAtMs:0};
   entry.variants[item.group.variant]={id:item.id,sourceSha256:item.sourceSha256};

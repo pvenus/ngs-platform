@@ -424,11 +424,11 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   line.append(make('strong','요청 '+short(group.requestId)+' · '+results.map(([key])=>labels[key]).join(' / ')));
   async function loadTrack([variant,result]){
    const {sequence,playback}=await request(urlForCine({sequence:result.id}));
-   const {group:proof,...manifest}=sequence??{};
-   if(!validCinematicSequenceResult(manifest)||!validBackgroundLoopPlayback(playback)||manifest.officialRequestId!==result.id||
-      manifest.sourceSha256!==result.sourceSha256||proof?.requestId!==group.requestId||proof?.variant!==variant||
+   const proof=sequence?.group;
+   if(!validCinematicSequenceResult(sequence)||!validBackgroundLoopPlayback(playback)||sequence.officialRequestId!==result.id||
+      sequence.sourceSha256!==result.sourceSha256||proof?.requestId!==group.requestId||proof?.variant!==variant||
       proof?.backgroundSha256!==selected.sha256)throw Error('BACKGROUND_ANIMATION_INVALID');
-   return {label:labels[variant],manifest:{...manifest,playback},frameUrl:i=>urlForCine({sequence:result.id,frame:i})};
+   return {label:labels[variant],manifest:{...sequence,playback},frameUrl:i=>urlForCine({sequence:result.id,frame:i})};
   }
   for(const entry of results){
    const [variant]=entry;
@@ -438,7 +438,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
     try{
      const {manifest,frameUrl}=await loadTrack(entry);
      popup.signal.throwIfAborted();
-     popup.body.replaceChildren();
+     popup.body.replaceChildren(make('p',manifest.width+' × '+manifest.height+' · PNG 프레임'+(manifest.upscale?' · 2× 업스케일':''),'meta'));
      await mountCinematicPlayer(popup.body,{manifest,frameUrl,signal:popup.signal,edit:false,autoplay:true,inspectFrames:true,loop:true});
     }catch{if(!popup.signal.aborted)popup.body.replaceChildren(make('p','이 애니메이션을 재생할 수 없어요.','meta error'));}
    },signal);
