@@ -377,3 +377,14 @@ ul{padding:0;list-style:none}
 .catalog-roster-checkbox{flex:none;accent-color:var(--primary)}
 .catalog-roster-edit-tools>[hidden],.catalog-roster-checkbox[hidden],.catalog-roster-edit-status[hidden]{display:none}
 .catalog-roster-delete-targets{max-height:12rem;overflow:auto}
+
+
+.background-still-enlarge{height:auto;border-radius:8px}
+.background-media-dialog{width:min(1440px,calc(100vw - 32px));box-sizing:border-box}
+.background-media-dialog .npc-media-enlarge-stage{height:clamp(160px,73dvh,1024px)}
+.background-media-body>canvas{width:100%;height:min(65dvh,768px);object-fit:contain;background:var(--muted);margin:10px 0}
+.background-media-dialog[data-pixel=true] canvas{image-rendering:pixelated}
+.cinematic-player-transport{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.background-frame-controls{margin-top:8px}
+.background-frame-controls label{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.background-frame-controls input,.background-media-body input[type=range]{width:min(40vw,340px)}

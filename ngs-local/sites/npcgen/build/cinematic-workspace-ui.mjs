@@ -369,7 +369,14 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
    const card=make('section',null,'prop-surface');card.append(make('h4',labels[variant],'npc-media-heading'));
    if(source){
     const img=make('img',null,'cinematic-source-image');img.src=url({image:source.sha256});img.alt=labels[variant]+': '+(selected.displayTitle??selected.title);
-    card.append(img,make('p',source.width+' × '+source.height+' · PNG','meta'));
+    const enlarge=action('',()=>{
+     const {body}=backgroundMediaDialog(detail,img.alt,variant,signal);
+     const stage=make('div',null,'npc-media-enlarge-stage');
+     const full=make('img');full.alt=img.alt;full.src=img.src;
+     stage.append(full);body.append(stage,make('p',source.width+' × '+source.height+' · PNG','meta'));
+    },signal,'npc-media-enlarge-trigger background-still-enlarge');
+    enlarge.setAttribute('aria-label',labels[variant]+' 확대');enlarge.setAttribute('aria-haspopup','dialog');
+    enlarge.append(img);card.append(enlarge,make('p',source.width+' × '+source.height+' · PNG','meta'));
    }else card.append(make('p','게시된 이미지가 없습니다.','meta'));
    grid.append(card);
   }
@@ -400,6 +407,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   },signal,'npc-one-stop-trigger');
   add.setAttribute('aria-label','배경 애니메이션 추가');add.title='배경 애니메이션 추가';bar.append(add);
  }
+ const urlForCine=values=>cinematicPath+'?'+new URLSearchParams({projectId,...values});
  let response;
  try{response=await request(url({groups:selected.sha256}));}catch{
   if(!signal.aborted)card.append(make('p','애니메이션 목록을 읽지 못했어요.','meta error'));return;
@@ -416,20 +424,34 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   const row=make('li',null,'cinematic-version'),line=make('div',null,'prop-panel-heading'),view=make('div');
   const count=results.length;
   line.append(make('strong','요청 '+short(group.requestId)+' · '+results.map(([key])=>labels[key]).join(' / ')));
+  async function loadTrack([variant,result]){
+   const {sequence,playback}=await request(urlForCine({sequence:result.id}));
+   const {group:proof,...manifest}=sequence??{};
+   if(!validCinematicSequenceResult(manifest)||!validCinematicPlayback(playback)||manifest.officialRequestId!==result.id||
+      manifest.sourceSha256!==result.sourceSha256||proof?.requestId!==group.requestId||proof?.variant!==variant||
+      proof?.backgroundSha256!==selected.sha256)throw Error('BACKGROUND_ANIMATION_INVALID');
+   return {label:labels[variant],manifest:{...manifest,playback},frameUrl:i=>urlForCine({sequence:result.id,frame:i})};
+  }
+  for(const entry of results){
+   const [variant]=entry;
+   const enlarge=action(labels[variant]+' 확대',async()=>{
+    const popup=backgroundMediaDialog(detail,labels[variant]+' 애니메이션',variant,signal);
+    popup.body.append(make('p','PNG 프레임을 읽고 있어요.','meta'));
+    try{
+     const {manifest,frameUrl}=await loadTrack(entry);
+     popup.signal.throwIfAborted();
+     popup.body.replaceChildren();
+     await mountCinematicPlayer(popup.body,{manifest,frameUrl,signal:popup.signal,edit:false,autoplay:true,inspectFrames:true});
+    }catch{if(!popup.signal.aborted)popup.body.replaceChildren(make('p','이 애니메이션을 재생할 수 없어요.','meta error'));}
+   },signal);
+   enlarge.setAttribute('aria-haspopup','dialog');line.append(enlarge);
+  }
   line.append(action(count===2?'두 영상 함께 재생':'재생',async()=>{
    running?.abort();const controller=new AbortController();running=controller;
    for(const host of entries.querySelectorAll('.background-pair-player'))host.replaceChildren();
    view.append(make('p','PNG 프레임을 읽고 있어요.','meta'));
    try{
-    const cine=values=>'/api/cinematic-workspace?'+new URLSearchParams({projectId,...values});
-    const data=await Promise.all(results.map(async ([variant,result])=>{
-     const {sequence,playback}=await request(cine({sequence:result.id}));
-     const {group:proof,...manifest}=sequence??{};
-     if(!validCinematicSequenceResult(manifest)||!validCinematicPlayback(playback)||manifest.officialRequestId!==result.id||
-        manifest.sourceSha256!==result.sourceSha256||proof?.requestId!==group.requestId||proof?.variant!==variant||
-        proof?.backgroundSha256!==selected.sha256)throw Error('BACKGROUND_ANIMATION_INVALID');
-     return {label:labels[variant],manifest:{...manifest,playback},frameUrl:i=>cine({sequence:result.id,frame:i})};
-    }));
+    const data=await Promise.all(results.map(loadTrack));
     controller.signal.throwIfAborted();
     view.replaceChildren();
     await mountBackgroundAnimationPair(view,data,{signal:controller.signal,autoplay:true});
@@ -439,6 +461,25 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
  }
  card.append(entries);
 }
+function backgroundMediaDialog(owner,title,variant,signal){
+ const controller=new AbortController();
+ const modal=dialog(owner,title,signal,()=>controller.abort());
+ modal.className='npc-media-enlarge background-media-dialog';
+ if(variant==='pixel')modal.dataset.pixel='true';
+ const titleNode=modal.firstElementChild,header=make('header');
+ const close=action('닫기',()=>modal.close(),controller.signal,'npc-media-enlarge-close');
+ close.setAttribute('autofocus','');header.append(titleNode,close);
+ const body=make('div',null,'background-media-body');
+ modal.append(header,body);
+ modal.addEventListener('click',event=>{
+  if(event.target!==modal)return;
+  const {left,right,top,bottom}=modal.getBoundingClientRect();
+  if(event.clientX<left||event.clientX>right||event.clientY<top||event.clientY>bottom)modal.close();
+ },{signal:controller.signal});
+ modal.showModal();
+ return {body,signal:controller.signal};
+}
+
 function backgroundComparison(){
  const grid=make('div',null,'background-comparison');
  grid.style.display='grid';grid.style.gridTemplateColumns='repeat(auto-fit,minmax(min(100%, 14rem),1fr))';grid.style.gap='1rem';

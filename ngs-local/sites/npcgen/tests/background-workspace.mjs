@@ -201,6 +201,12 @@ test('background two-track comparison uses one submission and a shared timeline 
  try{
   await mount('source');
   assert(document.querySelectorAll('#detail img').length===2&&!document.querySelector('#detail').textContent.includes('픽셀 생성본'),'not two final stills');
+  const openStill=document.querySelector('[aria-label="시네마틱 스타일 원본 확대"]');
+  openStill.click();
+  const still=document.querySelector('dialog.background-media-dialog[open]');
+  assert(still?.querySelector('img')?.src===openStill.querySelector('img').src,'full source image not in popup');
+  still.querySelector('button').click();await new Promise(r=>setTimeout(r,25));
+  assert(!document.querySelector('dialog[open]'),'image popup did not close');
   abort.abort();abort=new AbortController();
   await mount('animations');
   document.querySelector('[aria-label="배경 애니메이션 추가"]').click();
@@ -215,6 +221,19 @@ test('background two-track comparison uses one submission and a shared timeline 
   assert(host.querySelectorAll('canvas').length===2&&range&&!range.disabled&&host.querySelectorAll('input[type=range]').length===1,'no shared player');
   range.value=48;range.dispatchEvent(new Event('input',{bubbles:true}));
   assert(host.textContent.includes('2.00초'),'shared clock could not seek');
+  for(const label of ['시네마틱 스타일 원본','픽셀 보정본']){
+   [...document.querySelectorAll('#detail button')].find(b=>b.textContent===label+' 확대').click();
+   const popup=document.querySelector('dialog.background-media-dialog[open]');
+   assert(popup?.querySelector('h3')?.textContent===label+' 애니메이션','wrong individual popup');
+   for(let i=0;i<40&&!popup.querySelector('[aria-label="PNG 원본 프레임"]:enabled');i++)await new Promise(r=>setTimeout(r,100));
+   const frames=popup.querySelector('[aria-label="PNG 원본 프레임"]');
+   assert(popup.querySelectorAll('canvas').length===1&&frames&&!frames.disabled&&frames.max==='45','not one frame player');
+   frames.value='4';frames.dispatchEvent(new Event('input',{bubbles:true}));
+   assert(popup.textContent.includes('PNG 원본 프레임 4 / 45'),'native scrub did not seek');
+   [...popup.querySelectorAll('button')].find(b=>b.textContent==='다음 프레임').click();
+   assert(popup.textContent.includes('PNG 원본 프레임 5 / 45'),'native stepping failed');
+   popup.querySelector('button').click();await new Promise(r=>setTimeout(r,25));
+  }
   document.querySelector('#result').textContent='PASS';
  }catch(e){document.querySelector('#result').textContent=e.message;}
  </script>`;

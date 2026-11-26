@@ -108,23 +108,48 @@ async function loadImages(urls,signal){
  }));
  return result;
 }
-export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit=true,onSaveRequest,autoplay=false,externalClock=false}){
+export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit=true,onSaveRequest,autoplay=false,externalClock=false,inspectFrames=false}){
  const d=parent.ownerDocument,make=(tag,text)=>{const e=d.createElement(tag);if(text)e.textContent=text;return e;};
  const stage=make('canvas');stage.width=manifest.width;stage.height=manifest.height;
  stage.style.maxWidth='100%';stage.style.display='block';stage.setAttribute('aria-label','시네마틱 전용 카메라 화면');
  const canvas=stage.getContext('2d',{alpha:false});
+ const transport=make('div');transport.className='cinematic-player-transport';
+ const native=make('input');native.type='range';native.min='1';native.max=String(manifest.frameCount);native.step='1';native.value='1';native.disabled=true;
+ native.setAttribute('aria-label','PNG 원본 프레임');
+ const prev=make('button','이전 프레임'),nextFrame=make('button','다음 프레임');
+ for(const button of [prev,nextFrame]){button.type='button';button.className='prop-control';button.disabled=true;}
  const toggle=make('button','재생'),range=make('input'),status=make('p','시네마틱 PNG 프레임을 읽고 있어요.');
  toggle.type='button';toggle.className='prop-control';toggle.disabled=true;
  range.type='range';range.min='0';range.max=String(manifest.playback.durationFrames-1);range.step='1';range.value='0';range.disabled=true;range.setAttribute('aria-label','시네마틱 시간');
  status.setAttribute('role','status');parent.append(stage);
- if(!externalClock)parent.append(toggle,range);
+ if(!externalClock){
+  transport.append(toggle,range);
+  if(inspectFrames){
+   const scrub=make('label','PNG 원본 프레임');scrub.append(native);
+   const frameControls=make('div');frameControls.className='cinematic-player-transport background-frame-controls';
+   frameControls.append(prev,scrub,nextFrame);
+   parent.append(transport,frameControls);
+  }else parent.append(toggle,range);
+ }
  parent.append(status);
  let playback=manifest.playback,evaluate=compileCinematicTimeline(playback,manifest.frameCount);
- let tick=0,base=0,started=null,handle=null,frames;
+ let tick=0,base=0,started=null,handle=null,frames,sourceIndex=0,showingNative=false;
  function disable(){if(handle!==null)cancelAnimationFrame(handle);handle=null;started=null;toggle.textContent='재생';}
+ function setSourceIndex(index){
+  sourceIndex=index;
+  if(!inspectFrames)return;
+  native.value=String(index+1);prev.disabled=index===0;nextFrame.disabled=index===manifest.frameCount-1;
+ }
+ function paintNative(index){
+  if(!frames||index<0||index>=manifest.frameCount)return;
+  disable();showingNative=true;setSourceIndex(index);
+  canvas.drawImage(frames[index],0,0);
+  status.textContent='PNG 원본 프레임 '+(index+1)+' / '+manifest.frameCount;
+ }
  function paint(masterFrame){
   const frame=Math.min(masterFrame,playback.durationFrames-1);
   const camera=evaluate(frame);const source=frames[camera.source];
+  showingNative=false;setSourceIndex(camera.source);
   const r=cinematicStageRect(stage.width,stage.height,manifest.width,manifest.height,camera);
   canvas.drawImage(source,r.left,r.top,r.width,r.height);
   range.value=String(frame);
@@ -141,16 +166,22 @@ export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit
  function start(){
   if(handle!==null)return;
   if(tick>=playback.durationFrames-1){tick=0;paint(tick);}
+  if(showingNative)paint(tick);
   base=tick;toggle.textContent='일시 정지';handle=requestAnimationFrame(advance);
  }
  toggle.addEventListener('click',()=>handle===null?start():disable(),{signal});
  range.addEventListener('input',()=>{disable();tick=Number(range.value);paint(tick);},{signal});
+ if(inspectFrames){
+  native.addEventListener('input',()=>paintNative(Number(native.value)-1),{signal});
+  prev.addEventListener('click',()=>paintNative(sourceIndex-1),{signal});
+  nextFrame.addEventListener('click',()=>paintNative(sourceIndex+1),{signal});
+ }
  signal.addEventListener('abort',disable,{once:true});
  try{
   frames=await loadImages(manifest.frames.map(frame=>frameUrl(frame.index)),signal);
   signal.throwIfAborted();
  }catch(error){if(!signal.aborted)status.textContent='PNG 프레임을 읽지 못했어요.';throw error;}
- toggle.disabled=false;range.disabled=false;paint(0);
+ toggle.disabled=false;range.disabled=false;native.disabled=false;paint(0);
  if(externalClock){status.hidden=true;return paint;}
  if(autoplay)start();
  if(edit)layoutTimelineControls(parent,playback,value=>{
