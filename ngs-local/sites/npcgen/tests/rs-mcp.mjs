@@ -295,7 +295,7 @@ test('only exact Local map creation and update reach RS, with unchanged payload'
  const graph={title:'Map smoke',startRegionId:'entry',regions,connections:[edge]};
  const generate={...makeQueue(),requestType:'map.generate',payload:{schemaVersion:'ngs.map-generate.v1',projectId:'binari',graph,intent:'Keep the route'}};
  const update={...makeQueue(),requestType:'map.update',payload:{schemaVersion:'ngs.map-update.v1',projectId:'binari',
-  mapId:idFor(generate.queueId),expectedRevision:1,graph:{...graph,connections:[{...edge,hit:{x:10,y:20,width:80,height:90},spawn:{x:20,y:40}}]}}};
+  mapId:idFor(generate.queueId),expectedRevision:1,graph:{...graph,colliders:[{id:'wall',regionId:'entry',rect:{x:90,y:30,width:20,height:30}}],connections:[{...edge,hit:{x:10,y:20,width:80,height:90},spawn:{x:20,y:40}}]}}};
  const invalid=[{...makeQueue(),requestType:generate.requestType,payload:{...generate.payload,intent:''}},
   {...makeQueue(),requestType:update.requestType,payload:{...update.payload,expectedRevision:0}}];
  const accepted=new Map([generate,update].map(row=>[row.queueId,row]));
