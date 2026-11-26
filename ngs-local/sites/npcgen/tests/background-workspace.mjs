@@ -145,12 +145,14 @@ test('one gallery item owns both published stills, never the draft, and accepts 
  const pixel=pub('픽셀 보정',oid);
  const {backgrounds}=await (await fetch(origin+base,{headers:{cookie}})).json();
  assert.deepEqual(backgrounds.map(x=>[x.displayTitle,x.cinematic.sha256,x.pixel.sha256]),[['안뜰',cinematic,pixel]]);
- const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,x:.5,y:.5,zoom:1}]};
- const payload={schemaVersion:schema,projectId:'binari',backgroundSha256:pixel,motionPrompt:'등불이 흔들린다',references:{cinematic,pixel},playback};
+ const playback={durationFrames:264,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,x:.5,y:.5,zoom:1}]};
+ const payload={schemaVersion:schema,projectId:'binari',backgroundSha256:pixel,motionPrompt:'Continuous seamless ambient loop, static camera. Lantern flame keeps flickering.',references:{cinematic,pixel},playback};
  const post=p=>fetch(origin+'/api/requests',{method:'POST',headers:{cookie,origin,'content-type':'application/json',
   'x-npcgen-csrf':settings.csrfToken,'x-npcgen-frontend-context':settings.contextId},
   body:JSON.stringify({requestType:type,idempotencyKey:'fixture-background-animation',payload:p})});
  assert.equal((await post({...payload,references:{cinematic:draft}})).status,404);
+ assert.equal((await post({...payload,motionPrompt:'A leaf stops.'})).status,400);
+ assert.equal((await post({...payload,playback:{...playback,durationFrames:135}})).status,400);
  assert.equal((await post(payload)).status,202);
  assert.deepEqual(jobs.map(x=>x.payload),[payload]);
  const group='request.official.'+'8'.repeat(64);
@@ -178,7 +180,7 @@ test('background two-track comparison uses one submission and a shared timeline 
  const original={...pixel,sha256:'a'.repeat(64),title:'안뜰 · 시네마틱 원본'};
  const pr='request.official.'+'c'.repeat(64),co='request.official.'+'d'.repeat(64),px='request.official.'+'e'.repeat(64);
  const refs={cinematic:{id:co,sourceSha256:original.sha256},pixel:{id:px,sourceSha256:pixel.sha256}};
- const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,x:.5,y:.5,zoom:1}]};
+ const playback={durationFrames:264,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,x:.5,y:.5,zoom:1}]};
  const backgrounds=[{...pixel,displayTitle:'안뜰',cinematic:original,pixel}];
  const sent=[];
  // One decoded fixture pixel suffices for testing the player DOM and its frame URL contract.
@@ -229,7 +231,7 @@ test('background two-track comparison uses one submission and a shared timeline 
   assert([...form.querySelectorAll('fieldset input')].filter(i=>i.checked).length===2,'two picks unavailable');
   text.value='바닥에서 옅은 안개가 흐른다';text.dispatchEvent(new Event('input',{bubbles:true}));
   form.requestSubmit();await new Promise(r=>setTimeout(r,25));
-  assert(sent.length===1&&sent[0].requestType==='background.animation.workflow'&&Object.keys(sent[0].payload.references).length===2,'not one paired request');
+  assert(sent.length===1&&sent[0].requestType==='background.animation.workflow'&&Object.keys(sent[0].payload.references).length===2&&sent[0].payload.motionPrompt.startsWith('Continuous seamless ambient loop')&&sent[0].payload.playback.durationFrames===264,'not one paired loop request');
   [...document.querySelectorAll('#detail button')].find(b=>b.textContent==='두 영상 함께 재생').click();
   const host=document.querySelector('.background-pair-player'),range=await untilReady(host,'input[type=range]:enabled');
   assert(host.querySelectorAll('canvas').length===2&&range&&!range.disabled&&host.querySelectorAll('input[type=range]').length===1,'no shared player');

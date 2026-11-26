@@ -58,3 +58,12 @@ test('timeline rejects duplicate, non-finite and out-of-range author data',()=>{
   {...p,cameraCurve:[{frame:0,zoom:1,x:'.5',y:.5}]},
  ])assert.equal(validCinematicPlayback(invalid),false);
 });
+
+test('background loops continuously across the camera-stable turnaround without duplicate endpoints',async()=>{
+ const {backgroundLoopFrame,backgroundLoopPlayback,validBackgroundLoopPlayback}=await import('../build/cinematic-timeline.mjs');
+ const playback=backgroundLoopPlayback();
+ assert.equal(playback.durationFrames,(45*2-2)*3);
+ assert.ok(validBackgroundLoopPlayback(playback));
+ assert.equal(validBackgroundLoopPlayback({...playback,speedCurve:[{frame:0,rate:0}]}),false);
+ assert.deepEqual([0,3,129,132,135,261,264,267,528].map(t=>backgroundLoopFrame(t,45)),[0,1,43,44,43,1,0,1,0]);
+});

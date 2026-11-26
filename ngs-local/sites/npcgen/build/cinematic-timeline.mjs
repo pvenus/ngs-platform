@@ -20,6 +20,19 @@ export function defaultCinematicPlayback(frameCount=45){
  if(!Number.isInteger(frameCount)||frameCount<1||frameCount>96)throw Error('CINEMATIC_FRAME_COUNT_INVALID');
  return {durationFrames:frameCount*3,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,zoom:1,x:.5,y:.5}]};
 }
+// Backgrounds are ambient plates: the exact native PNG frames are mirrored
+// without duplicating either turnaround frame. No added hold or camera reset.
+export function backgroundLoopFrame(tick,frameCount,ticksPerFrame=3){
+ const span=Math.max(1,2*frameCount-2),n=Math.floor(Math.max(0,tick)/ticksPerFrame)%span;
+ return Math.min(n,span-n);
+}
+export function backgroundLoopPlayback(){
+ return {...defaultCinematicPlayback(),durationFrames:264};
+}
+export function validBackgroundLoopPlayback(v){
+ return validCinematicPlayback(v)&&v.durationFrames===264&&v.speedCurve.length===1&&v.speedCurve[0].rate===1/3&&
+  v.cameraCurve.length===1&&v.cameraCurve[0].zoom===1&&v.cameraCurve[0].x===.5&&v.cameraCurve[0].y===.5;
+}
 function cameraAt(keys,t){
  const n=keys.findIndex(k=>k.frame>t);
  if(n<1)return keys.at(-1);

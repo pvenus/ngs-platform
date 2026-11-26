@@ -1,4 +1,4 @@
-import {MASTER_FPS,validCinematicPlayback,compileCinematicTimeline,cinematicSpeedAt,cinematicStageRect} from './cinematic-timeline.mjs';
+import {MASTER_FPS,backgroundLoopFrame,validCinematicPlayback,compileCinematicTimeline,cinematicSpeedAt,cinematicStageRect} from './cinematic-timeline.mjs';
 
 export function layoutTimelineControls(parent,initial,onValid,{signal,onSaveRequest,allowDownload=true}={}){
  const d=parent.ownerDocument,make=(tag,text)=>{const n=d.createElement(tag);if(text)n.textContent=text;return n;};
@@ -108,7 +108,7 @@ async function loadImages(urls,signal){
  }));
  return result;
 }
-export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit=true,onSaveRequest,autoplay=false,externalClock=false,inspectFrames=false}){
+export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit=true,onSaveRequest,autoplay=false,externalClock=false,inspectFrames=false,loop=false}){
  const d=parent.ownerDocument,make=(tag,text)=>{const e=d.createElement(tag);if(text)e.textContent=text;return e;};
  const stage=make('canvas');stage.width=manifest.width;stage.height=manifest.height;
  stage.style.maxWidth='100%';stage.style.display='block';stage.setAttribute('aria-label','시네마틱 전용 카메라 화면');
@@ -148,7 +148,7 @@ export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit
  }
  function paint(masterFrame){
   const frame=Math.min(masterFrame,playback.durationFrames-1);
-  const camera=evaluate(frame);const source=frames[camera.source];
+  const camera=loop?{source:backgroundLoopFrame(frame,manifest.frameCount),zoom:1,x:.5,y:.5}:evaluate(frame);const source=frames[camera.source];
   showingNative=false;setSourceIndex(camera.source);
   const r=cinematicStageRect(stage.width,stage.height,manifest.width,manifest.height,camera);
   canvas.drawImage(source,r.left,r.top,r.width,r.height);
@@ -158,14 +158,15 @@ export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit
  function advance(now){
   if(signal.aborted)return disable();
   if(started===null)started=now;
-  const next=base+Math.floor((now-started)*MASTER_FPS/1000);
+  const raw=base+Math.floor((now-started)*MASTER_FPS/1000);
+  const next=loop?raw%playback.durationFrames:raw;
   if(next!==tick){tick=Math.min(next,playback.durationFrames-1);paint(tick);}
   if(next>=playback.durationFrames){disable();return;}
   handle=requestAnimationFrame(advance);
  }
  function start(){
   if(handle!==null)return;
-  if(tick>=playback.durationFrames-1){tick=0;paint(tick);}
+  if(!loop&&tick>=playback.durationFrames-1){tick=0;paint(tick);}
   if(showingNative)paint(tick);
   base=tick;toggle.textContent='일시 정지';handle=requestAnimationFrame(advance);
  }

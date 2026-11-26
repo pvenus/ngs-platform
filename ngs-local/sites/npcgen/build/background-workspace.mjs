@@ -1,4 +1,5 @@
 import {cinematicSequencePrefix,cinematicArchivePath,validCinematicArchive,validCinematicSequenceResult,validBackgroundAnimationGroup,validBackgroundResult} from './cinematic-sequence-contract.mjs';
+import {validBackgroundLoopPlayback} from './cinematic-timeline.mjs';
 import {cinematicHash,cinematicId,maxCinematicBytes} from './cinematic-contract.mjs';
 import {hashReplicaBytes,readReplicaObject,replicaUnavailable} from './workspace-read-storage.mjs';
 const root='cinematics/backgrounds',failure=(message,status)=>Object.assign(Error(message),{status});
@@ -60,6 +61,7 @@ async function readGroups(p,backgroundSha256){
  for(let i=0;i<jobs.length;i+=12)for(const item of await Promise.all(jobs.slice(i,i+12).map(async ({name})=>{
   const m=await readReplicaObject(p,cinematicSequencePrefix+'/'+name+'/manifest.json',128*1024);
   if(m?.group?.backgroundSha256!==backgroundSha256)return null;
+  if(!validBackgroundLoopPlayback(m.playback))return null; // Superseded one-shot previews stay stored but are not offered as backgrounds.
   const {group,...sequence}=m;
   if(!validBackgroundAnimationGroup(group)||!validCinematicSequenceResult(sequence)||sequence.officialRequestId!==name||
      name!==await publicationId(group.requestId,'background_animation_'+group.variant))throw replicaUnavailable();

@@ -2,10 +2,10 @@ import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {cinematicPath,cinematicHash,cinematicId} from './cinematic-contract.mjs';
 import {cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateType,cinematicPlaybackUpdateSchema,
  cinematicSourceGenerateType,cinematicSourceGenerateSchema,cinematicSequencesRemoveType,cinematicSequencesRemoveSchema,
- backgroundPath,backgroundSourceType,backgroundSourceSchema,backgroundFields,validBackgroundRequest,backgroundPixelType,backgroundPixelSchema,validBackgroundPixelRequest,backgroundAnimationType,backgroundAnimationSchema,validBackgroundAnimation,
+ backgroundPath,backgroundSourceType,backgroundSourceSchema,backgroundFields,validBackgroundRequest,backgroundPixelType,backgroundPixelSchema,validBackgroundPixelRequest,backgroundAnimationType,backgroundAnimationSchema,backgroundLoopPrompt,validBackgroundAnimation,
  maxSelection,validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,
  validCinematicSourceGenerate,validCinematicSequencesRemove} from './cinematic-sequence-contract.mjs';
-import {defaultCinematicPlayback,validCinematicPlayback} from './cinematic-timeline.mjs';
+import {defaultCinematicPlayback,validCinematicPlayback,backgroundLoopPlayback,validBackgroundLoopPlayback} from './cinematic-timeline.mjs';
 import {mountCinematicPlayer,layoutTimelineControls} from './cinematic-player.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const make=(tag,text,css)=>{const el=document.createElement(tag);if(text)el.textContent=text;if(css)el.className=css;return el;};
@@ -386,22 +386,20 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
  bar.append(make('h4','애니메이션','npc-media-heading'));card.append(bar);section.append(card);
  if(animationEnabled&&submit&&available.length){
   const add=action('+',()=>{
-   const motion=make('textarea');motion.maxLength=1000;motion.rows=5;
-   const choices=new Map();let playback;
+   const motion=make('textarea');motion.maxLength=650;motion.rows=5;motion.required=true;
+   const choices=new Map();const playback=backgroundLoopPlayback();
    requestForm(detail,{caption:'배경 애니메이션 생성',signal,notice,send:queueAction(submit,backgroundAnimationType),
     makePayload:()=>({schemaVersion:backgroundAnimationSchema,projectId,backgroundSha256:selected.sha256,
      references:Object.fromEntries(available.filter(([variant])=>choices.get(variant)?.checked).map(([variant,source])=>[variant,source.sha256])),
-     motionPrompt:motion.value.trim(),playback}),isValid:validBackgroundAnimation,
-    body(form,changed,formSignal){
+     motionPrompt:motion.value.trim()?backgroundLoopPrompt(motion.value):'',playback}),isValid:validBackgroundAnimation,
+    body(form){
      const fields=make('fieldset');fields.append(make('legend','애니메이션에 사용할 원본'));
      for(const [variant] of available){
       const check=make('input');check.type='checkbox';check.checked=true;choices.set(variant,check);
       fields.append(labeled(labels[variant],check));
      }
-     form.append(fields,make('p','둘 다 선택하면 정식 요청 한 건으로 같은 연출의 두 애니메이션을 생성합니다.','meta'),labeled('움직임·연출 지시',motion));
-     const settings=make('details',null,'cinematic-request-settings');
-     settings.append(make('summary','속도·카메라 설정'));form.append(settings);
-     layoutTimelineControls(settings,defaultCinematicPlayback(),value=>{playback=value;changed();},{signal:formSignal,allowDownload:false});
+     form.append(fields,make('p','배경은 멈추지 않는 루프만 생성해요. 두 원본을 고르면 같은 움직임으로 한 번에 요청할 수 있어요.','meta'),
+      labeled('반복해서 움직일 요소와 방식',motion));
     }});
    motion.focus();
   },signal,'npc-one-stop-trigger');
@@ -427,7 +425,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   async function loadTrack([variant,result]){
    const {sequence,playback}=await request(urlForCine({sequence:result.id}));
    const {group:proof,...manifest}=sequence??{};
-   if(!validCinematicSequenceResult(manifest)||!validCinematicPlayback(playback)||manifest.officialRequestId!==result.id||
+   if(!validCinematicSequenceResult(manifest)||!validBackgroundLoopPlayback(playback)||manifest.officialRequestId!==result.id||
       manifest.sourceSha256!==result.sourceSha256||proof?.requestId!==group.requestId||proof?.variant!==variant||
       proof?.backgroundSha256!==selected.sha256)throw Error('BACKGROUND_ANIMATION_INVALID');
    return {label:labels[variant],manifest:{...manifest,playback},frameUrl:i=>urlForCine({sequence:result.id,frame:i})};
@@ -441,7 +439,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
      const {manifest,frameUrl}=await loadTrack(entry);
      popup.signal.throwIfAborted();
      popup.body.replaceChildren();
-     await mountCinematicPlayer(popup.body,{manifest,frameUrl,signal:popup.signal,edit:false,autoplay:true,inspectFrames:true});
+     await mountCinematicPlayer(popup.body,{manifest,frameUrl,signal:popup.signal,edit:false,autoplay:true,inspectFrames:true,loop:true});
     }catch{if(!popup.signal.aborted)popup.body.replaceChildren(make('p','이 애니메이션을 재생할 수 없어요.','meta error'));}
    },signal);
    enlarge.setAttribute('aria-haspopup','dialog');line.append(enlarge);
@@ -491,7 +489,7 @@ async function mountBackgroundAnimationPair(parent,tracks,{signal,autoplay}){
  parent.append(grid,toggle,scrub,clock);
  const painters=await Promise.all(tracks.map(({label,manifest,frameUrl})=>{
   const pane=make('section');pane.append(make('h5',label));grid.append(pane);
-  return mountCinematicPlayer(pane,{manifest,frameUrl,signal,edit:false,externalClock:true});
+  return mountCinematicPlayer(pane,{manifest,frameUrl,signal,edit:false,externalClock:true,loop:true});
  }));
  signal.throwIfAborted();
  const end=Math.max(...tracks.map(t=>t.manifest.playback.durationFrames))-1;
@@ -500,11 +498,10 @@ async function mountBackgroundAnimationPair(parent,tracks,{signal,autoplay}){
  const pause=()=>{if(timer!==null)cancelAnimationFrame(timer);timer=null;origin=null;toggle.textContent='재생';};
  function step(now){
   if(signal.aborted)return pause();
-  origin??=now;paint(Math.min(end,base+Math.floor((now-origin)*24/1000)));
-  if(position===end)return pause();
+  origin??=now;paint((base+Math.floor((now-origin)*24/1000))%(end+1));
   timer=requestAnimationFrame(step);
  }
- function play(){if(position===end)paint(0);base=position;toggle.textContent='일시 정지';timer=requestAnimationFrame(step);}
+ function play(){base=position;toggle.textContent='일시 정지';timer=requestAnimationFrame(step);}
  scrub.max=String(end);scrub.disabled=false;toggle.disabled=false;paint(0);
  toggle.addEventListener('click',()=>timer===null?play():pause(),{signal});
  scrub.addEventListener('input',()=>{pause();paint(Number(scrub.value));},{signal});
