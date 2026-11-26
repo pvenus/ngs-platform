@@ -1,4 +1,4 @@
-import {mountCinematicWorkspace} from './cinematic-workspace-ui.mjs';
+import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
 import {validPropActions,propAnimationRemoveType,propAnimationRemoveSchema} from './prop-workspace-contract.mjs';
@@ -18,7 +18,7 @@ const queuePanel=document.querySelector('#local-request-queue');
 const queueLabel={
  [cinematicType]:'시네마틱 영상 생성',
  'cinematic.sequence.generate':'PNG 시네마틱 생성','cinematic.playback.update':'시네마틱 메타 수정',
- 'cinematic.source.generate':'시네마틱 원본 이미지 생성','cinematic.sequences.remove':'시네마틱 애니메이션 제거','prop.animation.remove':'프랍 애니메이션 제거',
+ 'cinematic.source.generate':'시네마틱 원본 이미지 생성','background.source.generate':'배경 원본 이미지 생성','cinematic.sequences.remove':'시네마틱 애니메이션 제거','prop.animation.remove':'프랍 애니메이션 제거',
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
  'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제','audio.separate':'BGM 반주 만들기',
  [motionPresetConvertType]:'2D 마네킹 프리셋 변환','prop.generate':'프랍 종합 생성','prop.regenerate':'프랍 재생성','prop.animation.generate':'프랍 애니메이션 생성',
@@ -440,7 +440,7 @@ async function load(){
 const areas=[
  ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',false],
  ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',document.documentElement?.dataset.puzzleWorkspace==='enabled'],
- ['cinematic','시네마틱 영상',true],['resources','배경 설계',false],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
+ ['cinematic','시네마틱 영상',true],['resources','배경 설계',true],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
 ];
 const iconPaths={
  concept:'M4 19V5a1 1 0 0 1 1-1h7v16H5a1 1 0 0 1-1-1Zm8-15h7a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-7M7 8h2m6 0h2m-10 4h2m6 0h2',
@@ -665,6 +665,12 @@ async function loadWorkspace(search){
   // Same metadata and workspace routes in both environments; only the replica
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
+  if(tab==='resources'){
+   await mountBackgroundWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,
+    enabled:session.backgroundSourceEnabled===true});
+   if(!signal.aborted)note('');
+   return;
+  }
   if(tab==='cinematic'){
    await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true});
    if(!signal.aborted)note('');

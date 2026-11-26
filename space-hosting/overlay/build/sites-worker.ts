@@ -85,6 +85,7 @@ export default {
       cinematicEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_ENABLED?:string}).NGS_CINEMATIC_ENABLED==="1",
       cinematicSequenceEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_SEQUENCE_ENABLED?:string}).NGS_CINEMATIC_SEQUENCE_ENABLED==="1",
       cinematicPlaybackEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_PLAYBACK_ENABLED?:string}).NGS_CINEMATIC_PLAYBACK_ENABLED==="1",
+      backgroundSourceEnabled:(env as Cloudflare.Env & {NGS_BACKGROUND_SOURCE_ENABLED?:string}).NGS_BACKGROUND_SOURCE_ENABLED==="1",
       cinematicSourceEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_SOURCE_ENABLED?:string}).NGS_CINEMATIC_SOURCE_ENABLED==="1",
       cinematicRemoveEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_REMOVE_ENABLED?:string}).NGS_CINEMATIC_REMOVE_ENABLED==="1",
       propAnimationRemoveEnabled:(env as Cloudflare.Env & {NGS_PROP_ANIMATION_REMOVE_ENABLED?:string}).NGS_PROP_ANIMATION_REMOVE_ENABLED==="1",

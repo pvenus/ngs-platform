@@ -54,4 +54,20 @@ export const validCinematicSequencesRemove=p=>exact(p,['schemaVersion','projectI
  p.schemaVersion===cinematicSequencesRemoveSchema&&p.projectId==='binari'&&oneEach(p.sequenceIds,cinematicId,maxSelection);
 export const validCinematicArchive=p=>exact(p,['schemaVersion','projectId','sequenceIds'])&&p.schemaVersion===cinematicArchiveSchema&&p.projectId==='binari'&&
  (Array.isArray(p.sequenceIds)&&p.sequenceIds.length===0||oneEach(p.sequenceIds,cinematicId,4096));
-export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicSourceGenerateType,cinematicSequencesRemoveType]);
+export const backgroundSourceType='background.source.generate';
+export const backgroundSourceSchema='ngs.background-source-generate.v1';
+export const backgroundResultSchema='ngs.background-source-result.v1';
+export const backgroundPath='/api/background-workspace';
+export const backgroundFields=Object.freeze([
+ ['title','배경 이름',120],['timeOfDay','시간대',80],['season','계절',80],['mood','분위기',160],
+ ['color','주조색',120],['location','장소',160],['requirements','필수 요청 사항',900],
+ ['additionalNotes','추가 요청 사항 (선택)',900]
+]);
+const bounds=(value,n,multi)=>typeof value==='string'&&value.isWellFormed()&&value.trim()===value&&
+ [...value].length>0&&[...value].length<=n&&
+ !(multi?/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]|\bembedding:/iu:/[\x00-\x1f\x7f-\x9f]|\bembedding:/iu).test(value);
+export const validBackgroundRequest=p=>exact(p,['schemaVersion','projectId',...backgroundFields.map(x=>x[0])])&&
+ p.schemaVersion===backgroundSourceSchema&&p.projectId==='binari'&&backgroundFields.every(([key,,n])=>
+  key==='additionalNotes'&&p[key]===''||bounds(p[key],n,key==='requirements'||key==='additionalNotes'));
+export const validBackgroundResult=p=>p?.schemaVersion===backgroundResultSchema&&validCinematicSourceResult({...p,schemaVersion:cinematicSourceResultSchema});
+export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicSourceGenerateType,backgroundSourceType,cinematicSequencesRemoveType]);

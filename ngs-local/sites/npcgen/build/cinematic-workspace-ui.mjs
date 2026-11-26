@@ -1,6 +1,7 @@
 import {cinematicPath,cinematicHash,cinematicId} from './cinematic-contract.mjs';
 import {cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateType,cinematicPlaybackUpdateSchema,
  cinematicSourceGenerateType,cinematicSourceGenerateSchema,cinematicSequencesRemoveType,cinematicSequencesRemoveSchema,
+ backgroundPath,backgroundSourceType,backgroundSourceSchema,backgroundFields,validBackgroundRequest,
  maxSelection,validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,
  validCinematicSourceGenerate,validCinematicSequencesRemove} from './cinematic-sequence-contract.mjs';
 import {defaultCinematicPlayback,validCinematicPlayback} from './cinematic-timeline.mjs';
@@ -290,4 +291,55 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
   line.append(label,video);row.append(line);rows.append(row);
  }
  selection();
+}
+
+export async function mountBackgroundWorkspace({items,detail,tools,request,submit,projectId,item,navigate,signal,enabled}){
+ const url=values=>backgroundPath+'?'+new URLSearchParams({projectId,...values});
+ const notice=statusLine(),toolbar=make('div',null,'prop-actions');
+ const search=make('input');search.type='search';search.placeholder='배경 검색';search.setAttribute('aria-label','배경 검색');
+ const key='ngs.background.search:'+projectId;
+ try{search.value=sessionStorage.getItem(key)??'';}catch{}
+ toolbar.append(search);
+ if(enabled&&submit){
+  const add=action('+',()=>{
+   const inputs={},examples={title:'예: 의식 전의 한옥 안채',timeOfDay:'예: 해가 진 직후',season:'예: 늦가을',
+    mood:'예: 고요하지만 불길한 기운',color:'예: 먹색, 바랜 목재색, 옅은 등불색',
+    location:'예: 한옥 안채에서 마당을 바라보는 구도',requirements:'예: 마루와 문턱이 분명하고 가운데에 이동 공간 확보',
+    additionalNotes:'예: 바닥에 비친 부드러운 그림자'};
+   requestForm(detail,{caption:'배경 생성 요청',signal,notice,send:queueAction(submit,backgroundSourceType),
+    makePayload:()=>({schemaVersion:backgroundSourceSchema,projectId,...Object.fromEntries(
+     backgroundFields.map(([field])=>[field,inputs[field]?.value.trim()??'']))}),isValid:validBackgroundRequest,
+    body(form){
+     for(const [field,label,maximum] of backgroundFields){
+      const input=make(maximum>500?'textarea':'input');
+      input.name=field;input.maxLength=maximum;input.required=field!=='additionalNotes';input.placeholder=examples[field];
+      if(maximum>500)input.rows=3;
+      inputs[field]=input;form.append(labeled(label,input));
+     }
+    }});
+  },signal,'prop-control prop-primary-control');
+  add.setAttribute('aria-label','배경 생성 요청');toolbar.append(add);
+ }
+ tools.replaceChildren(toolbar);tools.hidden=false;
+ const payload=await request(url({}));if(signal.aborted)return;
+ const rows=Array.isArray(payload.backgrounds)?payload.backgrounds:[];
+ function renderList(){
+  const text=search.value.trim().toLocaleLowerCase();
+  const result=rows.filter(x=>!text||x.title.toLocaleLowerCase().includes(text));
+  const entries=result.map(x=>{
+   const li=make('li'),a=make('a',x.title,'request-item');
+   a.href=navigate({item:x.sha256});if(x.sha256===item)a.setAttribute('aria-current','page');
+   li.append(a);return li;
+  });
+  items.replaceChildren(...(entries.length?entries:[make('li',text?'검색 결과가 없습니다.':'게시된 배경이 없습니다.','meta')]));
+ }
+ search.addEventListener('input',()=>{try{sessionStorage.setItem(key,search.value);}catch{}renderList();},{signal});
+ renderList();
+ const selected=rows.find(x=>x.sha256===item);
+ if(!selected){
+  detail.replaceChildren(make('h3','배경 설계'),notice,make('p',enabled?'배경을 고르거나 +로 새 원본을 요청하세요.':'배경을 고르세요. 생성 기능이 아직 연결되지 않았습니다.','meta'));
+  return;
+ }
+ const img=make('img');img.alt=selected.title;img.src=url({image:selected.sha256});img.style.maxWidth='100%';img.style.height='auto';
+ detail.replaceChildren(make('h3',selected.title),notice,img,make('p',selected.width+' × '+selected.height+' · 원본 PNG','meta'));
 }

@@ -1,5 +1,7 @@
 /** All file-backed workspace audiences receive identical route contracts. */
 import {cinematicWorkspaceRead} from './cinematic-workspace.mjs';
+import {backgroundPath} from './cinematic-sequence-contract.mjs';
+import {backgroundWorkspaceRead} from './background-workspace.mjs';
 import {cinematicPath} from './cinematic-contract.mjs';
 import {workspaceRead} from './project-workspace-view.mjs';
 import {propWorkspaceRead} from './prop-workspace.mjs';
@@ -9,6 +11,7 @@ export const workspaceReadRegistry=Object.freeze({
  '/api/npc-workspace':'npc',
  '/api/prop-workspace':'prop',
  [cinematicPath]:'cinematic',
+ [backgroundPath]:'background',
 });
 const resourceGrants=Object.freeze({concept:'concept',npcs:'npcs','motion-presets':'npcs'});
 export function workspaceReadResource(view){
@@ -20,7 +23,7 @@ export function workspaceReadRoute(pathname){
 export async function dispatchWorkspaceRead({pathname,query,openProject,authorize,npcRead=npcWorkspaceRead,mediaCache=false}){
  const route=workspaceReadRoute(pathname);
  if(!route)return null;
- const handler=route==='project'?workspaceRead:route==='prop'?propWorkspaceRead:route==='cinematic'?cinematicWorkspaceRead:npcRead;
+ const handler=route==='project'?workspaceRead:route==='prop'?propWorkspaceRead:route==='cinematic'?cinematicWorkspaceRead:route==='background'?backgroundWorkspaceRead:npcRead;
  if(typeof handler!=='function')throw Object.assign(Error('PROJECT_WORKSPACE_REPLICA_UNAVAILABLE'),{status:503});
  return handler({query,openProject,authorize,...(route==='npc'?{mediaCache}:{})});
 }
