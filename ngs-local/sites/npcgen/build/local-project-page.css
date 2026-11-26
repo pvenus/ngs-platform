@@ -444,3 +444,14 @@ ul{padding:0;list-style:none}
 .map-region-details>summary{font-weight:600;cursor:pointer}
 .map-region-details>.map-region-card{margin-top:.7rem;border:0;padding:0}
 .map-region-card>h4:first-child{display:none}
+
+.map-collision-card{grid-column:1/-1}
+.map-collision-card>.map-row{margin:0}
+.map-collision-canvas{max-width:58rem;overflow:visible}
+.map-collision-card fieldset{padding:.5rem;margin:0;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;border:1px solid var(--border);border-radius:8px}
+.map-collider-outline,.map-collider-ghost{position:absolute;padding:0;border:1px solid #ff9a87;color:#fff;background:#742c2470;overflow:hidden;line-height:1}
+.map-collider-draw{position:absolute;inset:0;z-index:3;touch-action:none;cursor:crosshair}
+.map-collider-ghost{border-style:dashed;pointer-events:none}
+.map-collider-ghost[hidden]{display:none}
+.map-collider-marker.selected{border-color:#ff9a87;background:#ac393c70}
+.map-collider-marker .map-resize-handle{border-color:#ad4a42}
