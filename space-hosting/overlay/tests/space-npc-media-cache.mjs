@@ -7,7 +7,7 @@ const here=p=>new URL(p,import.meta.url);
 const {Miniflare}=createRequire(process.env.SPACE_TEST_PACKAGE_JSON??here('../../../sites/npcgen/package.json'))('miniflare');
 const shared='ngs-local/sites/npcgen/build/';
 const base=existsSync(here('../'+shared+'npc-workspace.mjs'))?'../':'../../../';
-const files=['object-replica.mjs','audio-result-index.mjs','replica-whole-file-wire.mjs','npc-workspace.mjs','project-workspace-view.mjs','workspace-read-storage.mjs','object-workspace-read-storage.mjs','workspace-read-registry.mjs','cinematic-sequence-contract.mjs','cinematic-timeline.mjs','cinematic-player.mjs','cinematic-contract.mjs','cinematic-workspace.mjs','prop-workspace.mjs','prop-workspace-contract.mjs','prop-design-pin.mjs','prop-package-contract.mjs','local-concept-category-contract.mjs','npc-motion-selection.mjs'];
+const files=['object-replica.mjs','audio-result-index.mjs','replica-whole-file-wire.mjs','npc-workspace.mjs','project-workspace-view.mjs','workspace-read-storage.mjs','object-workspace-read-storage.mjs','workspace-read-registry.mjs','background-workspace.mjs','cinematic-sequence-contract.mjs','cinematic-timeline.mjs','cinematic-player.mjs','cinematic-contract.mjs','cinematic-workspace.mjs','prop-workspace.mjs','prop-workspace-contract.mjs','prop-design-pin.mjs','prop-package-contract.mjs','local-concept-category-contract.mjs','npc-motion-selection.mjs'];
 const asset=(path,relative)=>({type:'ESModule',path,contents:readFileSync(here(relative),'utf8')});
 const mini=new Miniflare({compatibilityDate:'2025-11-01',compatibilityFlags:['nodejs_compat'],
  d1Databases:['DB'],r2Buckets:['BUCKET'],modules:[
