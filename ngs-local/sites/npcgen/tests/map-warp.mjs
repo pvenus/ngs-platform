@@ -35,8 +35,7 @@ test('a normal move outside the portal does not warp',()=>{
  assert.equal(entryFraction({x:500,y:240},{x:800,y:240},graph.connections[0].hit),1);
 });
 
-test('New Map uses one modal, retains a closed draft, and never submits from opening or closing',async t=>{
- const {mountMapWorkspace,mapDraftKey}=await import('../build/map-workspace-ui.mjs');
+function fakeDom(t){
  class Element extends EventTarget{
   constructor(tag){super();this.tag=tag;this.children=[];this.attrs={};this.style={};}
   append(...children){for(const child of children){child.remove();child.parent=this;this.children.push(child);}}
@@ -48,10 +47,18 @@ test('New Map uses one modal, retains a closed draft, and never submits from ope
   descendants(){return this.children.flatMap(x=>[x,...x.descendants()]);}
   querySelector(){return this.descendants().find(x=>x.tag==='input'&&!x.disabled);}
   focus(){focused=this;}
+  getBoundingClientRect(){return {left:0,top:0,width:1000,height:1000};}
  }
- let focused,requests=0;const body=new Element('body'),original=globalThis.document;
+ let focused;const body=new Element('body'),original=globalThis.document;
  Object.defineProperty(globalThis,'document',{configurable:true,value:{body,createElement:tag=>new Element(tag)}});
  t.after(()=>{if(original===undefined)delete globalThis.document;else globalThis.document=original;});
+ return {Element,body,get focused(){return focused;}};
+}
+
+test('New Map uses one modal, retains a closed draft, and never submits from opening or closing',async t=>{
+ const {mountMapWorkspace,mapDraftKey}=await import('../build/map-workspace-ui.mjs');
+ const dom=fakeDom(t),{Element,body}=dom;
+ let requests=0;
  const items=new Element('div'),detail=new Element('div'),tools=new Element('div'),draft=new Map(),signal=new AbortController();
  const data={getItem:k=>draft.get(k),setItem:(k,v)=>draft.set(k,v)};
  await mountMapWorkspace({items,detail,tools,projectId:'binari',enabled:true,navigate:()=>'/map',signal:signal.signal,storage:data,
@@ -62,14 +69,55 @@ test('New Map uses one modal, retains a closed draft, and never submits from ope
  opener.onclick();opener.onclick();
  assert.equal(body.children.length,1);let modal=body.children[0];
  assert.equal(modal.open,true);assert.equal(modal.children[0].textContent,'새 맵 생성 요청');
- const name=modal.querySelector();assert.equal(focused,name);name.value='세션 초안';name.oninput();
+ const name=modal.querySelector();assert.equal(dom.focused,name);name.value='세션 초안';name.oninput();
  assert.equal(JSON.parse(draft.get(mapDraftKey('binari'))).graph.title,'세션 초안');
  modal.descendants().find(x=>x.tag==='button'&&x.textContent==='닫기').onclick();
- assert.equal(body.children.length,0);assert.equal(focused,opener);
+ assert.equal(body.children.length,0);assert.equal(dom.focused,opener);
  assert.deepEqual(detail.children,root);
  opener.onclick();modal=body.children[0];
  assert.equal(modal.querySelector().value,'세션 초안');
  assert.equal(modal.dispatchEvent(new Event('cancel',{cancelable:true})),true);
  modal.close();opener.onclick();signal.abort();
  assert.equal(body.children.length,0);assert.equal(requests,0);
+});
+
+
+test('Warp preview reaches the last room, starts over twice, then closes and cleans input',async t=>{
+ const {mountMapWorkspace}=await import('../build/map-workspace-ui.mjs');
+ const dom=fakeDom(t),{Element}=dom;
+ let serial=0,time=0;const frames=new Map();
+ const old=[globalThis.requestAnimationFrame,globalThis.cancelAnimationFrame];
+ globalThis.requestAnimationFrame=fn=>{frames.set(++serial,fn);return serial;};
+ globalThis.cancelAnimationFrame=id=>frames.delete(id);
+ t.after(()=>{for(const [i,k] of ['requestAnimationFrame','cancelAnimationFrame'].entries()){
+  if(old[i])globalThis[k]=old[i];else delete globalThis[k];
+ }});
+ const tick=()=>{const batch=[...frames.values()];frames.clear();for(const fn of batch)fn(time+=50);};
+ const mapId='request.official.'+'a'.repeat(64);
+ const twoRoom={...graph,regions:regions.slice(0,2),connections:[{...graph.connections[0],hit:{x:525,y:830,width:10,height:40}}]};
+ const state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph:twoRoom};
+ const backgrounds=twoRoom.regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
+ const signal=new AbortController(),detail=new Element('div'),items=new Element('div'),tools=new Element('div');
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',signal:signal.signal,
+  storage:{getItem(){return null;},setItem(){assert.fail('playback must not write a map draft');}},
+  request:async path=>path.includes('background')?{backgrounds}:path.includes('item=')?{map:state}:{maps:[]},
+  submit:async()=>assert.fail('playback must not submit')});
+ const find=text=>detail.descendants().find(n=>n.textContent===text),canvas=()=>detail.descendants().find(n=>n.className==='map-canvas');
+ const start=()=>{assert.equal(find('워프 플레이').disabled,false);find('워프 플레이').onclick();};
+ const reachLast=()=>{
+  assert.ok(find('1 / 2 · 구역 1'));assert.equal(frames.size,1);
+  const oldCanvas=canvas();assert.equal(dom.focused,oldCanvas);
+  oldCanvas.onpointerdown({button:0,clientX:700,clientY:850});
+  for(let i=0;i<4&&frames.size;i++)tick();
+  assert.ok(find('2 / 2 · 구역 2'));assert.equal(frames.size,0);
+  assert.equal(oldCanvas.onkeydown,null);assert.equal(oldCanvas.onkeyup,null);assert.equal(oldCanvas.onpointerdown,null);
+  assert.equal(dom.focused,find('처음부터 다시'));
+ };
+ start();reachLast();find('처음부터 다시').onclick();reachLast();
+ find('플레이 닫기').onclick();assert.equal(frames.size,0);assert.equal(dom.focused,find('워프 플레이'));
+ start();const liveCanvas=canvas();assert.equal(frames.size,1);
+ const playView=detail.descendants().find(n=>n.className==='map-play-layout');
+ playView.onkeydown({key:'Escape',preventDefault(){}});
+ assert.equal(frames.size,0);assert.equal(liveCanvas.onpointerdown,null);
+ start();signal.abort();assert.equal(frames.size,0);
 });
