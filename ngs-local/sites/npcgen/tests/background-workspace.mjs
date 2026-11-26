@@ -181,6 +181,21 @@ test('background two-track comparison uses one submission and a shared timeline 
  const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,x:.5,y:.5,zoom:1}]};
  const backgrounds=[{...pixel,displayTitle:'안뜰',cinematic:original,pixel}];
  const sent=[];
+ // One decoded fixture pixel suffices for testing the player DOM and its frame URL contract.
+ const sample=document.createElement('img');
+ sample.src='data:image/png;base64,${image.toString('base64')}';
+ await sample.decode();
+ Object.defineProperty(sample,'src',{set(value){
+  const query=new URL(value,location.origin).searchParams;
+  assert(query.has('sequence')&&query.has('frame'),'not a frame endpoint');
+ }});
+ sample.decode=()=>Promise.resolve();
+ globalThis.Image=function(){return sample;};
+ const untilReady=(host,selector)=>new Promise(resolve=>{
+  const observer=new MutationObserver(check);
+  function check(){const match=host.querySelector(selector);if(match){observer.disconnect();resolve(match);}}
+  observer.observe(host,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});check();
+ });
  const call=async url=>{
   const params=new URL(url,location.origin).searchParams;
   if(params.has('groups'))return {groups:[{requestId:pr,variants:refs}]};
@@ -216,8 +231,7 @@ test('background two-track comparison uses one submission and a shared timeline 
   form.requestSubmit();await new Promise(r=>setTimeout(r,25));
   assert(sent.length===1&&sent[0].requestType==='background.animation.workflow'&&Object.keys(sent[0].payload.references).length===2,'not one paired request');
   [...document.querySelectorAll('#detail button')].find(b=>b.textContent==='두 영상 함께 재생').click();
-  for(let i=0;i<40&&!document.querySelector('.background-pair-player input[type=range]:enabled');i++)await new Promise(r=>setTimeout(r,100));
-  const host=document.querySelector('.background-pair-player'),range=host.querySelector('input[type=range]');
+  const host=document.querySelector('.background-pair-player'),range=await untilReady(host,'input[type=range]:enabled');
   assert(host.querySelectorAll('canvas').length===2&&range&&!range.disabled&&host.querySelectorAll('input[type=range]').length===1,'no shared player');
   range.value=48;range.dispatchEvent(new Event('input',{bubbles:true}));
   assert(host.textContent.includes('2.00초'),'shared clock could not seek');
@@ -225,8 +239,7 @@ test('background two-track comparison uses one submission and a shared timeline 
    [...document.querySelectorAll('#detail button')].find(b=>b.textContent===label+' 확대').click();
    const popup=document.querySelector('dialog.background-media-dialog[open]');
    assert(popup?.querySelector('h3')?.textContent===label+' 애니메이션','wrong individual popup');
-   for(let i=0;i<40&&!popup.querySelector('[aria-label="PNG 원본 프레임"]:enabled');i++)await new Promise(r=>setTimeout(r,100));
-   const frames=popup.querySelector('[aria-label="PNG 원본 프레임"]');
+   const frames=await untilReady(popup,'[aria-label="PNG 원본 프레임"]:enabled');
    assert(popup.querySelectorAll('canvas').length===1&&frames&&!frames.disabled&&frames.max==='45','not one frame player');
    frames.value='4';frames.dispatchEvent(new Event('input',{bubbles:true}));
    assert(popup.textContent.includes('PNG 원본 프레임 4 / 45'),'native scrub did not seek');
