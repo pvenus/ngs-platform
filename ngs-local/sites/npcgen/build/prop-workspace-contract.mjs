@@ -14,6 +14,8 @@ export const exactPropKeys=(v,keys)=>!!v&&typeof v==='object'&&!Array.isArray(v)
 const text=(v,max)=>typeof v==='string'&&v.isWellFormed()&&v===v.trim()&&v.length>0&&utf8.encode(v).length<=max&&
  !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(v);
 const source=v=>exactPropKeys(v,['revision','sha256'])&&propRevision(v.revision)&&propSha(v.sha256);
+export const validPropGenerateReference=(v,target)=>exactPropKeys(v,['propId','revision','sha256'])&&
+ propSlug(v.propId)&&v.propId!==target&&source({revision:v.revision,sha256:v.sha256});
 export const propAction=type=>names.find(k=>propTypes[k]===type);
 export function propEnabledActions(env){
  return names.filter(k=>env['NGS_PROP_'+(k==='animation'?'ANIMATION':k.toUpperCase())+'_ENABLED']==='1');
@@ -25,8 +27,10 @@ export function validPropPayload(type,p){
  const k=propAction(type),base=['schemaVersion','projectId','propId'];
  if(!k||p?.schemaVersion!==schema[k]||p.projectId!=='binari'||!propSlug(p.propId))return false;
  if(k==='generate'||k==='regenerate'){
-  const fields=[...base,...(k==='regenerate'?['source']:[]),'intent','designContextSha256',...(Object.hasOwn(p,'motion')?['motion']:[])];
-  return exactPropKeys(p,fields)&&(k!=='regenerate'||source(p.source))&&
+  const reference=k==='generate'&&Object.hasOwn(p,'reference');
+  const fields=[...base,...(k==='regenerate'?['source']:[]),'intent','designContextSha256',
+   ...(Object.hasOwn(p,'motion')?['motion']:[]),...(reference?['reference']:[])];
+  return exactPropKeys(p,fields)&&(k!=='regenerate'||source(p.source))&&(!reference||validPropGenerateReference(p.reference,p.propId))&&
    text(p.intent,4000)&&propSha(p.designContextSha256)&&(!Object.hasOwn(p,'motion')||propMotion(p.motion));
  }
  const profile=Object.hasOwn(p,'renderProfile');

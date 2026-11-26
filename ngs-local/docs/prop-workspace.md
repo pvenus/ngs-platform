@@ -35,6 +35,12 @@ GitHub artifact. Queue, Miniflare data, startup/schema pins and preview files
 are unchanged. The usual private predecessor plist/rollback is retained.
 
 `prop.generate` is a complete creation intent, not an image request.
+The Add popup may choose one reference from the published prop list
+(default: none). The submission pins that folder's revision and manifest
+SHA, uses its detail image in the generation worker, and creates a
+different, new folder. A reference that has changed or disappeared must be
+selected again. Only CREATE accepts a reference; geometry consistency is
+guided by the image, not guaranteed by exact compositing.
 A regeneration targets one current published folder by revision and SHA.
 It replaces the active pointer only after a full new package is published;
 prior versions and assets remain preserved. Existing animations are not copied

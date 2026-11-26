@@ -1,10 +1,12 @@
-import {propPayload,propTypes,propWorkspacePath,propSlug,validPropPayload} from './prop-workspace-contract.mjs';
+import {propPayload,propTypes,propWorkspacePath,propSlug,validPropGenerateReference,validPropPayload} from './prop-workspace-contract.mjs';
 import {propPackageMediaLimit} from './prop-package-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const node=(tag,text,className)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(className)n.className=className;return n;};
 const api=fields=>propWorkspacePath+'?'+new URLSearchParams({projectId:'binari',...fields});
 const actionsLabel={generate:'프랍 종합 생성 요청',regenerate:'재생성 요청',animation:'애니메이션 생성 요청'};
 const errors={
+ PROP_WORKSPACE_REFERENCE_STALE:'레퍼런스 프랍이 변경되었거나 삭제됐어요. 페이지를 새로 열어 다시 선택해 주세요.',
+ PROP_WORKSPACE_REFERENCE_UNAVAILABLE:'이 프랍의 디테일 이미지는 레퍼런스로 사용할 수 없어요. 다른 프랍을 선택해 주세요.',
  PROP_WORKSPACE_SOURCE_STALE:'게시 버전이 바뀌었습니다. 목록에서 프랍을 다시 열어 주세요.',
  PROP_WORKSPACE_TARGET_EXISTS:'해당 폴더 이름은 이미 사용 중입니다.',
  PROP_WORKSPACE_MOTION_EXISTS:'같은 이름의 애니메이션이 이미 있습니다.',
@@ -305,7 +307,23 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   const id=action==='generate'?input('예: paper-collar-candle',80):null;
   const motionId=action==='animation'?input('예: candle-flicker',80):null;
   const intent=textarea(action==='animation'?'어떻게 움직이는지 적어 주세요.':'용도, 형태, 상태 또는 바꿀 내용을 적어 주세요.',action==='animation'?2000:4000);
-  if(id)form.append(field('프랍 폴더 이름',id));
+  let referenceSelect,referenceOptions;
+  if(id){
+   form.append(field('프랍 폴더 이름',id));
+   referenceSelect=node('select');
+   const noReference=node('option','레퍼런스 없음');noReference.value='';referenceSelect.append(noReference);
+   referenceOptions=new Map();
+   for(const row of rows){
+    if(!row)continue;
+    const {propId,revision,sha256}=row,pin={propId,revision,sha256};
+    if(!validPropGenerateReference(pin)||referenceOptions.has(propId))continue;
+    referenceOptions.set(propId,pin);
+    const option=node('option',row.title+' · '+propId+' · v'+revision);option.value=propId;
+    referenceSelect.append(option);
+   }
+   form.append(field('레퍼런스 프랍 (선택)',referenceSelect));
+   if(referenceOptions.size)form.append(node('p','선택한 프랍의 디테일 이미지를 기준으로 새 프랍을 만들어요. 유지할 부분과 바꿀 부분을 요청에 적어 주세요.','meta'));
+  }
   if(action==='regenerate')form.append(node('p','완성된 새 프랍으로 교체합니다. 이전 버전은 보존되며, 기존 애니메이션은 새 버전에 자동으로 가져오지 않습니다.','meta'));
   if(motionId)form.append(field('애니메이션 이름',motionId));
   form.append(field(action==='animation'?'움직임 프롬프트':'요청 내용',intent));
@@ -325,6 +343,12 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
     const propId=id?id.value.trim():original.propId;
     const type=propTypes[action],body={propId};
     if(action!=='generate')body.source=original.source;
+    else if(referenceSelect.value){
+     const chosen=referenceOptions.get(referenceSelect.value);
+     if(!chosen)throw Error('PROP_WORKSPACE_REFERENCE_STALE');
+     if(chosen.propId===propId){info.textContent='레퍼런스와 다른 새 프랍 폴더 이름을 입력해 주세요.';return;}
+     body.reference=chosen;
+    }
     if(action==='animation')Object.assign(body,{motionId:motionId.value.trim(),prompt:intent.value.trim()});
     else {
      body.intent=intent.value.trim();

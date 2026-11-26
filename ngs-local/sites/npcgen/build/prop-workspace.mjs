@@ -47,6 +47,14 @@ export async function admitPropRequest({openProject,command,actions=[],authorize
  if(!project)throw unavailable();
  if(k==='generate'){
   if(await pointer(project,p.propId))throw fail('PROP_WORKSPACE_TARGET_EXISTS',409);
+  if(p.reference){
+   const reference=await pointer(project,p.reference.propId);
+   if(!reference||reference.revision!==p.reference.revision||reference.sha256!==p.reference.sha256)
+    throw fail('PROP_WORKSPACE_REFERENCE_STALE',409);
+   const existing=await packageFrom(project,reference);
+   if(existing.media.detail.bytes>8*1024*1024)throw fail('PROP_WORKSPACE_REFERENCE_UNAVAILABLE',409);
+   if(!same(reference,await pointer(project,reference.propId)))throw fail('PROP_WORKSPACE_REFERENCE_STALE',409);
+  }
  }else{
   const {p:current,row}=await selected(project,p.propId);
   if(current.revision!==p.source.revision||current.sha256!==p.source.sha256)throw fail('PROP_WORKSPACE_SOURCE_STALE',409);

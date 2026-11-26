@@ -151,10 +151,11 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   addEventListener(key,value){this.events[key]=value;}
   click(){if(!this.disabled)return this.events.click?.({});}
   focus(){this.focused=true;}
+  remove(){this.parentElement.children=this.parentElement.children.filter(x=>x!==this);}
   showModal(){this.open=true;}
   close(){this.open=false;this.events.close?.({});}
  }
- const document={createElement:tag=>new Element(tag)};
+ const document={createElement:tag=>new Element(tag),body:new Element('body')};
  const own=Object.getOwnPropertyDescriptor(globalThis,'document');
  Object.defineProperty(globalThis,'document',{value:document,configurable:true});
  try{
@@ -189,6 +190,29 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
    stills.map(x=>x.width+' × '+x.height+' px'));
   assert.equal(walk(basic.detail,x=>x.attributes['aria-label']==='프랍 애니메이션 목록').length,0);
   assert.equal(walk(basic.detail,x=>x.textContent==='재생성 요청').length,1);
+  const submissions=[];
+  const modalFixture=await mount({
+   request:async path=>path.includes('view=design')?{designContextSha256:pin}:path.includes('propId=')?{prop:body.json.prop}:{props:[pointer]},
+   submit:async request=>{submissions.push(request);return new Response(JSON.stringify({status:'queued',queueId:'ngs.local.11111111-1111-4111-8111-111111111111'}),{status:202});},
+  });
+  modalFixture.tools.children[0].click();
+  let modal=document.body.children[0];
+  const [refSelect]=walk(modal,x=>x.tag==='select');
+  assert.deepEqual(refSelect.children.map(x=>x.value),['',propId]);
+  walk(modal,x=>x.tag==='input')[0].value='new-bell-prop';
+  walk(modal,x=>x.tag==='textarea')[0].value='몸체는 그대로, 방울 하나만 추가';
+  refSelect.value=propId;
+  await modal.children[0].events.submit({preventDefault(){}});
+  assert.deepEqual(submissions[0].payload.reference,{propId,revision:pointer.revision,sha256:pointer.sha256});
+  assert.equal(submissions[0].payload.propId,'new-bell-prop');
+  modalFixture.tools.children[0].click();
+  modal=document.body.children[0];
+  walk(modal,x=>x.tag==='input')[0].value='unreferenced-prop';
+  walk(modal,x=>x.tag==='textarea')[0].value='새 등롱';
+  await modal.children[0].events.submit({preventDefault(){}});
+  assert.equal(Object.hasOwn(submissions[1].payload,'reference'),false);
+  walk(modalFixture.detail,x=>x.textContent==='재생성 요청')[0].click();
+  modal=document.body.children[0];assert.equal(walk(modal,x=>x.tag==='select').length,0);modal.close();
   const previewController=new AbortController(),nativeFetch=fetch,fetches=[];
   t.mock.method(globalThis,'fetch',async (url,opts)=>{
    fetches.push({url,opts});return new Response(png(20,20,true));
@@ -277,4 +301,21 @@ test('existing-prop animation capability does not authorize animated create/rege
   await assert.rejects(admitPropRequest({openProject:()=>assert.fail('no source read for unavailable motion'),
    actions,command:{requestType:propTypes[k],payload}}),{status:404});
  }
+});
+
+test('published reference pin is optional, distinct and exact on CREATE only',async ()=>{
+ const openProject=()=>({readBytes:async path=>fixture.get(path)??null});
+ const ref={propId,revision:pointer.revision,sha256:pointer.sha256};
+ const basics={propId:'variant-lantern',intent:'몸체 유지, 방울만 추가',designContextSha256:pin};
+ const run=payload=>admitPropRequest({openProject,command:{requestType:propTypes.generate,payload},actions:['generate'],authorize:()=>{}});
+ const valid=propPayload('generate',{...basics,reference:ref});
+ assert.equal(validPropPayload(propTypes.generate,valid),true);
+ assert.equal(validPropPayload(propTypes.generate,{...valid,propId}),false);
+ assert.equal(validPropPayload(propTypes.generate,{...valid,reference:{...ref,path:'/tmp/ref.png'}}),false);
+ assert.equal(validPropPayload(propTypes.regenerate,propPayload('regenerate',{...basics,
+  source:{revision:ref.revision,sha256:ref.sha256},reference:ref})),false);
+ await assert.rejects(run({...valid,reference:{...ref,sha256:'a'.repeat(64)}}),/PROP_WORKSPACE_REFERENCE_STALE/);
+ await assert.rejects(run({...valid,reference:{...ref,propId:'unpublished-prop'}}),/PROP_WORKSPACE_REFERENCE_STALE/);
+ // Reaching the ordinary design pin check proves admission accepted the published reference.
+ await assert.rejects(run(valid),/PROP_DESIGN_REPLICA_UNAVAILABLE/);
 });
