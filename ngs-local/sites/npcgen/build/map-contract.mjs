@@ -14,6 +14,7 @@ export const mapRect=v=>mapFields(v,['x','y','width','height'])&&['x','y','width
  v.x>=0&&v.y>=0&&v.width>0&&v.height>0&&v.x+v.width<=1000&&v.y+v.height<=1000;
 export const regionId=v=>typeof v==='string'&&/^[a-z][a-z0-9-]{0,31}$/.test(v);
 export const mapBackgroundIds=graph=>[...new Set(graph.regions.map(r=>r.backgroundId).filter(Boolean))];
+const edgeFields=Object.keys({id:null,from:null,to:null,hit:null,spawn:null,label:null});
 export function validMapGraph(v,{partial=false}={}){
  if(!mapFields(v,['title','startRegionId','regions','connections'])||!mapText(v.title,100)||!Array.isArray(v.regions)||
     v.regions.length<1||v.regions.length>24||!v.regions.every(r=>mapFields(r,['id','name','description','backgroundId','imageSha256'])&&
@@ -22,7 +23,7 @@ export function validMapGraph(v,{partial=false}={}){
  if(ids.size!==v.regions.length||!ids.has(v.startRegionId)||!Array.isArray(v.connections)||v.connections.length>96)return false;
  const unique=new Set();
  return v.connections.every(e=>{
-  if(!mapFields(e,['id','from','to','hit','spawn','label'])||typeof e.id!=='string'||!/^[a-z][a-z0-9-]{0,31}$/.test(e.id)||
+  if(!mapFields(e,edgeFields)||typeof e.id!=='string'||!/^[a-z][a-z0-9-]{0,31}$/.test(e.id)||
      unique.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||e.from===e.to||!mapText(e.label,100)||
      !(mapRect(e.hit)||(partial&&e.hit===null))||!(mapPoint(e.spawn)||(partial&&e.spawn===null)))return false;
   unique.add(e.id);return true;

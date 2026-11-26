@@ -72,7 +72,7 @@
     "sites/npcgen/build/local-request-submission.mjs": "6d151b906d92c1b52e36ab95fb53889a4350fc3bc59088464e0b387eeed8e8a9",
     "sites/npcgen/build/local-s3-replica-bucket.mjs": "33101169af82f0eda4f29429d54e37c54659980f8efe905eddaaa80938dfd65a",
     "sites/npcgen/build/loopback-auth.mjs": "bd920a871bd7cfd864b9cf3095c4aa7b5e987893ead87422524b4c69279e45f3",
-    "sites/npcgen/build/map-contract.mjs": "acda58b0c576066c5a9062195f61d55c7abde6a4e0208f6f0688d36674cfaa4b",
+    "sites/npcgen/build/map-contract.mjs": "a6017c44a538947c7896bf848168ede827520e951afc468bd9348869c09f04c7",
     "sites/npcgen/build/map-warp.mjs": "537eb8256a879f5a0b3f71e60f9c50d6f41de074b8c0fc4f5a2021e38789d188",
     "sites/npcgen/build/map-workspace-ui.mjs": "39598c93552076a0cad5b9b2ebfc8433c77bbe44e29f24e75758ae9af23626b7",
     "sites/npcgen/build/map-workspace.mjs": "29dce4773a125119aec8b0d39e92c899fdee6a3a5667d8f955ff8d25c8fbb3bd",
