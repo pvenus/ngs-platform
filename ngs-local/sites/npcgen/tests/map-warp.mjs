@@ -42,6 +42,9 @@ function fakeDom(t){
   replaceChildren(...children){for(const x of this.children)x.parent=null;this.children=[];this.append(...children);}
   remove(){if(this.parent){this.parent.children=this.parent.children.filter(x=>x!==this);this.parent=null;}}
   setAttribute(k,v){this.attrs[k]=v;}
+  getAttribute(k){return this.attrs[k];}
+  querySelectorAll(){return this.descendants().filter(n=>n.attrs['aria-label']);}
+  setPointerCapture(){}
   showModal(){this.open=true;}
   close(){if(this.open){this.open=false;this.dispatchEvent(new Event('close'));}}
   descendants(){return this.children.flatMap(x=>[x,...x.descendants()]);}
@@ -120,4 +123,56 @@ test('Warp preview reaches the last room, starts over twice, then closes and cle
  playView.onkeydown({key:'Escape',preventDefault(){}});
  assert.equal(frames.size,0);assert.equal(liveCanvas.onpointerdown,null);
  start();signal.abort();assert.equal(frames.size,0);
+});
+
+test('published map edits keep a separate start image and show both ends of each connection at once',async t=>{
+ const {mountMapWorkspace,mapDraftKey,centerMapPortal}=await import('../build/map-workspace-ui.mjs');
+ const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div');
+ const mapId='request.official.'+'c'.repeat(64),state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',
+  mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph};
+ const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
+ const draft=new Map();
+ const store={getItem:k=>draft.get(k),setItem:(k,v)=>draft.set(k,v)};
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',storage:store,
+  request:async path=>path.includes('background')?{backgrounds}:path.includes('item=')?{map:state}:{maps:[]},
+  submit:async()=>assert.fail('editing start or coordinates may only update the session draft')});
+ const pick=cls=>detail.descendants().find(n=>n.className===cls);
+ const startImages=()=>pick('map-start-thumbnail').descendants().filter(n=>n.tag==='img');
+ const endpoints=()=>pick('map-connection-pair').descendants().filter(n=>n.tag==='img');
+ const parts=()=>pick('map-connection-pair').descendants();
+ const pickers=()=>parts().filter(n=>n.className==='map-coordinate-picker');
+ const drag=(node,x1,y1,x2,y2,mid)=>{
+  const ev=(x,y)=>({button:0,pointerId:1,clientX:x,clientY:y,preventDefault(){}});
+  node.onpointerdown(ev(x1,y1));node.onpointermove(ev(x2,y2));mid?.();node.onpointerup(ev(x2,y2));
+ };
+ const field=text=>detail.descendants().find(n=>n.tag==='label'&&n.textContent===text).children[0];
+ const current=()=>JSON.parse(draft.get(mapDraftKey('binari',mapId))).graph;
+ assert.deepEqual(startImages().map(n=>n.alt),['구역 1']);
+ assert.deepEqual(endpoints().map(n=>n.alt),['구역 1','구역 2']);
+ const start=field('워프 플레이를 시작할 구역');start.value='r4';start.onchange();
+ assert.deepEqual(startImages().map(n=>n.alt),['구역 4']);
+ assert.equal(current().startRegionId,'r4');assert.deepEqual(endpoints().map(n=>n.alt),['구역 1','구역 2']);
+ const select=field('편집할 이동 연결');select.value='order-2';select.onchange();
+ assert.deepEqual(endpoints().map(n=>n.alt),['구역 2','구역 3']);
+ assert.equal(pickers().length,0,'existing geometry must not be reset by clicking the background');
+ const moving=label=>parts().find(n=>n.attrs['aria-label']?.startsWith(label));
+ drag(moving('출입구 이동'),804,240,404,450,()=>assert.equal(current().connections[1].hit.x,800));
+ drag(moving('도착점 이동'),251,240,520,700);
+ assert.deepEqual(current().connections[1].hit,{x:400,y:430,width:8,height:40});
+ assert.deepEqual(current().connections[1].spawn,{x:520,y:700});
+ drag(moving('오른쪽 아래 모서리'),408,470,460,510);
+ assert.deepEqual(current().connections[1].hit,{x:400,y:430,width:60,height:80});
+ moving('왼쪽 위 모서리').onkeydown({key:'ArrowLeft',shiftKey:true,preventDefault(){}});
+ assert.deepEqual(current().connections[1].hit,{x:390,y:430,width:70,height:80});
+ const width=field('너비');width.valueAsNumber=55;width.onchange();
+ assert.equal(current().connections[1].hit.width,55);
+ assert.deepEqual(current().connections[0],graph.connections[0]);assert.equal(current().startRegionId,'r4');
+ const add=detail.descendants().find(n=>n.textContent==='이동 연결 추가');add.onclick();
+ assert.equal(pickers().length,2);
+ assert.match(pickers()[0].attrs['aria-label'],/출입구/);assert.match(pickers()[1].attrs['aria-label'],/도착점/);
+ pickers()[0].onclick({detail:1,clientX:820,clientY:650});
+ pickers()[0].onclick({detail:1,clientX:90,clientY:100});
+ assert.equal(pickers().length,0);const edge=current().connections.at(-1);
+ assert.deepEqual(edge.hit,{x:770,y:610,width:100,height:80});assert.deepEqual(edge.spawn,{x:90,y:100});
+ assert.deepEqual(centerMapPortal({x:999,y:3}),{x:900,y:0,width:100,height:80});
 });

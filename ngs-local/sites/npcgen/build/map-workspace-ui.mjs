@@ -76,6 +76,24 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
  }
 }
 
+export function centerMapPortal(point,previous=null){
+ const {width,height}=mapRect(previous)?previous:{width:100,height:80};
+ return {x:Math.min(1000-width,Math.max(0,Math.round(point.x-width/2))),
+  y:Math.min(1000-height,Math.max(0,Math.round(point.y-height/2))),width,height};
+}
+
+const clampMap=(n,min=0,max=1000)=>Math.min(max,Math.max(min,n));
+export function moveMapPortal(rect,dx,dy){
+ return {...rect,x:clampMap(rect.x+dx,0,1000-rect.width),y:clampMap(rect.y+dy,0,1000-rect.height)};
+}
+export function resizeMapPortal(rect,corner,dx,dy){
+ const east=corner.includes('e'),south=corner.includes('s');
+ const oppositeX=east?rect.x:rect.x+rect.width,oppositeY=south?rect.y:rect.y+rect.height;
+ const x=clampMap((east?rect.x+rect.width:rect.x)+dx,east?oppositeX+1:0,east?1000:oppositeX-1);
+ const y=clampMap((south?rect.y+rect.height:rect.y)+dy,south?oppositeY+1:0,south?1000:oppositeY-1);
+ return {x:Math.min(x,oppositeX),y:Math.min(y,oppositeY),width:Math.abs(x-oppositeX),height:Math.abs(y-oppositeY)};
+}
+
 function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,published,submit,enabled,onClose}){
  const q=new URLSearchParams({projectId});
  const imageAligned=r=>!!r&&assets.get(r.backgroundId)?.sha256===r.imageSha256;
@@ -85,7 +103,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  const draft=chooseMapDraft(saved,published);
  let routeText=typeof saved?.routeText==='string'?saved.routeText:'';
  let graph=structuredClone(draft.graph),intent=typeof saved?.intent==='string'?saved.intent:'',conflict=draft.conflict,pending=draft.done?null:saved?.pending??null,lastToken=draft.done?null:saved?.requestToken??null,lastBody=saved?.requestBody??null;
- let edgeId=graph.connections[0]?.id??null,active=graph.startRegionId,mode='edit',pick=null,busy=false,warp=null,returnRegion=null,stopMovement=()=>{};
+ let edgeId=graph.connections[0]?.id??null,active=graph.startRegionId,mode='edit',busy=false,warp=null,returnRegion=null,setupExpanded=false,stopMovement=()=>{};
  if(draft.done){try{storage.removeItem(key);}catch{}}
  const region=id=>graph.regions.find(r=>r.id===id), regionIds=()=>graph.regions.map(r=>r.id), title=id=>region(id)?.name??'구역 미선택';
  const store=()=>{try{storage.setItem(key,JSON.stringify({base:conflict?saved?.base:published?.revision??0,graph,intent,routeText,pending,accepted:pending?.id??null,requestToken:lastToken,requestBody:lastBody}));}catch{}};
@@ -122,12 +140,12 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  function startWarp(){
   if(!playable()||signal?.aborted)return;
   if(mode==='edit')returnRegion=active;
-  warp=createMapWarp(graph);active=warp.snapshot().regionId;mode='play';pick=null;
+  warp=createMapWarp(graph);active=warp.snapshot().regionId;mode='play';
   bark.textContent='';render();
  }
  function closeWarp(){
   if(mode!=='play')return;
-  active=returnRegion??graph.startRegionId;returnRegion=null;mode='edit';warp=null;pick=null;
+  active=returnRegion??graph.startRegionId;returnRegion=null;mode='edit';warp=null;
   bark.textContent='';render({focusPlay:true});
  }
  function drawPosition(actor,positionLabel,{position}){
@@ -184,6 +202,85 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   if(published)head.append(play);
   if(mode==='play')head.append(button('플레이 닫기',closeWarp));
   const side=el('div',undefined,'map-panel');
+  const sections=el('div',undefined,'map-edit-sections');
+  const card=(caption,cls='')=>{
+   const node=el('section',undefined,'map-edit-card '+cls), heading=el('h4',caption);
+   node.setAttribute('aria-label',caption);node.append(heading);return node;
+  };
+  const setup=published?card('구역 구성','map-region-card'):side;
+  const start=published?card('시작 맵','map-start-card'):side;
+  const movement=published?card('이동 연결','map-connection-card'):side;
+  function paintMarker(mark,r){
+   mark.style.left=r.x/10+'%';mark.style.top=r.y/10+'%';
+   if(r.width){mark.style.width=r.width/10+'%';mark.style.height=r.height/10+'%';}
+  }
+  const marker=(box,r,cls,text)=>{
+   const mark=el('span',text,cls);paintMarker(mark,r);box.append(mark);
+  };
+  function preview(parent,r,{activate,aria}={}){
+   const asset=imageAligned(r)?assets.get(r.backgroundId):null;
+   if(!asset){parent.append(el('p',r?'연결된 배경 이미지가 없거나 버전이 다릅니다.':'구역을 선택하면 배경이 표시됩니다.','meta'));return null;}
+   const box=el('div',undefined,'map-canvas'+(activate?' map-edit-canvas':''));
+   const picture=activate?el('button',undefined,'map-coordinate-picker'):box;
+   if(activate){
+    picture.type='button';picture.setAttribute('aria-label',aria);
+    picture.onclick=ev=>activate(ev.detail===0?{x:500,y:500}:locate(ev,box));
+    box.append(picture);
+   }
+   const img=el('img');img.src=imageUrl(asset);img.alt=r.name;img.draggable=false;img.width=asset.width;img.height=asset.height;
+   picture.append(img);parent.append(box);return box;
+  }
+  function dragControl(control,box,initial,adjust,paint,commit){
+   let gesture=null;
+   control.onpointerdown=ev=>{
+    if(ev.button!==0||gesture)return;
+    ev.preventDefault();control.focus({preventScroll:true});
+    control.setPointerCapture(ev.pointerId);
+    gesture={id:ev.pointerId,at:locate(ev,box),next:initial};
+   };
+   control.onpointermove=ev=>{
+    if(gesture?.id!==ev.pointerId)return;
+    const p=locate(ev,box);
+    gesture.next=adjust(initial,p.x-gesture.at.x,p.y-gesture.at.y);
+    paint(gesture.next);
+   };
+   control.onpointerup=ev=>{
+    if(gesture?.id!==ev.pointerId)return;
+    control.onpointermove(ev);
+    const next=gesture.next;gesture=null;
+    if(mapCanonical(next)!==mapCanonical(initial))commit(next);
+   };
+   control.onpointercancel=control.onlostpointercapture=ev=>{
+    if(gesture?.id!==ev.pointerId)return;gesture=null;paint(initial);
+   };
+   control.onkeydown=ev=>{
+    const step=ev.shiftKey?10:1,arrow={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[ev.key];
+    if(!arrow)return;
+    ev.preventDefault();commit(adjust(initial,...arrow));
+   };
+  }
+  function movableMarker(box,initial,k,commit){
+   const portal=k==='hit';
+   const wrapper=el('div',undefined,portal?'map-exit selected map-drag-marker map-portal-marker':'map-spawn map-drag-marker');
+   const legalLabel=portal?'출입구 이동':'도착점 이동';
+   const drag=button(portal?'출입구':'도착',()=>{},'map-drag-body');
+   drag.title=legalLabel+' · 드래그 또는 방향키';drag.setAttribute('aria-label',drag.title);wrapper.append(drag);
+   const paint=r=>paintMarker(wrapper,r);
+   const makeCommit=control=>next=>commit(next,control.getAttribute('aria-label'));
+   dragControl(drag,box,initial,portal?moveMapPortal:(p,dx,dy)=>({x:clampMap(p.x+dx),y:clampMap(p.y+dy)}),paint,makeCommit(drag));
+   if(portal)for(const [corner,label] of [['nw','왼쪽 위'],['ne','오른쪽 위'],['sw','왼쪽 아래'],['se','오른쪽 아래']]){
+    const handle=button('',()=>{},'map-resize-handle map-resize-'+corner);
+    handle.title=label+' 모서리로 출입구 크기 조절 · 드래그 또는 방향키';handle.setAttribute('aria-label',handle.title);
+    dragControl(handle,box,initial,(r,dx,dy)=>resizeMapPortal(r,corner,dx,dy),paint,makeCommit(handle));wrapper.append(handle);
+   }
+   paint(initial);box.append(wrapper);
+  }
+  if(published){
+   const regionDetails=el('details',undefined,'map-region-details');regionDetails.open=setupExpanded;
+   regionDetails.append(el('summary','구역 구성 · '+graph.regions.length+'개'),setup);
+   regionDetails.ontoggle=()=>{setupExpanded=regionDetails.open;};
+   sections.append(start,regionDetails,movement);
+  }
   if(conflict){side.append(el('p','현재 버전이 바뀌었습니다. 세션 초안은 유지되지만 이전 버전으로 적용할 수 없습니다.'),button('초안 버리고 최신 버전 열기',()=>{
    if(!globalThis.confirm('세션에만 저장된 초안을 버리고 최신 버전을 열까요?'))return;
    storage.removeItem(key);location.reload();
@@ -200,7 +297,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    bgPick.onchange=()=>{plus.disabled=!bgPick.value||graph.regions.length>=(published?24:12)||!!pending;};
    bgPick.disabled=!!pending;
    const open=el('a','배경 설계에서 먼저 제작하기','prop-control');open.href='/?'+new URLSearchParams({projectId,catalogArea:'resources'});
-   side.append(open,label('완성된 배경',bgPick),plus);
+   setup.append(open,label('완성된 배경',bgPick),plus);
    const order=el('ol',undefined,'map-order');
    for(const [i,r] of graph.regions.entries()){
     const item=el('li',r.name+' ');
@@ -214,14 +311,15 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     graph.connections=orderedMapChain(graph.regions);graph.startRegionId=graph.regions[0].id;
     active=graph.startRegionId;edgeId=graph.connections[0].id;changed();
    });chain.disabled=graph.regions.length<2||!!pending;
-   side.append(el('h4','맵 배치 순서'),order);
+   setup.append(el('h4','맵 배치 순서'),order);
    // On a published map topology creation remains an explicit edit; the
    // initial ordered chain uses the formal coordinate-authoring request.
    if(!published)side.append(chain);
    const cs=setOptions(regionIds(),graph.startRegionId);cs.disabled=!!pending;
-   cs.onchange=()=>{graph.startRegionId=cs.value;changed();};side.append(label('시작 구역',cs));
-   const room=setOptions(regionIds(),active);room.onchange=()=>{active=room.value;pick=null;render();};
-   side.append(label('편집할 구역',room));
+   cs.onchange=()=>{graph.startRegionId=cs.value;changed();};start.append(label('워프 플레이를 시작할 구역',cs));
+   if(published){const thumb=el('div',undefined,'map-start-thumbnail');preview(thumb,region(graph.startRegionId));start.append(thumb);}
+   const room=setOptions(regionIds(),active);room.onchange=()=>{active=room.value;render();};
+   setup.append(label('편집할 구역',room));
    const current=region(active);
    if(current){
     const name=el('input');name.value=current.name;name.maxLength=100;name.disabled=!!pending;
@@ -238,43 +336,83 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
      changed();bark.textContent='이미지가 바뀌어 이 구역의 출입구와 도착점을 비웠어요. 새 배경에 다시 찍어주세요.';
     };
     linked.onchange=rebind;
-    side.append(label('구역 이름',name),label('구역 설명',memo),label('연결한 배경',linked),el('small','구역 ID: '+current.id));
-    if(!pending&&!imageAligned(current)&&assets.has(current.backgroundId))side.append(button('최신 이미지 연결',rebind));
-    if(current.backgroundId)side.append(el('small','배경 ID: '+current.backgroundId));
+    setup.append(label('구역 이름',name),label('구역 설명',memo),label('연결한 배경',linked),el('small','구역 ID: '+current.id));
+    if(!pending&&!imageAligned(current)&&assets.has(current.backgroundId))setup.append(button('최신 이미지 연결',rebind));
+    if(current.backgroundId)setup.append(el('small','배경 ID: '+current.backgroundId));
+    if(published){const thumb=el('div',undefined,'map-start-thumbnail');preview(thumb,current);setup.append(thumb);}
    }
    const remove=button('이 구역 빼기',()=>{
     if(!active)return;
     if(graph.connections.some(e=>e.from===active||e.to===active)){bark.textContent='이 구역의 연결을 먼저 삭제하세요.';return;}
     graph.regions=graph.regions.filter(x=>x.id!==active);if(graph.startRegionId===active)graph.startRegionId=graph.regions[0]?.id??null;
     active=graph.startRegionId;changed();
-   });remove.disabled=!active||!!pending;side.append(remove);
-   const targets=regionIds().filter(x=>x!==active&&imageAligned(region(x))), to=setOptions(targets,targets[0]);
+   });remove.disabled=!active||!!pending;setup.append(remove);
+   const displayEdge=id=>{const e=graph.connections.find(x=>x.id===id);return title(e.from)+' → '+title(e.to)+' · '+e.label;};
+   const selected=graph.connections.find(e=>e.id===edgeId);
+   const from=setOptions(regionIds().filter(x=>imageAligned(region(x))),selected?.from??active);
+   const to=setOptions([],'');
+   const addControls=el('div',undefined,'map-row');
+   const refreshTargets=()=>{
+    const prior=to.value,ids=regionIds().filter(x=>x!==from.value&&imageAligned(region(x)));
+    to.replaceChildren();
+    for(const id of ids){const option=el('option',title(id));option.value=id;to.append(option);}
+    to.value=ids.includes(prior)?prior:ids[0]??'';
+    newEdge.disabled=!from.value||!to.value||graph.connections.length>=96||!!pending;
+   };
    const newEdge=button('이동 연결 추가',()=>{
-    if(!imageAligned(region(active))||!to.value||graph.connections.length>=96)return;
+    if(!imageAligned(region(from.value))||!imageAligned(region(to.value))||from.value===to.value||graph.connections.length>=96)return;
     const id='e-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
-    graph.connections.push({id,from:active,to:to.value,label:title(to.value).slice(0,100),hit:null,spawn:null});
+    graph.connections.push({id,from:from.value,to:to.value,label:title(to.value).slice(0,100),hit:null,spawn:null});
     edgeId=id;changed();
-   });newEdge.disabled=!imageAligned(region(active))||!targets.length||!!pending;side.append(label('도착 구역',to),newEdge);
-   const edges=setOptions(graph.connections.map(e=>e.id),edgeId,id=>{const e=graph.connections.find(x=>x.id===id);return title(e.from)+' → '+title(e.to)+' · '+e.label;});
-   edges.onchange=()=>{edgeId=edges.value;active=graph.connections.find(e=>e.id===edgeId)?.from??active;pick=null;render();};
-   side.append(label('연결 선택',edges));
+   });
+   from.disabled=to.disabled=!!pending;from.onchange=refreshTargets;refreshTargets();
+   addControls.append(label('출발 구역',from),label('도착 구역',to),newEdge);movement.append(addControls);
+   const edges=setOptions(graph.connections.map(e=>e.id),edgeId,displayEdge);
+   edges.onchange=()=>{edgeId=edges.value;render();};
+   movement.append(label('편집할 이동 연결',edges));
    const edge=graph.connections.find(e=>e.id===edgeId);
    if(edge){
     const edgeLabel=el('input');edgeLabel.value=edge.label;edgeLabel.maxLength=100;edgeLabel.disabled=!!pending;edgeLabel.oninput=()=>{edge.label=edgeLabel.value;changed(false);};
-    side.append(label('이동 이름',edgeLabel));
-    if(published)for(const [k,caption,fields] of [['hit','출입구',['x','y','width','height']],['spawn','도착점',['x','y']]]){
-     const row=el('fieldset');row.append(el('legend',caption+' (0–1000)'));
-     for(const f of fields){const n=el('input');n.type='number';n.min='0';n.max='1000';n.step='1';n.value=edge[k]?.[f]??'';n.disabled=!!pending||!edge[k];
-      n.onchange=()=>{const proposed={...edge[k],[f]:n.valueAsNumber};
-       if((k==='hit'?mapRect:mapPoint)(proposed)){edge[k]=proposed;changed();}else{n.value=edge[k]?.[f]??'';bark.textContent='그림 밖이거나 유효하지 않은 좌표예요.';}};
-      row.append(label(f,n));
+    movement.append(label('이동 이름',edgeLabel));
+    if(published){
+     const pair=el('div',undefined,'map-connection-pair');
+     for(const [k,id,caption,fields] of [['hit',edge.from,'출발 이미지 · 출입구',['x','y','width','height']],['spawn',edge.to,'도착 이미지 · 도착점',['x','y']]]){
+      const panel=el('section',undefined,'map-connection-side');
+      const visibleTitle=caption+' ('+title(id)+')';
+      panel.setAttribute('aria-label',visibleTitle);panel.append(el('h5',visibleTitle));
+      const valid=(k==='hit'?mapRect:mapPoint)(edge[k]),pickLabel=visibleTitle+' 최초 위치 지정. 키보드로 누르면 이미지 중앙에 놓입니다.';
+      const savePosition=(next,restoreFocus)=>{
+       edge[k]=next;changed();
+       if(restoreFocus)for(const b of detail.querySelectorAll?.('[aria-label]')??[]){
+        if(b.getAttribute('aria-label')===restoreFocus){b.focus({preventScroll:true});break;}
+       }
+      };
+      const box=preview(panel,region(id),{aria:pickLabel,activate:pending||valid?null:p=>savePosition(k==='hit'?centerMapPortal(p):p,
+       k==='hit'?'출입구 이동 · 드래그 또는 방향키':'도착점 이동 · 드래그 또는 방향키')});
+      if(box&&valid){
+       if(!pending)movableMarker(box,edge[k],k,savePosition);
+       else marker(box,edge[k],k==='hit'?'map-exit selected':'map-spawn',k==='hit'?'출입구':'도착');
+      }
+      panel.append(el('p',k==='hit'?
+       (valid?'출입구 안을 끌어 이동하고, 모서리를 끌어 크기를 조절하세요.':'이미지를 눌러 출입구를 처음 놓으세요.'):
+       (valid?'도착 마커를 끌어 옮기세요.':'이미지를 눌러 도착점을 처음 놓으세요.'),'meta'));
+      const row=el('fieldset');row.append(el('legend',caption.split(' · ')[1]+' 좌표 (0–1000)'));
+      for(const f of fields){
+       const n=el('input');n.type='number';n.min=['width','height'].includes(f)?'1':'0';n.max='1000';n.step='1';n.value=edge[k]?.[f]??'';n.disabled=!!pending;
+       n.onchange=()=>{
+        const current=edge[k]??(k==='hit'?centerMapPortal({x:500,y:500}):{x:500,y:500}),proposed={...current,[f]:n.valueAsNumber};
+        if((k==='hit'?mapRect:mapPoint)(proposed)){edge[k]=proposed;changed();}
+        else{n.value=edge[k]?.[f]??'';bark.textContent='그림 밖이거나 유효하지 않은 좌표예요.';}
+       };
+       row.append(label({x:'X',y:'Y',width:'너비',height:'높이'}[f],n));
+      }
+      panel.append(row);pair.append(panel);
      }
-     const pickButton=button(k==='hit'?'그림에서 영역 그리기':'그림에서 도착점 찍기',()=>{active=k==='hit'?edge.from:edge.to;pick=k;render();});
-     pickButton.disabled=!!pending;row.append(pickButton);
-     side.append(row);
+     movement.append(pair);
     }
-    const del=button('이 연결 삭제',()=>{graph.connections=graph.connections.filter(e=>e.id!==edgeId);edgeId=graph.connections[0]?.id??null;changed();});del.disabled=!!pending;side.append(del);
-   }
+    const del=button('이 연결 삭제',()=>{graph.connections=graph.connections.filter(e=>e.id!==edgeId);edgeId=graph.connections[0]?.id??null;changed();});
+    del.disabled=!!pending;movement.append(del);
+   }else if(published)movement.append(el('p','이동 연결을 추가하면 출발과 도착 이미지를 나란히 편집할 수 있어요.','meta'));
    if(!published){
     const routes=el('textarea');routes.value=routeText;routes.maxLength=4000;routes.disabled=!!pending;
     routes.placeholder='대문 → 앞마당 → 돌담길 → 뒤뜰 → 처마길 → 앞마당';
@@ -287,17 +425,12 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     const memo=el('textarea');memo.value=intent;memo.maxLength=2000;memo.disabled=!!pending;memo.oninput=()=>{intent=memo.value;changed(false);};
     side.append(label('배경 제작 의도와 좌표 힌트 (예: 대문에서 마당으로, 문턱 바로 안쪽에 도착)',memo));}
   }
-  const view=el('div',undefined,'map-preview');const asset=imageAligned(region(active))?assets.get(region(active).backgroundId):null;
-  view.append(el('h4',(graph.regions.findIndex(r=>r.id===active)+1)+' / '+graph.regions.length+' · '+title(active)));
-  if(asset){
-   const box=el('div',undefined,'map-canvas'),img=el('img');img.src=imageUrl(asset);img.alt=title(active);img.draggable=false;img.width=asset.width;img.height=asset.height;
-   box.append(img);view.append(box);
-   const marker=(r,cls,text,click)=>{const m=click?button(text,click):el('span',text);m.className=cls;m.style.left=r.x/10+'%';m.style.top=r.y/10+'%';
-    if(r.width){m.style.width=r.width/10+'%';m.style.height=r.height/10+'%';}box.append(m);};
-   for(const e of graph.connections.filter(e=>e.from===active&&mapRect(e.hit)))
-    marker(e.hit,'map-exit'+(e.id===edgeId?' selected':''),e.label,mode==='edit'&&!pick?()=>{edgeId=e.id;render();}:null);
-   const edge=graph.connections.find(e=>e.id===edgeId);
-   if(mode==='play'){
+  const view=el('div',undefined,'map-preview');
+  if(mode==='play'||!published){
+   view.append(el('h4',(graph.regions.findIndex(r=>r.id===active)+1)+' / '+graph.regions.length+' · '+title(active)));
+   const box=preview(view,region(active));
+   if(box&&mode==='play'){
+    for(const e of graph.connections.filter(e=>e.from===active&&mapRect(e.hit)))marker(box,e.hit,'map-exit',e.label);
     const actor=el('span',undefined,'map-player');actor.setAttribute('aria-label','캐릭터 위치');box.append(actor);
     const pos=el('p',undefined,'map-position');
     const outgoing=graph.connections.some(e=>e.from===active);
@@ -305,19 +438,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     const draw=state=>drawPosition(actor,pos,state);draw(warp.snapshot());
     mountPlay=outgoing?()=>bindMovement(box,draw):()=>play.focus({preventScroll:true});
    }
-   if(mode==='edit'&&edge?.to===active&&mapPoint(edge.spawn))marker(edge.spawn,'map-spawn','도착');
-   if(pick&&edge&&!pending){
-    const overlay=el('div',undefined,'map-pick');box.append(overlay);
-    view.append(el('p',pick==='hit'?'마우스로 드래그해 출입구 사각형을 그리세요.':'도착할 위치를 클릭하세요.'));
-    let start=null;
-    overlay.onpointerdown=ev=>{if(ev.button!==0)return;overlay.setPointerCapture(ev.pointerId);start=locate(ev,box);};
-    overlay.onpointerup=ev=>{if(!start)return;const p=locate(ev,box);
-     if(pick==='spawn')edge.spawn=p;
-     else{const r={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),width:Math.abs(start.x-p.x),height:Math.abs(start.y-p.y)};
-      if(!mapRect(r)){start=null;return;}edge.hit=r;}pick=null;changed();
-    };
-   }
-  }else view.append(el('p','완성된 배경을 선택하면 출입구와 도착점을 이미지 위에서 지정할 수 있어요.'));
+  }
   const foot=el('div',undefined,onClose?'prop-actions map-modal-footer':'map-row');
   if(onClose){const close=button('닫기',onClose);close.disabled=busy;foot.append(close);}
   if(mode==='edit'){
@@ -330,7 +451,9 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   }));
   if(pending&&!bark.textContent)bark.textContent='정식 요청 접수됨. OPS에서 진행 상태를 확인할 수 있어요.';
   if(!enabled&&!pending&&!bark.textContent)bark.textContent='정식 맵 요청을 접수할 수 없는 상태입니다.';
-  const main=el('div',undefined,mode==='play'?'map-play-layout':'map-editor');if(mode==='edit')main.append(side);main.append(view);
+  const main=el('div',undefined,mode==='play'?'map-play-layout':published?'map-edit-layout':'map-editor');
+  if(mode==='edit'&&(!published||conflict))main.append(side);
+  main.append(mode==='edit'&&published?sections:view);
   if(mode==='play')for(const controls of [head,main])controls.onkeydown=ev=>{if(ev.key==='Escape'){ev.preventDefault();closeWarp();}};
   if(onClose)detail.replaceChildren(head,main,bark,foot);
   else detail.replaceChildren(el('h3','맵 제작 · r'+published.revision),head,main,foot,bark);
