@@ -1,4 +1,4 @@
-import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,validNpcFolderDelete} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,validNpcFolderDelete,backgroundDeleteRoot,validBackgroundFileDelete} from './prop-folder-delete-contract.mjs';
 /** NGS browser app: serve the local replica and enqueue validated requests. */
 import {readFileSync,lstatSync,mkdirSync,realpathSync} from 'node:fs';
 import {createServer,get as loopbackGet} from 'node:http';
@@ -153,6 +153,7 @@ async function readLocalFolderDeleteReady(path,root){
   req.on('error',()=>resolve(false));
  });
 }
+const readLocalBackgroundDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target/background',backgroundDeleteRoot);
 const readLocalPropFolderDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target',propsDeleteRoot);
 const readLocalNpcFolderDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target/npc-standalone',npcDeleteRoot);
 export function configuration(env=process.env,{platform=process.platform,entryPoint=process.argv[1]}={}){
@@ -163,11 +164,11 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
-  ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady}:{}),
+  ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady}:{}),
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',npcBasicPortraitEnabled:env.NGS_NPC_BASIC_PORTRAIT_ENABLED!=='0',npcScopedPortraitEnabled:env.NGS_NPC_SCOPED_PORTRAIT_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -189,6 +190,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const activePropRemoval=async()=>Boolean(queue&&typeof readPropAnimationRemoveReady==='function'&&await readPropAnimationRemoveReady());
  const propFolderDeleteReady=async()=>Boolean(queue&&typeof readPropFolderDeleteReady==='function'&&await readPropFolderDeleteReady());
  const npcFolderDeleteReady=async()=>Boolean(queue&&typeof readNpcFolderDeleteReady==='function'&&await readNpcFolderDeleteReady());
+ const backgroundDeleteReady=async()=>Boolean(queue&&typeof readBackgroundDeleteReady==='function'&&await readBackgroundDeleteReady());
  const activePropActions=async()=>{
   if(!queue)return [];
   const actions=typeof readPropActions==='function'?await readPropActions():propActions;
@@ -273,7 +275,12 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
     if(command.requestType===fileDeleteType){
-     if(command.payload?.target?.root==='canonical-files/binari/npcs'){
+     if(command.payload?.target?.root===backgroundDeleteRoot){
+      if(!await backgroundDeleteReady())throw failure('BACKGROUND_DELETE_UNAVAILABLE',404);
+      if(!validBackgroundFileDelete(command.payload))throw failure('NGS_BACKGROUND_DELETE_PAYLOAD_INVALID',400);
+      // Filex checks the source receipt/pin. A completed sibling request may
+      // have already moved one file, so public replica presence is not authority.
+     }else if(command.payload?.target?.root===npcDeleteRoot){
       if(!await npcFolderDeleteReady())throw failure('NPC_FOLDER_DELETE_UNAVAILABLE',404);
       if(!validNpcFolderDelete(command.payload))throw failure('NGS_NPC_FOLDER_DELETE_PAYLOAD_INVALID',400);
       const roster=(await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId:'binari'}),
@@ -383,13 +390,13 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const session=auth.bootstrap(req);
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
-    const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady();
+    const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady(),deleteBackground=await backgroundDeleteReady();
     const [actions,legacyCine,sequenceCine,playbackCine,sourceCine,backgroundReady,removeCine,removeProp]=await Promise.all([activePropActions(),activeCinematic(cinematicType),activeCinematic(cinematicSequenceType),activeCinematic(cinematicPlaybackUpdateType),activeCinematic(cinematicSourceGenerateType),activeCinematic(backgroundSourceType),activeCinematic(cinematicSequencesRemoveType),activePropRemoval()]);
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
      ...(actions.length?{propActions:actions}:{}),
      ...(legacyCine?{cinematicEnabled:true}:{}),
      ...(sequenceCine?{cinematicSequenceEnabled:true}:{}),...(playbackCine?{cinematicPlaybackEnabled:true}:{}),
-     ...(sourceCine?{cinematicSourceEnabled:true}:{}),...(backgroundReady?{backgroundSourceEnabled:true}:{}),...(removeCine?{cinematicRemoveEnabled:true}:{}),...(removeProp?{propAnimationRemoveEnabled:true}:{}),...(deleteProp?{propFolderDeleteEnabled:true}:{}),...(deleteNpc?{npcFolderDeleteEnabled:true}:{}),
+     ...(sourceCine?{cinematicSourceEnabled:true}:{}),...(backgroundReady?{backgroundSourceEnabled:true}:{}),...(removeCine?{cinematicRemoveEnabled:true}:{}),...(removeProp?{propAnimationRemoveEnabled:true}:{}),...(deleteProp?{propFolderDeleteEnabled:true}:{}),...(deleteNpc?{npcFolderDeleteEnabled:true}:{}),...(deleteBackground?{backgroundDeleteEnabled:true}:{}),
      ...(poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),
      ...(queue&&npcBasicPortraitEnabled===true?{npcBasicPortraitEnabled:true}:{}),
      ...(queue&&npcScopedPortraitEnabled===true?{npcScopedPortraitEnabled:true}:{}),

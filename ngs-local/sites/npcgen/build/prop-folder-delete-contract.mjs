@@ -26,3 +26,18 @@ export function npcFolderDeletePayload({id,expected}){
  if(!validNpcFolderDelete(out))throw Error('NGS_NPC_FOLDER_DELETE_PAYLOAD_INVALID');
  return out;
 }
+
+export const backgroundDeleteRoot='canonical-files/binari/cinematics/backgrounds';
+const officialId=id=>typeof id==='string'&&/^request\.official\.[a-f0-9]{64}$/u.test(id);
+export function validBackgroundFileDelete(p){
+ const t=p?.target,e=p?.expected;
+ return exact(p,['schemaVersion','projectId','target','expected'])&&p.schemaVersion===fileDeleteSchema&&p.projectId==='binari'&&
+  exact(t,['root','path','kind'])&&t.root===backgroundDeleteRoot&&t.kind==='file'&&typeof t.path==='string'&&
+  /^[a-f0-9]{64}\.(?:png|json)$/u.test(t.path)&&exact(e,['sourceRequestId'])&&officialId(e.sourceRequestId);
+}
+export function backgroundDeletePayloads({id,expected}){
+ const payloads=['png','json'].map(ext=>({schemaVersion:fileDeleteSchema,projectId:'binari',
+  target:{root:backgroundDeleteRoot,path:id+'.'+ext,kind:'file'},expected}));
+ if(!payloads.every(validBackgroundFileDelete))throw Error('NGS_BACKGROUND_DELETE_PAYLOAD_INVALID');
+ return payloads;
+}

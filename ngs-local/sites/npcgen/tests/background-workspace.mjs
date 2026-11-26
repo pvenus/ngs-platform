@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
 import {createLocalProjectPageServer} from '../build/local-project-page-server.mjs';
+import {fileDeleteType,backgroundDeletePayloads,validBackgroundFileDelete} from '../build/prop-folder-delete-contract.mjs';
 import {backgroundPath,backgroundSourceSchema,backgroundSourceType,backgroundResultSchema,backgroundFields,validBackgroundRequest} from '../build/cinematic-sequence-contract.mjs';
 
 test('Local background workspace requires the six inputs, queues one typed request and reads its published PNG',async t=>{
@@ -12,7 +13,7 @@ test('Local background workspace requires the six inputs, queues one typed reque
  const root=join(parent,'projects');mkdirSync(root,{mode:0o700});
  const project=join(root,'binari'),folder=join(project,'cinematics','backgrounds');
  mkdirSync(project,{mode:0o700});writeFileSync(join(project,'project.json'),'{"name":"비나리"}',{mode:0o600});
- const jobs=[];const server=createLocalProjectPageServer({root,readBackgroundReady:async()=>true,
+ const jobs=[];let deleteReady=false;const server=createLocalProjectPageServer({root,readBackgroundReady:async()=>true,readBackgroundDeleteReady:async()=>deleteReady,
   requestQueue:{enqueue(cmd){jobs.push(cmd);return {status:'queued'};}}});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
  const origin='http://127.0.0.1:'+server.address().port,base=backgroundPath+'?projectId=binari';
@@ -21,9 +22,9 @@ test('Local background workspace requires the six inputs, queues one typed reque
  const boot=await fetch(origin+'/__npcgen_session'),cookie=boot.headers.get('set-cookie').split(';')[0],settings=await boot.json();
  assert.equal(settings.backgroundSourceEnabled,true);
  const get=path=>fetch(origin+path,{headers:{cookie}});
- const post=p=>fetch(origin+'/api/requests',{method:'POST',headers:{cookie,origin,'content-type':'application/json',
+ const post=(p,type=backgroundSourceType)=>fetch(origin+'/api/requests',{method:'POST',headers:{cookie,origin,'content-type':'application/json',
   'x-npcgen-csrf':settings.csrfToken,'x-npcgen-frontend-context':settings.contextId},
-  body:JSON.stringify({requestType:backgroundSourceType,idempotencyKey:'fixture-background',payload:p})});
+  body:JSON.stringify({requestType:type,idempotencyKey:'fixture-background',payload:p})});
  const payload={schemaVersion:backgroundSourceSchema,projectId:'binari',title:'테스트 원본',timeOfDay:'해질녘',season:'늦가을',
   mood:'적막',color:'먹색',location:'한옥 마당',requirements:'마루와 문턱을 구분',additionalNotes:''};
  assert.ok(validBackgroundRequest(payload));
@@ -40,6 +41,17 @@ test('Local background workspace requires the six inputs, queues one typed reque
  writeFileSync(join(folder,sha256+'.png'),png,{mode:0o600});
  const list=await (await get(base)).json();assert.deepEqual(list.backgrounds.map(x=>x.title),[row.title]);
  assert.deepEqual(Buffer.from(await (await get(base+'&image='+sha256)).arrayBuffer()),png);
+ const deletion=backgroundDeletePayloads({id:sha256,expected:{sourceRequestId:row.officialRequestId}});
+ assert.equal((await post(deletion[0],fileDeleteType)).status,404);
+ deleteReady=true;
+ assert.equal((await (await get('/__npcgen_session')).json()).backgroundDeleteEnabled,true);
+ assert.deepEqual(deletion.map(x=>x.target.path),[sha256+'.png',sha256+'.json']);
+ assert.ok(deletion.every(validBackgroundFileDelete));
+ assert.equal((await post({...deletion[0],target:{...deletion[0].target,path:'../a.png'}},fileDeleteType)).status,400);
+ for(const job of deletion)assert.equal((await post(job,fileDeleteType)).status,202);
+ assert.deepEqual(jobs.slice(1).map(x=>x.payload),deletion);
+ assert.equal((await get(base+'&image='+sha256)).status,200);
+
 });
 
 test('background create dialog marks each required field and submits optional notes without demanding them',{skip:!process.env.CHROME_BIN},async t=>{

@@ -103,7 +103,7 @@ function mountSourceRoster({items,scenes,selected,go,projectId,signal,area='cine
    if(scene===selected)link.setAttribute('aria-current','page');
    link.append(make('strong',title));
    if(!background)link.append(make('span','애니메이션 '+(scene.sequences.length+scene.clips.length)+'개','meta'));
-   li.append(link);edit?.decorate(li,id,title);rows.set(id,li);return [li];
+   li.append(link);edit?.decorate(li,id,title,background?{sourceRequestId:scene.officialRequestId}:undefined);rows.set(id,li);return [li];
   });
   items.replaceChildren(...(nodes.length?nodes:[make('li',filter.length?'검색 결과가 없습니다.':background?'게시된 배경이 없습니다.':'게시된 시네마틱이 없습니다.','meta')]));
   edit?.refresh();

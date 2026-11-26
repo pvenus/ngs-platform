@@ -1,4 +1,4 @@
-import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
@@ -674,7 +674,12 @@ async function loadWorkspace(search){
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
   if(tab==='resources'){
-   await mountBackgroundWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,
+   const deleteItem=!hosted&&session.backgroundDeleteEnabled===true&&submit?async row=>{
+    // Each accepted request owns one physical object. Stable idempotency keys
+    // let the user retry a lost second intake without duplicating the first.
+    for(const payload of backgroundDeletePayloads(row))await submitFolderDelete(submit,payload);
+   }:undefined;
+   await mountBackgroundWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,deleteItem,
     enabled:session.backgroundSourceEnabled===true});
    if(!signal.aborted)note('');
    return;
