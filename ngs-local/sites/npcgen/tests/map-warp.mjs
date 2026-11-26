@@ -176,3 +176,46 @@ test('published map edits keep a separate start image and show both ends of each
  assert.deepEqual(edge.hit,{x:770,y:610,width:100,height:80});assert.deepEqual(edge.spawn,{x:90,y:100});
  assert.deepEqual(centerMapPortal({x:999,y:3}),{x:900,y:0,width:100,height:80});
 });
+
+test('colliders draw, move, resize and delete by region and only Apply queues the exact edited map',async t=>{
+ const {mountMapWorkspace,mapDraftKey}=await import('../build/map-workspace-ui.mjs');
+ const {validMapRequest}=await import('../build/map-contract.mjs');
+ const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div');
+ const mapId='request.official.'+'d'.repeat(64),state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',
+  mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph};
+ const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
+ const saved=new Map(),requests=[];
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',
+  storage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},
+  request:async path=>path.includes('background')?{backgrounds}:path.includes('item=')?{map:state}:{maps:[]},
+  submit:async packet=>{requests.push(packet);return Response.json({status:'queued',queueId:'ngs.local.15d60410-3f24-480d-9072-cd51f3d2a006'},{status:202});}});
+ const card=()=>detail.descendants().find(n=>n.attrs['aria-label']==='충돌 영역');
+ const find=text=>card().descendants().find(n=>n.textContent===text);
+ const field=label=>card().descendants().find(n=>n.tag==='label'&&n.textContent===label).children[0];
+ const gesture=(node,x1,y1,x2,y2,mid)=>{
+  const e=(x,y)=>({button:0,pointerId:8,clientX:x,clientY:y,preventDefault(){}});
+  node.onpointerdown(e(x1,y1));node.onpointermove(e(x2,y2));mid?.();node.onpointerup(e(x2,y2));
+ };
+ const local=()=>JSON.parse(saved.get(mapDraftKey('binari',mapId))??'null')?.graph;
+ const startDraw=()=>{find('새 충돌 영역 그리기').onclick();return card().descendants().find(n=>n.className==='map-collider-draw');};
+ assert.deepEqual(card().descendants().filter(n=>n.tag==='img').map(n=>n.alt),['구역 1']);
+ gesture(startDraw(),800,600,650,350,()=>assert.equal(local(),undefined));
+ const first=local().colliders[0];assert.equal(first.regionId,'r1');assert.deepEqual(first.rect,{x:650,y:350,width:150,height:250});
+ const control=label=>card().descendants().find(n=>n.attrs['aria-label']?.startsWith(label));
+ gesture(control('충돌 영역 이동'),650,350,670,370);
+ assert.deepEqual(local().colliders[0].rect,{x:670,y:370,width:150,height:250});
+ gesture(control('오른쪽 아래 모서리'),820,620,880,700);
+ assert.deepEqual(local().colliders[0].rect,{x:670,y:370,width:210,height:330});
+ const room=field('충돌을 편집할 구역');room.value='r2';room.onchange();
+ assert.equal(control('충돌 영역 이동'),undefined);
+ assert.deepEqual(card().descendants().filter(n=>n.tag==='img').map(n=>n.alt),['구역 2']);
+ find('좌표로 충돌 영역 추가').onclick();
+ const width=field('너비');width.valueAsNumber=140;width.onchange();assert.equal(local().colliders[1].rect.width,140);
+ find('선택한 충돌 영역 삭제').onclick();
+ assert.deepEqual(local().colliders.map(c=>c.id),[first.id]);assert.equal(requests.length,0);
+ await detail.descendants().find(n=>n.textContent==='적용 · 정식 수정 요청').onclick();
+ assert.equal(requests.length,1);const {payload,requestType}=requests[0];
+ assert.equal(requestType,'map.update');assert.ok(validMapRequest(payload,requestType));
+ assert.equal(payload.expectedRevision,1);assert.deepEqual(payload.graph.colliders,local().colliders);
+ assert.deepEqual(payload.graph.connections,graph.connections);
+});

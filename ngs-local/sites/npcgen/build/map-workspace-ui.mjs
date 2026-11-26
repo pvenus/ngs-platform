@@ -1,6 +1,6 @@
 import {createMapWarp,orderedMapChain} from './map-warp.mjs';
 import {hashBrowserMap} from './map-contract.mjs';
-import {mapTypes,mapSchemas,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical} from './map-contract.mjs';
+import {mapTypes,mapSchemas,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
@@ -327,20 +327,20 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    const regionsHere=(graph.colliders??[]).filter(c=>c.regionId===collisionRegion);
    const selected=regionsHere.find(c=>c.id===collisionId);
    const controls=el('div',undefined,'map-row');
-   const current=region(collisionRegion), atLimit=(graph.colliders??[]).length>=96;
+   const current=region(collisionRegion), atLimit=(graph.colliders??[]).length>=maxMapColliders;
    const draw=button(drawingCollider?'그리기 취소':'새 충돌 영역 그리기',()=>{drawingCollider=!drawingCollider;render();});
    draw.disabled=!!pending||!imageAligned(current)||atLimit;
    const addKeyboard=button('좌표로 충돌 영역 추가',()=>addCollider(centerMapPortal({x:500,y:500})));
    addKeyboard.disabled=draw.disabled;
    controls.append(label('충돌을 편집할 구역',room),draw,addKeyboard);collision.append(controls);
-   if(atLimit)collision.append(el('p','맵마다 충돌 영역을 최대 96개까지 저장할 수 있어요.','meta'));
+   if(atLimit)collision.append(el('p','맵마다 충돌 영역을 최대 '+maxMapColliders+'개까지 저장할 수 있어요.','meta'));
    const selectedId=setOptions(['',...regionsHere.map(c=>c.id)],collisionId,
     id=>id?'충돌 영역 '+(regionsHere.findIndex(c=>c.id===id)+1):'충돌 영역 선택');
    selectedId.onchange=()=>{collisionId=selectedId.value||null;drawingCollider=false;render();};
    collision.append(label('선택한 충돌 영역',selectedId));
    const box=preview(collision,current);
    const addCollider=rect=>{
-    if(pending||!imageAligned(current)||!mapRect(rect)||(graph.colliders??[]).length>=96)return;
+    if(pending||!imageAligned(current)||!mapRect(rect)||(graph.colliders??[]).length>=maxMapColliders)return;
     const id='c-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
     graph.colliders=[...(graph.colliders??[]),{id,regionId:collisionRegion,rect}];
     collisionId=id;drawingCollider=false;changed();
