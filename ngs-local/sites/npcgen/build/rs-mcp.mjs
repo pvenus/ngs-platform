@@ -90,6 +90,8 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
       (row.requestType===backgroundAnimationType&&(!local||!validBackgroundAnimation(row.payload)))||
       (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
       (row.requestType===fileDeleteType&&(!local||!(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload))))){result.rejected++;continue;}
+   // Background media v2 has real scheduler stages; relay the contract unchanged,
+   // just as for already-queued v1 compatibility rows.
    const stamp=fingerprint(row);
    let entry=memo.get(row.queueId);
    if(entry&&entry.stamp!==stamp){result.unresolved++;continue;}
