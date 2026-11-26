@@ -97,6 +97,19 @@ test('definite rejection, advanced replay and foreign receipt never erase queued
  assert.deepEqual(await consumer.pollOnce(),{seen:4,acknowledged:1,unresolved:1,rejected:1,deferred:1});
  assert.equal(known,1);
 });
+test('structured background intake relays the exact payload and rejects missing required inputs',async()=>{
+ const valid={...makeQueue(),requestType:'background.source.generate',payload:{schemaVersion:'ngs.background-source-generate.v1',projectId:'binari',
+  title:'굿 준비방',timeOfDay:'초저녁',season:'늦가을',mood:'고요함',color:'남청',location:'한옥',requirements:'빈 마루',additionalNotes:''}};
+ const bad={...makeQueue(),requestType:valid.requestType,payload:{...valid.payload,season:''}};
+ const pump=createRSQueueConsumer({callNGS:async(name,args)=>{
+  if(name===list)return {requests:[valid,bad]};
+  assert.equal(args.queueId,valid.queueId);return {queueId:valid.queueId,status:'acknowledged'};
+ },callRS:async(name,args)=>{
+  assert.equal(name,submit);assert.equal(args.idempotencyKey,valid.queueId);assert.deepEqual(args.payload,valid.payload);
+  return receipt(valid);
+ }});
+ assert.deepEqual(await pump.pollOnce(),{seen:2,acknowledged:1,unresolved:0,rejected:1,deferred:0});
+});
 test('untrusted queue data fails closed before transport',async()=>{
  const a=makeQueue();
  for(const rows of [[a,a],[{...a,idempotencyKey:'chosen'}]]){

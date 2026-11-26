@@ -10,7 +10,7 @@ import {createSpaceMachineMcp,spaceMachineConfiguration} from './space-machine-m
 const rsTool='request_submit',spaceRsTool='request_submit_space';
 const projectId='binari',limit=16;
 const storedStatuses=new Set(['registered','planned','completed','failed','cancelled']);
-import {cinematicNewTypes} from './cinematic-sequence-contract.mjs';
+import {cinematicNewTypes,backgroundSourceType,validBackgroundRequest} from './cinematic-sequence-contract.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {propTypes} from './prop-workspace-contract.mjs';
 const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
@@ -84,7 +84,8 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
   const result={seen:rows.length,acknowledged:0,unresolved:0,rejected:0,deferred:0};
   for(const row of rows){
    if(!kinds.has(row.requestType)||row.payload===null||typeof row.payload!=='object'||Array.isArray(row.payload)||
-      row.payload.projectId!==projectId||Buffer.byteLength(JSON.stringify(row.payload))>90*1024){result.rejected++;continue;}
+      row.payload.projectId!==projectId||Buffer.byteLength(JSON.stringify(row.payload))>90*1024||
+      (local&&row.requestType===backgroundSourceType&&!validBackgroundRequest(row.payload))){result.rejected++;continue;}
    const stamp=fingerprint(row);
    let entry=memo.get(row.queueId);
    if(entry&&entry.stamp!==stamp){result.unresolved++;continue;}
