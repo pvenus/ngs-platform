@@ -61,7 +61,11 @@ test('timeline rejects duplicate, non-finite and out-of-range author data',()=>{
 
 test('background loops continuously across the camera-stable turnaround without duplicate endpoints',async()=>{
  const {backgroundLoopFrame,backgroundLoopPlayback,validBackgroundLoopPlayback}=await import('../build/cinematic-timeline.mjs');
- const playback=backgroundLoopPlayback();
+ const playback=backgroundLoopPlayback(45);
+ const compact=backgroundLoopPlayback();
+ assert.equal(compact.durationFrames,(8*2-2)*6);
+ assert.equal(validBackgroundLoopPlayback(compact),true);
+ assert.deepEqual([0,6,42,48,78,84,90].map(t=>backgroundLoopFrame(t,8)),[0,1,7,6,1,0,1]);
  assert.equal(playback.durationFrames,(45*2-2)*3);
  assert.ok(validBackgroundLoopPlayback(playback));
  assert.equal(validBackgroundLoopPlayback({...playback,speedCurve:[{frame:0,rate:0}]}),false);

@@ -17,16 +17,19 @@ export function validCinematicSequenceResult(m){
  if(upscale)fields.push('upscale');
  const baseSize=n=>Number.isInteger(n)&&n>=128&&n<=512&&n%32===0;
  const u=m?.upscale;
+ const compact=grouped&&m.playback?.durationFrames===84&&m.playback?.speedCurve?.[0]?.rate===1/6;
+ const count=compact?8:45,reduced=compact&&m.group?.variant==='pixel';
  const hasCorrection=Object.hasOwn(u??{},'pixelCorrection'),c=u?.pixelCorrection;
  const dimensions=upscale?grouped&&exact(u,['model','scale','sourceWidth','sourceHeight',...(hasCorrection?['pixelCorrection']:[])])&&
-  (!hasCorrection||m.group?.variant==='pixel'&&exact(c,['method','upscaledFramesSha256'])&&
-   c.method==='reference-palette-v1'&&cinematicHash(c.upscaledFramesSha256))&&
+  (!reduced||hasCorrection)&&
+  (!hasCorrection||m.group?.variant==='pixel'&&exact(c,['method','upscaledFramesSha256',...(reduced?['downscale']:[])])&&
+   c.method==='reference-palette-v1'&&cinematicHash(c.upscaledFramesSha256)&&(!reduced||c.downscale===2))&&
   u.model==='seedvr2-7b-fp16'&&u.scale===2&&baseSize(u.sourceWidth)&&baseSize(u.sourceHeight)&&
-  m.width===u.sourceWidth*2&&m.height===u.sourceHeight*2:[m?.width,m?.height].every(baseSize);
+  m.width===u.sourceWidth*(reduced?1:2)&&m.height===u.sourceHeight*(reduced?1:2):[m?.width,m?.height].every(baseSize);
  return exact(m,fields)&&(!grouped||validBackgroundAnimationGroup(m.group))&&
   m.schemaVersion===cinematicSequenceResultSchema&&m.projectId==='binari'&&cinematicId(m.officialRequestId)&&cinematicHash(m.sourceSha256)&&
   dimensions&&m.masterFps===MASTER_FPS&&
-  m.frameCount===45&&Array.isArray(m.frames)&&m.frames.length===m.frameCount&&
+  (!compact||upscale)&&m.frameCount===count&&Array.isArray(m.frames)&&m.frames.length===m.frameCount&&
   m.frames.every((f,i)=>exact(f,['index','sha256','bytes'])&&f.index===i&&cinematicHash(f.sha256)&&Number.isSafeInteger(f.bytes)&&f.bytes>=57&&f.bytes<=cinematicSequenceFrameLimit)&&
   m.frames.reduce((a,b)=>a+b.bytes,0)<=(upscale?128:64)*1024*1024&&validCinematicPlayback(m.playback);
 }
@@ -96,7 +99,8 @@ export const validBackgroundAnimation=p=>exact(p,['schemaVersion','projectId','b
  p.references&&typeof p.references==='object'&&!Array.isArray(p.references)&&Object.keys(p.references).length>=1&&
  Object.entries(p.references).every(([variant,hash])=>['cinematic','pixel'].includes(variant)&&cinematicHash(hash))&&
  new Set(Object.values(p.references)).size===Object.keys(p.references).length&&cinematicMotion(p.motionPrompt)&&
- p.motionPrompt.startsWith(backgroundLoopInstruction+' ')&&validBackgroundLoopPlayback(p.playback);
+ p.motionPrompt.startsWith(backgroundLoopInstruction+' ')&&validBackgroundLoopPlayback(p.playback)&&
+ (p.schemaVersion===backgroundAnimationSchema||p.playback.durationFrames===264);
 export const validBackgroundAnimationGroup=g=>exact(g,['requestId','variant','backgroundSha256'])&&
  cinematicId(g.requestId)&&['cinematic','pixel'].includes(g.variant)&&cinematicHash(g.backgroundSha256);
 export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType]);

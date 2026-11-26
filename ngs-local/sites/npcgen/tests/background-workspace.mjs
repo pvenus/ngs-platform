@@ -232,7 +232,7 @@ test('background two-track comparison uses one submission and a shared timeline 
   assert([...form.querySelectorAll('fieldset input')].filter(i=>i.checked).length===2,'two picks unavailable');
   text.value='바닥에서 옅은 안개가 흐른다';text.dispatchEvent(new Event('input',{bubbles:true}));
   form.requestSubmit();await new Promise(r=>setTimeout(r,25));
-  assert(sent.length===1&&sent[0].requestType==='background.animation.workflow'&&Object.keys(sent[0].payload.references).length===2&&sent[0].payload.motionPrompt.startsWith('Continuous seamless ambient loop')&&sent[0].payload.playback.durationFrames===264,'not one paired loop request');
+  assert(sent.length===1&&sent[0].requestType==='background.animation.workflow'&&Object.keys(sent[0].payload.references).length===2&&sent[0].payload.motionPrompt.startsWith('Continuous seamless ambient loop')&&sent[0].payload.playback.durationFrames===84,'not one paired loop request');
   [...document.querySelectorAll('#detail button')].find(b=>b.textContent==='두 영상 함께 재생').click();
   const host=document.querySelector('.background-pair-player'),range=await untilReady(host,'input[type=range]:enabled');
   assert(host.querySelectorAll('canvas').length===2&&range&&!range.disabled&&host.querySelectorAll('input[type=range]').length===1,'no shared player');

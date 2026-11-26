@@ -22,15 +22,18 @@ export function defaultCinematicPlayback(frameCount=45){
 }
 // Backgrounds are ambient plates: the exact native PNG frames are mirrored
 // without duplicating either turnaround frame. No added hold or camera reset.
-export function backgroundLoopFrame(tick,frameCount,ticksPerFrame=3){
+export function backgroundLoopFrame(tick,frameCount,ticksPerFrame=frameCount===8?6:3){
  const span=Math.max(1,2*frameCount-2),n=Math.floor(Math.max(0,tick)/ticksPerFrame)%span;
  return Math.min(n,span-n);
 }
-export function backgroundLoopPlayback(){
- return {...defaultCinematicPlayback(),durationFrames:264};
+export function backgroundLoopPlayback(frameCount=8){
+ if(frameCount===45)return {...defaultCinematicPlayback(),durationFrames:264};
+ if(frameCount!==8)throw Error('BACKGROUND_LOOP_FRAME_COUNT_INVALID');
+ return {...defaultCinematicPlayback(),durationFrames:84,speedCurve:[{frame:0,rate:1/6}]};
 }
 export function validBackgroundLoopPlayback(v){
- return validCinematicPlayback(v)&&v.durationFrames===264&&v.speedCurve.length===1&&v.speedCurve[0].rate===1/3&&
+ return validCinematicPlayback(v)&&v.speedCurve.length===1&&
+  (v.durationFrames===264&&v.speedCurve[0].rate===1/3||v.durationFrames===84&&v.speedCurve[0].rate===1/6)&&
   v.cameraCurve.length===1&&v.cameraCurve[0].zoom===1&&v.cameraCurve[0].x===.5&&v.cameraCurve[0].y===.5;
 }
 function cameraAt(keys,t){
