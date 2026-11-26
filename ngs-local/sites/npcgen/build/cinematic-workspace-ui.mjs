@@ -438,7 +438,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
     try{
      const {manifest,frameUrl}=await loadTrack(entry);
      popup.signal.throwIfAborted();
-     popup.body.replaceChildren(make('p',manifest.width+' × '+manifest.height+' · PNG 프레임'+(manifest.upscale?' · 2× 업스케일':''),'meta'));
+     popup.body.replaceChildren(make('p',manifest.width+' × '+manifest.height+' · PNG 프레임'+(manifest.upscale?' · 2× 업스케일':'')+(manifest.upscale?.pixelCorrection?' · 픽셀 보정':''),'meta'));
      await mountCinematicPlayer(popup.body,{manifest,frameUrl,signal:popup.signal,edit:false,autoplay:true,inspectFrames:true,loop:true});
     }catch{if(!popup.signal.aborted)popup.body.replaceChildren(make('p','이 애니메이션을 재생할 수 없어요.','meta error'));}
    },signal);

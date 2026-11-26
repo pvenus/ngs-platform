@@ -17,7 +17,10 @@ export function validCinematicSequenceResult(m){
  if(upscale)fields.push('upscale');
  const baseSize=n=>Number.isInteger(n)&&n>=128&&n<=512&&n%32===0;
  const u=m?.upscale;
- const dimensions=upscale?grouped&&exact(u,['model','scale','sourceWidth','sourceHeight'])&&
+ const hasCorrection=Object.hasOwn(u??{},'pixelCorrection'),c=u?.pixelCorrection;
+ const dimensions=upscale?grouped&&exact(u,['model','scale','sourceWidth','sourceHeight',...(hasCorrection?['pixelCorrection']:[])])&&
+  (!hasCorrection||m.group?.variant==='pixel'&&exact(c,['method','upscaledFramesSha256'])&&
+   c.method==='reference-palette-v1'&&cinematicHash(c.upscaledFramesSha256))&&
   u.model==='seedvr2-7b-fp16'&&u.scale===2&&baseSize(u.sourceWidth)&&baseSize(u.sourceHeight)&&
   m.width===u.sourceWidth*2&&m.height===u.sourceHeight*2:[m?.width,m?.height].every(baseSize);
  return exact(m,fields)&&(!grouped||validBackgroundAnimationGroup(m.group))&&
