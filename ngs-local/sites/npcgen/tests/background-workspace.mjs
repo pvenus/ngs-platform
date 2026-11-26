@@ -8,7 +8,8 @@ import {createLocalProjectPageServer} from '../build/local-project-page-server.m
 import {backgroundPath,backgroundSourceSchema,backgroundSourceType,backgroundResultSchema,backgroundFields,validBackgroundRequest} from '../build/cinematic-sequence-contract.mjs';
 
 test('Local background workspace requires the six inputs, queues one typed request and reads its published PNG',async t=>{
- const root=mkdtempSync(join(realpathSync(tmpdir()),'ngs-bg-'));t.after(()=>rmSync(root,{force:true,recursive:true}));
+ const parent=mkdtempSync(join(realpathSync(tmpdir()),'ngs-bg-'));t.after(()=>rmSync(parent,{force:true,recursive:true}));
+ const root=join(parent,'projects');mkdirSync(root,{mode:0o700});
  const project=join(root,'binari'),folder=join(project,'cinematics','backgrounds');
  mkdirSync(project,{mode:0o700});writeFileSync(join(project,'project.json'),'{"name":"비나리"}',{mode:0o600});
  const jobs=[];const server=createLocalProjectPageServer({root,readBackgroundReady:async()=>true,

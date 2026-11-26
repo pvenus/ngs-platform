@@ -93,7 +93,7 @@
     "sites/npcgen/build/workspace-read-registry.mjs": "4176d6998b85139815ede24c160f5c0f37d28a7b742832e14113cc8021c50ed2",
     "sites/npcgen/build/workspace-read-storage.mjs": "3939889d63eb5b912fe61cd4c719cb5770a1477c9dfd22842eea5d121ef2c9fd",
     "sites/npcgen/tests/audio-result-index.mjs": "d53ee5864154d7905614668a51d2c4f1328c6cda2e817220d8e88c1e37d0776d",
-    "sites/npcgen/tests/background-workspace.mjs": "56b2a4814769cc56ca64849daa5fab64e1c9490a36c396b092ba7ae48aa76076",
+    "sites/npcgen/tests/background-workspace.mjs": "4a94e2ebedd581bf5b9e6d0687a3bb61bd4491c6fb59313ed81894c2c21ae1ab",
     "sites/npcgen/tests/cinematic-roster-browser.mjs": "04d42b8d0eeaa107687e1010c0a1ddd7397405db671bad52857b5d85b3770cc7",
     "sites/npcgen/tests/cinematic-timeline.mjs": "d94c8222d95ca225c5446d8c77189f7e439c02f1befc831ee4efabe8e37f89b2",
     "sites/npcgen/tests/cinematic-workspace.mjs": "95eb020d546b84bdc05ab6fc46ba1dad7b2598aaf348b507cb2ce404067f2a68",
