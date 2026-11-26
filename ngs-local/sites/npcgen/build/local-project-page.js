@@ -1,4 +1,4 @@
-import {fileDeleteType,propFolderDeletePayload} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
@@ -245,6 +245,13 @@ function workspaceTransport(session,request,signal){
   return response;
  };
  return {hosted,post,submit};
+}
+async function submitFolderDelete(submit,payload){
+ const data=new TextEncoder().encode(JSON.stringify(payload));
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),n=>n.toString(16).padStart(2,'0')).join('');
+ const response=await submit({requestType:fileDeleteType,idempotencyKey:'delete-catalog-folder:'+hash,payload});
+ const value=await response.json().catch(()=>null);
+ if(!isQueuedRequest(response,value))throw Error(value?.error??'CATALOG_FOLDER_DELETE_NOT_ACCEPTED');
 }
 function waitForSpaceCatalog(signal,delay=1250){
  return new Promise((resolve,reject)=>{
@@ -687,14 +694,8 @@ async function loadWorkspace(search){
     if(!isQueuedRequest(response,value))throw Error(value?.error??'PROP_ANIMATION_REMOVE_NOT_ACCEPTED');
     return {accepted:true};
    }:undefined;
-   const deleteItem=!hosted&&session.propFolderDeleteEnabled===true&&submit?async row=>{
-    const payload=propFolderDeletePayload(row);
-    const data=new TextEncoder().encode(JSON.stringify(payload));
-    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),n=>n.toString(16).padStart(2,'0')).join('');
-    const response=await submit({requestType:fileDeleteType,idempotencyKey:'delete-prop-folder:'+hash,payload});
-    const value=await response.json().catch(()=>null);
-    if(!isQueuedRequest(response,value))throw Error(value?.error??'PROP_FOLDER_DELETE_NOT_ACCEPTED');
-   }:undefined;
+   const deleteItem=!hosted&&session.propFolderDeleteEnabled===true&&submit?
+    row=>submitFolderDelete(submit,propFolderDeletePayload(row)):undefined;
    await mountPropWorkspace({items,detail,tools:listToolbar,item,propTab:search.get('propTab'),propAnimation:search.get('propAnimation'),navigate:next,request,submit,removeAnimations,deleteItem,actions:session.propActions??[],signal});
    if(!signal.aborted)note('');
    return;
@@ -763,7 +764,9 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='npcs'){
-   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace,poseSelectionV2Enabled:session.poseSelectionV2Enabled===true,basicPortraitRequests:session.npcBasicPortraitEnabled===true,scopedPortraitRequests:!hosted&&session.npcScopedPortraitEnabled===true});
+   const deleteItem=!hosted&&session.npcFolderDeleteEnabled===true&&submit?
+    row=>submitFolderDelete(submit,npcFolderDeletePayload(row)):undefined;
+   await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace,deleteItem,listTools:listToolbar,poseSelectionV2Enabled:session.poseSelectionV2Enabled===true,basicPortraitRequests:session.npcBasicPortraitEnabled===true,scopedPortraitRequests:!hosted&&session.npcScopedPortraitEnabled===true});
    return;
   }
   if(tab==='concept'&&projectId==='binari'){

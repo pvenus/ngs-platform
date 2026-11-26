@@ -356,7 +356,9 @@ export async function npcWorkspaceRead({openProject,query,authorize,mediaCache=f
  const roster=(await sequenceMap(allowed,one)).filter(Boolean);
  const base={projectId,actId,chapters:[...new Set(roster.flatMap(row=>ids(row.chapters)))].map(id=>({id,label:id})),
   npcs:roster.map(row=>({id:row.id,name:string(row.name,row.id),role:string(row.role),kind:string(row.kind),
-   status:string(row.status),actId:id(row.actId)?row.actId:actId,chapters:ids(row.chapters),scope:projectId+'/npcs/'+row.id}))};
+   status:string(row.status),actId:id(row.actId)?row.actId:actId,chapters:ids(row.chapters),scope:projectId+'/npcs/'+row.id,
+   ...(typeof row.creationBasis?.requestId==='string'&&/^workflow\.task\.[a-f0-9]{64}$/u.test(row.creationBasis.requestId)?
+    {creationTaskId:row.creationBasis.requestId}:{})}))};
  let full=Array.isArray(index?.characterOrder)&&roster.length===allowed.length;
  const markPartial=()=>{full=false;};
  let json=base;

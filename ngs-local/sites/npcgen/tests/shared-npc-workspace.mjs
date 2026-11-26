@@ -6,11 +6,13 @@ import {dirname,join} from 'node:path';
 import test from 'node:test';
 import {npcWorkspaceRead} from '../build/npc-workspace.mjs';
 import {localNpcWorkspace} from '../build/local-npc-workspace.mjs';
+import {npcFolderDeletePayload,validNpcFolderDelete} from '../build/prop-folder-delete-contract.mjs';
 import {groupNpcPortraits} from '../build/local-npc-workspace-ui.mjs';
 
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const json=value=>Buffer.from(JSON.stringify(value));
 const npc='npc.fixture',prefix='npcs/'+npc+'/',hidden='npc.hidden';
+const creationTaskId='workflow.task.'+'4'.repeat(64);
 const png=Buffer.from([137,80,78,71,13,10,26,10,1]),mp4=Buffer.from('0000ftypfixture');
 const asset=sha(png)+'.png',movie=sha(mp4)+'.mp4',doc=Buffer.from('# 원본\n\n기획 문서.');
 const rawshape={npcId:npc,generationId:'generation.fixture',posePreset:'idle',presetId:'walk',direction:'s',
@@ -18,6 +20,7 @@ const rawshape={npcId:npc,generationId:'generation.fixture',posePreset:'idle',pr
 const initial=new Map([
  ['npcs/metadata.json',json({actId:'act.fixture',characterOrder:[npc]})],
  [prefix+'metadata.json',json({id:npc,name:'검증 NPC',role:'인물',kind:'npc',chapters:['chapter.1'],
+  creationBasis:{requestId:creationTaskId,generationId:'private'},
   planningCategoryOrder:['category.markdown','category.no-fallback'],privateField:'do not project',
   portraitSets:{representative:{portraitAssetId:asset},idle:{pixelAssetId:asset}},
   animationSlotKeys:['idle/jump/n']})],
@@ -79,6 +82,11 @@ test('shared NPC read parity over actual Local FS and asynchronous object replic
  const roster=await hosted(path());
  assert.deepEqual(roster,await local(path()));
  assert.deepEqual(roster.json.npcs.map(row=>row.id),[npc]);
+ assert.equal(roster.json.npcs[0].creationTaskId,creationTaskId);
+ assert.equal(roster.json.npcs[0].creationBasis,undefined);
+ const request=npcFolderDeletePayload({id:npc,expected:{creationTaskId}});
+ assert.equal(validNpcFolderDelete(request),true);
+ assert.equal(validNpcFolderDelete({...request,expected:{creationTaskId:'old'}}),false);
  const detail=await hosted(path({npcId:npc}));
  assert.deepEqual(detail,await local(path({npcId:npc})));
  assert.equal(detail.json.npc.privateField,undefined);

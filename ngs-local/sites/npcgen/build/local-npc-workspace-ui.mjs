@@ -530,7 +530,9 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
     rosterLinks.set(npc.id,link);
     link.append(nodeOf('strong','',npc.name));
     if(present(npc.role))link.append(nodeOf('span','meta',npc.role));
-    entry.append(link);edit?.decorate(entry,npc.id,npc.name);pool.append(entry);
+    entry.append(link);
+    if(npc.creationTaskId)edit?.decorate(entry,npc.id,npc.name,{creationTaskId:npc.creationTaskId});
+    pool.append(entry);
    }
   }
   if(!content.length)content.push(nodeOf('li','meta',filter?'검색 결과가 없습니다.':'조건에 맞는 NPC가 없습니다.'));
