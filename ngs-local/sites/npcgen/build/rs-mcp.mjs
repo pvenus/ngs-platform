@@ -1,4 +1,4 @@
-import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete,validCinematicFileDelete} from './prop-folder-delete-contract.mjs';
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
 import {createNgsHealthRelay} from './rs-ops-ngs-health.mjs';
 import {startOpsHealthReport} from './local-ops-health-report.mjs';
@@ -87,7 +87,7 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
    if(!kinds.has(row.requestType)||row.payload===null||typeof row.payload!=='object'||Array.isArray(row.payload)||
       row.payload.projectId!==projectId||Buffer.byteLength(JSON.stringify(row.payload))>90*1024||
       (local&&row.requestType===backgroundSourceType&&!validBackgroundRequest(row.payload))||
-      (row.requestType===fileDeleteType&&(!local||!(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload))))){result.rejected++;continue;}
+      (row.requestType===fileDeleteType&&(!local||!(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload))))){result.rejected++;continue;}
    const stamp=fingerprint(row);
    let entry=memo.get(row.queueId);
    if(entry&&entry.stamp!==stamp){result.unresolved++;continue;}

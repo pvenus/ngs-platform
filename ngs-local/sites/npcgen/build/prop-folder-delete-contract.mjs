@@ -41,3 +41,24 @@ export function backgroundDeletePayloads({id,expected}){
  if(!payloads.every(validBackgroundFileDelete))throw Error('NGS_BACKGROUND_DELETE_PAYLOAD_INVALID');
  return payloads;
 }
+
+export const cinematicDeleteRoot='canonical-files/binari/cinematics';
+const seq=/^sequences\/request\.official\.[a-f0-9]{64}$/u;
+const legacy=/^results\/request\.official\.[a-f0-9]{64}\.(?:mp4|json)$/u;
+export function validCinematicFileDelete(p){
+ const t=p?.target,e=p?.expected;
+ return exact(p,['schemaVersion','projectId','target','expected'])&&p.schemaVersion===fileDeleteSchema&&p.projectId==='binari'&&
+  exact(t,['root','path','kind'])&&t.root===cinematicDeleteRoot&&typeof t.path==='string'&&
+  exact(e,['sourceSha256'])&&propSha(e.sourceSha256)&&
+  (t.kind==='directory'&&seq.test(t.path)||t.kind==='file'&&(legacy.test(t.path)||
+    t.path==='sources/'+e.sourceSha256+'.png'||t.path==='sources/'+e.sourceSha256+'.json'));
+}
+export function cinematicDeletePayloads(sourceSha256,inventory){
+ if(!propSha(sourceSha256)||!exact(inventory,['sourceSha256','targets'])||inventory.sourceSha256!==sourceSha256||
+  !Array.isArray(inventory.targets)||inventory.targets.length<1||inventory.targets.length>1024)
+  throw Error('NGS_CINEMATIC_DELETE_INVENTORY_INVALID');
+ const rows=inventory.targets.map(target=>({schemaVersion:fileDeleteSchema,projectId:'binari',target,expected:{sourceSha256}}));
+ if(!rows.every(validCinematicFileDelete)||new Set(rows.map(x=>x.target.path)).size!==rows.length||
+  rows.at(-1).target.path!=='sources/'+sourceSha256+'.png')throw Error('NGS_CINEMATIC_DELETE_INVENTORY_INVALID');
+ return rows;
+}

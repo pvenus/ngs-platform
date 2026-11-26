@@ -1,4 +1,4 @@
-import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
@@ -685,7 +685,12 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='cinematic'){
-   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true});
+   const deleteItem=!hosted&&session.cinematicDeleteEnabled===true&&submit?async row=>{
+    const query=new URLSearchParams({projectId,sourceSha256:row.id});
+    const inventory=await request('/api/cinematic-delete-inventory?'+query);
+    for(const payload of cinematicDeletePayloads(row.id,inventory))await submitFolderDelete(submit,payload);
+   }:undefined;
+   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,deleteItem,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true});
    if(!signal.aborted)note('');
    return;
   }
