@@ -19,6 +19,7 @@ test('Local background workspace requires the six inputs, queues one typed reque
  const origin='http://127.0.0.1:'+server.address().port,base=backgroundPath+'?projectId=binari';
  assert.equal((await fetch(origin+base)).status,401);
  assert.equal((await fetch(origin+'/catalog-roster-edit.mjs')).status,200);
+ assert.equal((await fetch(origin+'/background-playback.mjs')).status,200);
  const boot=await fetch(origin+'/__npcgen_session'),cookie=boot.headers.get('set-cookie').split(';')[0],settings=await boot.json();
  assert.equal(settings.backgroundSourceEnabled,true);
  const get=path=>fetch(origin+path,{headers:{cookie}});
@@ -210,10 +211,10 @@ test('background two-track comparison uses one submission and a shared timeline 
   }
   return {backgrounds};
  };
- let abort=new AbortController();
+ let abort=new AbortController(),routed;
  const mount=panel=>mountBackgroundWorkspace({items:document.querySelector('#items'),detail:document.querySelector('#detail'),
   tools:document.querySelector('#tools'),projectId:'binari',item:pixel.sha256,panel,animationEnabled:true,
-  signal:abort.signal,request:call,navigate:()=>'',submit:async req=>{
+  signal:abort.signal,request:call,navigate:options=>{if(options.cineTab==='play')routed=options;return '?'+new URLSearchParams(options);},submit:async req=>{
    sent.push(req);return Response.json({status:'queued',queueId:'ngs.local.a82bf7f5-c880-49e5-b490-3712b02eef72'},{status:202});
   }});
  try{
@@ -225,7 +226,30 @@ test('background two-track comparison uses one submission and a shared timeline 
   assert(still?.querySelector('img')?.src===openStill.querySelector('img').src,'full source image not in popup');
   still.querySelector('button').click();await new Promise(r=>setTimeout(r,25));
   assert(!document.querySelector('dialog[open]'),'image popup did not close');
+  assert(document.querySelector('#background-tab-play')?.getAttribute('href').includes('cineTab=play'),'missing published play tab');
   abort.abort();abort=new AbortController();
+  const realRaf=globalThis.requestAnimationFrame,realCancel=globalThis.cancelAnimationFrame;
+  let pending,nextId=0;
+  globalThis.requestAnimationFrame=fn=>(pending=fn,++nextId);
+  globalThis.cancelAnimationFrame=()=>{pending=undefined;};
+  const frame=time=>{const callback=pending;pending=undefined;callback?.(time);};
+  await mount('play');
+  const active=document.querySelector('#background-tab-play'),play=document.querySelector('[data-flag="seojin.spiritSight"]');
+  assert(routed.item===pixel.sha256&&active?.getAttribute('aria-selected')==='true','play is not a selected resource tab');
+  assert(document.querySelector('[data-motion=paired]'),'did not load verified pair');
+  const spirit=document.querySelector('[data-layer=spirit]'),normal=document.querySelector('[data-layer=normal]');
+  frame(0);frame(250);
+  assert(spirit.dataset.frame==='2'&&normal.dataset.frame==='2','both layers do not use the same phase');
+  play.click();
+  assert(play.getAttribute('aria-pressed')==='true'&&play.textContent.includes('끄기'),'cannot activate the flag');
+  frame(400);
+  const incoming=Number(spirit.style.opacity);
+  assert(incoming>0&&incoming<1&&spirit.dataset.frame==='3','blend is not gradual or phase reset when turned on');
+  play.click();frame(450);
+  assert(play.getAttribute('aria-pressed')==='false'&&play.textContent.includes('켜기')&&Number(spirit.style.opacity)>0&&
+   Number(spirit.style.opacity)<incoming&&spirit.dataset.frame===normal.dataset.frame,'cannot reverse blend from the current phase');
+  abort.abort();abort=new AbortController();
+  globalThis.requestAnimationFrame=realRaf;globalThis.cancelAnimationFrame=realCancel;
   await mount('animations');
   document.querySelector('[aria-label="배경 애니메이션 추가"]').click();
   const form=document.querySelector('dialog form'),text=form.querySelector('textarea');

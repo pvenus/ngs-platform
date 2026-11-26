@@ -7,6 +7,7 @@ import {cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateTyp
  validCinematicSourceGenerate,validCinematicSequencesRemove} from './cinematic-sequence-contract.mjs';
 import {defaultCinematicPlayback,validCinematicPlayback,backgroundLoopPlayback,validBackgroundLoopPlayback} from './cinematic-timeline.mjs';
 import {mountCinematicPlayer,layoutTimelineControls} from './cinematic-player.mjs';
+import {mountPlayableBackground} from './background-playback.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const make=(tag,text,css)=>{const el=document.createElement(tag);if(text)el.textContent=text;if(css)el.className=css;return el;};
 const url=(projectId,values={})=>cinematicPath+'?'+new URLSearchParams({projectId,...values});
@@ -337,23 +338,26 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   if(entry?.cinematic)await deleteItem({id:entry.cinematic.sha256,expected:{sourceRequestId:entry.cinematic.officialRequestId}});
   await deleteItem(row);
  }),signal});
- mountSourceRoster({items,scenes:rows,selected,go:options=>navigate({cineTab:panel==='animations'?'animations':'source',...options}),projectId,signal,area:'background',edit});
+ mountSourceRoster({items,scenes:rows,selected,go:options=>navigate({cineTab:['animations','play'].includes(panel)?panel:'source',...options}),projectId,signal,area:'background',edit});
  if(!selected){
   detail.replaceChildren(make('h3','배경 설계'),notice,make('p',(enabled||pixelEnabled)?'배경을 고르거나 +로 새 배경을 요청하세요.':'배경을 고르세요. 생성 기능이 아직 연결되지 않았습니다.','meta'));
   return;
  }
- const active=panel==='animations'?'animations':'source',go=key=>navigate({item:selected.sha256,cineTab:key});
+ const pages=[['source','원본 이미지'],['animations','애니메이션']];
+ if(selected.pixel&&selected.cinematic)pages.push(['play','플레이']);
+ const active=pages.some(([key])=>panel===key)?panel:'source',go=key=>navigate({item:selected.sha256,cineTab:key});
  const header=make('header',null,'npc-detail-heading prop-detail-heading');
  header.append(make('h3',selected.displayTitle??selected.title));
  const tabs=make('nav',null,'npc-detail-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','배경 상세 영역');
- const tabLinks=[['source','원본 이미지'],['animations','애니메이션']].map(([key,title])=>{
+ const tabLinks=pages.map(([key,title],index)=>{
   const link=make('a',title);link.href=go(key);link.id='background-tab-'+key;link.setAttribute('role','tab');
   link.setAttribute('aria-controls','background-tab-panel');
   link.setAttribute('aria-selected',String(key===active));link.tabIndex=key===active?0:-1;
   link.addEventListener('keydown',event=>{
-   const target=event.key==='Home'?'source':event.key==='End'?'animations':
-    ['ArrowLeft','ArrowRight'].includes(event.key)?key==='source'?'animations':'source':null;
-   if(target){event.preventDefault();tabLinks[target==='source'?0:1].click();}
+   const last=pages.length-1;
+   const target=event.key==='Home'?0:event.key==='End'?last:event.key==='ArrowLeft'?(index+last)%pages.length:
+     event.key==='ArrowRight'?(index+1)%pages.length:null;
+   if(target!==null){event.preventDefault();tabLinks[target].click();}
   },{signal});return link;
  });
  tabs.append(...tabLinks);
@@ -382,6 +386,36 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   }
   return;
  }
+ const urlForCine=values=>cinematicPath+'?'+new URLSearchParams({projectId,...values});
+ async function loadTrack(group,[variant,result]){
+  const {sequence,playback}=await request(urlForCine({sequence:result.id}));
+  const proof=sequence?.group;
+  if(!validCinematicSequenceResult(sequence)||!validBackgroundLoopPlayback(playback)||sequence.officialRequestId!==result.id||
+     sequence.sourceSha256!==result.sourceSha256||proof?.requestId!==group.requestId||proof?.variant!==variant||
+     proof?.backgroundSha256!==selected.sha256)throw Error('BACKGROUND_ANIMATION_INVALID');
+  return {label:labels[variant],manifest:{...sequence,playback},frameUrl:i=>urlForCine({sequence:result.id,frame:i})};
+ }
+ const publishedResults=group=>Object.entries(group.variants??{}).filter(([variant,value])=>
+  variants[variant]?.sha256===value?.sourceSha256&&cinematicId(value?.id));
+ if(active==='play'){
+  const still=source=>({url:url({image:source.sha256}),width:source.width,height:source.height});
+  const player=mountPlayableBackground(section,{signal,stills:{normal:still(variants.pixel),spirit:still(variants.cinematic),title:selected.displayTitle??selected.title},
+   loadPair:async()=>{
+    const {groups}=await request(url({groups:selected.sha256}));
+    for(const group of Array.isArray(groups)?groups:[]){
+     if(!cinematicId(group.requestId))continue;
+     const results=publishedResults(group);if(results.length!==2)continue;
+     try{
+      const tracks=await Promise.all(results.map(entry=>loadTrack(group,entry)));
+      return Object.fromEntries(tracks.map(track=>[track.manifest.group.variant==='pixel'?'normal':'spirit',
+       {frames:track.manifest.frames.map(f=>track.frameUrl(f.index))}]));
+     }catch{signal.throwIfAborted();}
+    }
+    return null;
+   }});
+  await player.ready;
+  return;
+ }
  const card=make('section',null,'prop-surface'),bar=make('div',null,'prop-panel-heading');
  bar.append(make('h4','애니메이션','npc-media-heading'));card.append(bar);section.append(card);
  if(animationEnabled&&submit&&available.length){
@@ -405,7 +439,6 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   },signal,'npc-one-stop-trigger');
   add.setAttribute('aria-label','배경 애니메이션 추가');add.title='배경 애니메이션 추가';bar.append(add);
  }
- const urlForCine=values=>cinematicPath+'?'+new URLSearchParams({projectId,...values});
  let response;
  try{response=await request(url({groups:selected.sha256}));}catch{
   if(!signal.aborted)card.append(make('p','애니메이션 목록을 읽지 못했어요.','meta error'));return;
@@ -417,26 +450,18 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
  signal.addEventListener('abort',()=>running?.abort(),{once:true});
  const entries=make('ul',null,'prop-animation-list cinematic-versions');
  for(const group of groups){
-  const results=Object.entries(group.variants??{}).filter(([variant,value])=>variants[variant]?.sha256===value.sourceSha256&&cinematicId(value.id));
+  const results=publishedResults(group);
   if(!results.length||!cinematicId(group.requestId))continue;
   const row=make('li',null,'cinematic-version'),line=make('div',null,'prop-panel-heading'),view=make('div');
   const count=results.length;
   line.append(make('strong','요청 '+short(group.requestId)+' · '+results.map(([key])=>labels[key]).join(' / ')));
-  async function loadTrack([variant,result]){
-   const {sequence,playback}=await request(urlForCine({sequence:result.id}));
-   const proof=sequence?.group;
-   if(!validCinematicSequenceResult(sequence)||!validBackgroundLoopPlayback(playback)||sequence.officialRequestId!==result.id||
-      sequence.sourceSha256!==result.sourceSha256||proof?.requestId!==group.requestId||proof?.variant!==variant||
-      proof?.backgroundSha256!==selected.sha256)throw Error('BACKGROUND_ANIMATION_INVALID');
-   return {label:labels[variant],manifest:{...sequence,playback},frameUrl:i=>urlForCine({sequence:result.id,frame:i})};
-  }
   for(const entry of results){
    const [variant]=entry;
    const enlarge=action(labels[variant]+' 확대',async()=>{
     const popup=backgroundMediaDialog(detail,labels[variant]+' 애니메이션',variant,signal);
     popup.body.append(make('p','PNG 프레임을 읽고 있어요.','meta'));
     try{
-     const {manifest,frameUrl}=await loadTrack(entry);
+     const {manifest,frameUrl}=await loadTrack(group,entry);
      popup.signal.throwIfAborted();
      popup.body.replaceChildren(make('p',manifest.width+' × '+manifest.height+' · PNG 프레임'+(manifest.upscale?' · 2× 업스케일':'')+(manifest.upscale?.pixelCorrection?.downscale===2?' · ½ 크기 픽셀 보정':manifest.upscale?.pixelCorrection?' · 픽셀 보정':''),'meta'));
      await mountCinematicPlayer(popup.body,{manifest,frameUrl,signal:popup.signal,edit:false,autoplay:true,inspectFrames:true,loop:true});
@@ -449,7 +474,7 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
    for(const host of entries.querySelectorAll('.background-pair-player'))host.replaceChildren();
    view.append(make('p','PNG 프레임을 읽고 있어요.','meta'));
    try{
-    const data=await Promise.all(results.map(loadTrack));
+    const data=await Promise.all(results.map(entry=>loadTrack(group,entry)));
     controller.signal.throwIfAborted();
     view.replaceChildren();
     await mountBackgroundAnimationPair(view,data,{signal:controller.signal,autoplay:true});

@@ -41,6 +41,7 @@ const assets=new Map([
  ['/prop-package-contract.mjs',['text/javascript; charset=utf-8',new URL('./prop-package-contract.mjs',import.meta.url)]],
  ['/cinematic-sequence-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-sequence-contract.mjs',import.meta.url)]],
  ['/cinematic-timeline.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-timeline.mjs',import.meta.url)]],
+ ['/background-playback.mjs',['text/javascript; charset=utf-8',new URL('./background-playback.mjs',import.meta.url)]],
  ['/cinematic-player.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-player.mjs',import.meta.url)]],
  ['/cinematic-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-contract.mjs',import.meta.url)]],
  ['/prop-folder-delete-contract.mjs',['text/javascript; charset=utf-8',new URL('./prop-folder-delete-contract.mjs',import.meta.url)]],

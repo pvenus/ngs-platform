@@ -1,3 +1,4 @@
+import backgroundPlayback from "../ngs-local/sites/npcgen/build/background-playback.mjs?raw";
 import propFolderDelete from "../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs?raw";
 import html from "../ngs-local/sites/npcgen/build/local-project-page.html?raw";
 import css from "../ngs-local/sites/npcgen/build/local-project-page.css?raw";
@@ -34,6 +35,7 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/prop-package-contract.mjs", {type: javascript, body: propPackageContract}],
  ["/cinematic-sequence-contract.mjs",{type:javascript,body:cine0}],
  ["/cinematic-timeline.mjs",{type:javascript,body:cine1}],
+ ["/background-playback.mjs",{type:javascript,body:backgroundPlayback}],
  ["/cinematic-player.mjs",{type:javascript,body:cine2}],
  ["/prop-folder-delete-contract.mjs",{type:javascript,body:propFolderDelete}],
  ["/catalog-roster-edit.mjs",{type:javascript,body:catalogRosterEdit}],
