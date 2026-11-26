@@ -36,8 +36,8 @@ export function mountCatalogRosterEdit({items,tools,modalOwner=items.parentEleme
    input.parentElement.classList.toggle('catalog-roster-edit-row',active);
   }
  }
- function decorate(li,id,title){
-  const row={id,title},input=create('input','catalog-roster-checkbox');
+ function decorate(li,id,title,expected){
+  const row={id,title,...(expected?{expected}: {})},input=create('input','catalog-roster-checkbox');
   input.type='checkbox';input.hidden=!active;input.disabled=busy;input.checked=selected.has(id);
   input.setAttribute('aria-label',title+' 선택');
   input.addEventListener('change',()=>{if(!active||busy)return;if(input.checked)selected.set(id,row);else selected.delete(id);refresh();},{signal});

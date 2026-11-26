@@ -9,6 +9,7 @@ import {createLocalProjectPageServer} from '../build/local-project-page-server.m
 import {canonicalPropPackage} from '../build/prop-package-contract.mjs';
 import {propPayload,propTypes,validPropPayload} from '../build/prop-workspace-contract.mjs';
 import {admitPropRequest,propWorkspaceRead} from '../build/prop-workspace.mjs';
+import {fileDeleteType,propFolderDeletePayload} from '../build/prop-folder-delete-contract.mjs';
 import {loopingPropPreview} from '../build/prop-workspace-ui.mjs';
 
 const pin='1'.repeat(64),digest=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -81,9 +82,9 @@ test('exact no-preset named request, current pin, double submission protection d
  };
  for(const [key,raw] of fixture)make(key,raw);
  const sent=[];
- let enabled=true;
+ let enabled=true,deleteEnabled=false;
  const server=createLocalProjectPageServer({root,requestQueue:{enqueue(cmd){sent.push(cmd);return {status:'queued',queueId:'fixture'};}},
-  readPropActions:async()=>enabled?['animation']:[]});
+  readPropActions:async()=>enabled?['animation']:[],readPropFolderDeleteReady:async()=>deleteEnabled});
  await new Promise(ok=>server.listen(0,'127.0.0.1',ok));t.after(()=>new Promise(ok=>server.close(ok)));
  const origin='http://127.0.0.1:'+server.address().port,api='/api/prop-workspace?projectId=binari';
  const call=(path,opts)=>fetch(origin+path,opts);
@@ -109,6 +110,16 @@ test('exact no-preset named request, current pin, double submission protection d
  assert.equal((await post(animation)).status,404);
  assert.equal((await (await call('/__npcgen_session',{headers:{cookie}})).json()).propActions,undefined);
  assert.equal(sent.length,1);
+ const deletion=propFolderDeletePayload({id:propId,expected:source});
+ assert.equal((await post(deletion,fileDeleteType)).status,404);
+ deleteEnabled=true;
+ assert.equal((await (await call('/__npcgen_session',{headers:{cookie}})).json()).propFolderDeleteEnabled,true);
+ assert.equal((await post({...deletion,expected:{...source,revision:2}},fileDeleteType)).status,409);
+ assert.equal((await post({...deletion,target:{...deletion.target,path:'../npcs'}},fileDeleteType)).status,400);
+ assert.equal((await post(deletion,fileDeleteType,'invalid')).status,403);
+ assert.equal((await post(deletion,fileDeleteType)).status,202);
+ assert.deepEqual(sent[1],{requestType:fileDeleteType,idempotencyKey:'isolated-fixture',payload:deletion});
+ assert.equal((await call(api+'&propId='+propId,{headers:{cookie}})).status,200);
 });
 
 test('regeneration binds the selected immutable source and full replacement intent, not edits or a scope picker',()=>{

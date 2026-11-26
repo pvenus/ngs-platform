@@ -1,3 +1,4 @@
+import propFolderDelete from "../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs?raw";
 import html from "../ngs-local/sites/npcgen/build/local-project-page.html?raw";
 import css from "../ngs-local/sites/npcgen/build/local-project-page.css?raw";
 import page from "../ngs-local/sites/npcgen/build/local-project-page.js?raw";
@@ -34,6 +35,7 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/cinematic-sequence-contract.mjs",{type:javascript,body:cine0}],
  ["/cinematic-timeline.mjs",{type:javascript,body:cine1}],
  ["/cinematic-player.mjs",{type:javascript,body:cine2}],
+ ["/prop-folder-delete-contract.mjs",{type:javascript,body:propFolderDelete}],
  ["/catalog-roster-edit.mjs",{type:javascript,body:catalogRosterEdit}],
  ["/cinematic-workspace-ui.mjs",{type:javascript,body:cinematicWorkspace}],
  ["/cinematic-contract.mjs",{type:javascript,body:cinematicContract}],

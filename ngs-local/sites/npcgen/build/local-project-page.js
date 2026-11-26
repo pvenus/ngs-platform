@@ -1,3 +1,4 @@
+import {fileDeleteType,propFolderDeletePayload} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
@@ -686,7 +687,15 @@ async function loadWorkspace(search){
     if(!isQueuedRequest(response,value))throw Error(value?.error??'PROP_ANIMATION_REMOVE_NOT_ACCEPTED');
     return {accepted:true};
    }:undefined;
-   await mountPropWorkspace({items,detail,tools:listToolbar,item,propTab:search.get('propTab'),propAnimation:search.get('propAnimation'),navigate:next,request,submit,removeAnimations,actions:session.propActions??[],signal});
+   const deleteItem=!hosted&&session.propFolderDeleteEnabled===true&&submit?async row=>{
+    const payload=propFolderDeletePayload(row);
+    const data=new TextEncoder().encode(JSON.stringify(payload));
+    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),n=>n.toString(16).padStart(2,'0')).join('');
+    const response=await submit({requestType:fileDeleteType,idempotencyKey:'delete-prop-folder:'+hash,payload});
+    const value=await response.json().catch(()=>null);
+    if(!isQueuedRequest(response,value))throw Error(value?.error??'PROP_FOLDER_DELETE_NOT_ACCEPTED');
+   }:undefined;
+   await mountPropWorkspace({items,detail,tools:listToolbar,item,propTab:search.get('propTab'),propAnimation:search.get('propAnimation'),navigate:next,request,submit,removeAnimations,deleteItem,actions:session.propActions??[],signal});
    if(!signal.aborted)note('');
    return;
   }

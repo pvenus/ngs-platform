@@ -1,3 +1,4 @@
+import {fileDeleteType,validPropFolderDelete} from './prop-folder-delete-contract.mjs';
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
 import {createNgsHealthRelay} from './rs-ops-ngs-health.mjs';
 import {startOpsHealthReport} from './local-ops-health-report.mjs';
@@ -13,7 +14,7 @@ const storedStatuses=new Set(['registered','planned','completed','failed','cance
 import {cinematicNewTypes,backgroundSourceType,validBackgroundRequest} from './cinematic-sequence-contract.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {propTypes} from './prop-workspace-contract.mjs';
-const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
+const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),fileDeleteType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const queueId=(v,source)=>typeof v==='string'&&v.length===46&&v.startsWith('ngs.'+source+'.')&&uuid.test(v.slice(10));
@@ -85,7 +86,8 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
   for(const row of rows){
    if(!kinds.has(row.requestType)||row.payload===null||typeof row.payload!=='object'||Array.isArray(row.payload)||
       row.payload.projectId!==projectId||Buffer.byteLength(JSON.stringify(row.payload))>90*1024||
-      (local&&row.requestType===backgroundSourceType&&!validBackgroundRequest(row.payload))){result.rejected++;continue;}
+      (local&&row.requestType===backgroundSourceType&&!validBackgroundRequest(row.payload))||
+      (row.requestType===fileDeleteType&&(!local||!validPropFolderDelete(row.payload)))){result.rejected++;continue;}
    const stamp=fingerprint(row);
    let entry=memo.get(row.queueId);
    if(entry&&entry.stamp!==stamp){result.unresolved++;continue;}

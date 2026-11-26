@@ -120,7 +120,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
  items.replaceChildren(...rows.map(row=>{
   const entry=node('li'),link=node('a',null,'request-item npc-roster-entry');
   link.href=sectionUrl(row.propId);if(item===row.propId)link.setAttribute('aria-current','page');
-  link.append(node('strong',row.title),node('span',row.propId,'meta'));entry.append(link);edit?.decorate(entry,row.propId,row.title);return entry;
+  link.append(node('strong',row.title),node('span',row.propId,'meta'));entry.append(link);edit?.decorate(entry,row.propId,row.title,{revision:row.revision,sha256:row.sha256});return entry;
  }));
  edit?.refresh();
  if(rows.length===0)items.append(node('li','게시된 프랍이 없습니다.','meta'));
