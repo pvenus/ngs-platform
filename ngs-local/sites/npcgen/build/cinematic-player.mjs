@@ -3,7 +3,7 @@ import {MASTER_FPS,validCinematicPlayback,compileCinematicTimeline,cinematicSpee
 export function layoutTimelineControls(parent,initial,onValid,{signal,onSaveRequest,allowDownload=true}={}){
  const d=parent.ownerDocument,make=(tag,text)=>{const n=d.createElement(tag);if(text)n.textContent=text;return n;};
  const group=make('section'),legend=make('h4','시네마틱 카메라·프레임 곡선');
- const duration=make('input');duration.type='number';duration.step='0.041666667';duration.min='0.041666667';duration.max='60';duration.value=String(initial.durationFrames/MASTER_FPS);
+ const duration=make('input');duration.type='number';duration.step='any';duration.min=String(1/MASTER_FPS);duration.max='60';duration.value=String(initial.durationFrames/MASTER_FPS);
  const speeds=make('textarea');speeds.rows=4;speeds.value=initial.speedCurve.map(p=>[p.frame/MASTER_FPS,p.rate].join(', ')).join('\n');
  const cameras=make('textarea');cameras.rows=4;cameras.value=initial.cameraCurve.map(p=>[p.frame/MASTER_FPS,p.zoom,p.x,p.y].join(', ')).join('\n');
  const label=(s,input)=>{const l=make('label',s);l.className='prop-form-field';l.append(input);return l;};
@@ -108,7 +108,7 @@ async function loadImages(urls,signal){
  }));
  return result;
 }
-export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit=true,onSaveRequest,autoplay=false}){
+export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit=true,onSaveRequest,autoplay=false,externalClock=false}){
  const d=parent.ownerDocument,make=(tag,text)=>{const e=d.createElement(tag);if(text)e.textContent=text;return e;};
  const stage=make('canvas');stage.width=manifest.width;stage.height=manifest.height;
  stage.style.maxWidth='100%';stage.style.display='block';stage.setAttribute('aria-label','시네마틱 전용 카메라 화면');
@@ -116,7 +116,9 @@ export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit
  const toggle=make('button','재생'),range=make('input'),status=make('p','시네마틱 PNG 프레임을 읽고 있어요.');
  toggle.type='button';toggle.className='prop-control';toggle.disabled=true;
  range.type='range';range.min='0';range.max=String(manifest.playback.durationFrames-1);range.step='1';range.value='0';range.disabled=true;range.setAttribute('aria-label','시네마틱 시간');
- status.setAttribute('role','status');parent.append(stage,toggle,range,status);
+ status.setAttribute('role','status');parent.append(stage);
+ if(!externalClock)parent.append(toggle,range);
+ parent.append(status);
  let playback=manifest.playback,evaluate=compileCinematicTimeline(playback,manifest.frameCount);
  let tick=0,base=0,started=null,handle=null,frames;
  function disable(){if(handle!==null)cancelAnimationFrame(handle);handle=null;started=null;toggle.textContent='재생';}
@@ -149,6 +151,7 @@ export async function mountCinematicPlayer(parent,{manifest,frameUrl,signal,edit
   signal.throwIfAborted();
  }catch(error){if(!signal.aborted)status.textContent='PNG 프레임을 읽지 못했어요.';throw error;}
  toggle.disabled=false;range.disabled=false;paint(0);
+ if(externalClock){status.hidden=true;return paint;}
  if(autoplay)start();
  if(edit)layoutTimelineControls(parent,playback,value=>{
   if(!value)return;

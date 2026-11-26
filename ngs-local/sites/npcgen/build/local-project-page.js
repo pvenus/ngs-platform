@@ -680,7 +680,8 @@ async function loadWorkspace(search){
     for(const payload of backgroundDeletePayloads(row))await submitFolderDelete(submit,payload);
    }:undefined;
    await mountBackgroundWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,deleteItem,
-    enabled:hosted&&session.backgroundSourceEnabled===true,pixelEnabled:!hosted&&session.backgroundPixelEnabled===true});
+    enabled:hosted&&session.backgroundSourceEnabled===true,pixelEnabled:!hosted&&session.backgroundPixelEnabled===true,
+    panel:search.get('cineTab'),animationEnabled:!hosted&&session.backgroundAnimationEnabled===true});
    if(!signal.aborted)note('');
    return;
   }

@@ -11,7 +11,7 @@ import {createSpaceMachineMcp,spaceMachineConfiguration} from './space-machine-m
 const rsTool='request_submit',spaceRsTool='request_submit_space';
 const projectId='binari',limit=16;
 const storedStatuses=new Set(['registered','planned','completed','failed','cancelled']);
-import {cinematicNewTypes,backgroundSourceType,backgroundPixelType,validBackgroundPixelRequest,validBackgroundRequest} from './cinematic-sequence-contract.mjs';
+import {cinematicNewTypes,backgroundSourceType,backgroundPixelType,backgroundAnimationType,validBackgroundAnimation,validBackgroundPixelRequest,validBackgroundRequest} from './cinematic-sequence-contract.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {propTypes} from './prop-workspace-contract.mjs';
 const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),fileDeleteType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
@@ -87,6 +87,7 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
    if(!kinds.has(row.requestType)||row.payload===null||typeof row.payload!=='object'||Array.isArray(row.payload)||
       row.payload.projectId!==projectId||Buffer.byteLength(JSON.stringify(row.payload))>90*1024||
       (local&&row.requestType===backgroundSourceType&&!validBackgroundRequest(row.payload))||
+      (row.requestType===backgroundAnimationType&&(!local||!validBackgroundAnimation(row.payload)))||
       (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
       (row.requestType===fileDeleteType&&(!local||!(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload))))){result.rejected++;continue;}
    const stamp=fingerprint(row);

@@ -120,3 +120,114 @@ test('background create dialog marks each required field and submits optional no
   {timeout:25000,maxBuffer:1024*1024});
  assert.match(stdout,/<p id="result">PASS<\/p>/,stdout.match(/<p id="result">.*?<\/p>/)?.[0]);
 });
+
+test('one gallery item owns both published stills, never the draft, and accepts one paired animation request',async t=>{
+ const {backgroundAnimationType:type,backgroundAnimationSchema:schema}=await import('../build/cinematic-sequence-contract.mjs');
+ const parent=mkdtempSync(join(realpathSync(tmpdir()),'ngs-bg-animation-'));t.after(()=>rmSync(parent,{force:true,recursive:true}));
+ const root=join(parent,'projects'),project=join(root,'binari'),folder=join(project,'cinematics','backgrounds');
+ mkdirSync(folder,{mode:0o700,recursive:true});writeFileSync(join(project,'project.json'),'{"name":"비나리"}',{mode:0o600});
+ const jobs=[],server=createLocalProjectPageServer({root,readBackgroundAnimationReady:async()=>true,
+  requestQueue:{enqueue(cmd){jobs.push(cmd);return {status:'queued'};}}});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const origin='http://127.0.0.1:'+server.address().port,base=backgroundPath+'?projectId=binari';
+ const boot=await fetch(origin+'/__npcgen_session'),cookie=boot.headers.get('set-cookie').split(';')[0],settings=await boot.json();
+ assert.equal(settings.backgroundAnimationEnabled,true);
+ const sha=bytes=>createHash('sha256').update(bytes).digest('hex'),oid='request.official.'+'e'.repeat(64);
+ const derived=key=>'request.official.'+sha(JSON.stringify([oid,key]));
+ const pub=(suffix,id)=>{
+  const png=Buffer.alloc(80,suffix.charCodeAt(0)),h=sha(png);
+  writeFileSync(join(folder,h+'.json'),JSON.stringify({schemaVersion:backgroundResultSchema,projectId:'binari',officialRequestId:id,
+   title:'안뜰 · '+suffix,sha256:h,bytes:png.length,width:1536,height:1024}),{mode:0o600});
+  writeFileSync(join(folder,h+'.png'),png,{mode:0o600});return h;
+ };
+ const cinematic=pub('시네마틱 원본',derived('background_cinematic_source'));
+ const draft=pub('픽셀 생성본',derived('background_pixel_generate'));
+ const pixel=pub('픽셀 보정',oid);
+ const {backgrounds}=await (await fetch(origin+base,{headers:{cookie}})).json();
+ assert.deepEqual(backgrounds.map(x=>[x.displayTitle,x.cinematic.sha256,x.pixel.sha256]),[['안뜰',cinematic,pixel]]);
+ const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,x:.5,y:.5,zoom:1}]};
+ const payload={schemaVersion:schema,projectId:'binari',backgroundSha256:pixel,motionPrompt:'등불이 흔들린다',references:{cinematic,pixel},playback};
+ const post=p=>fetch(origin+'/api/requests',{method:'POST',headers:{cookie,origin,'content-type':'application/json',
+  'x-npcgen-csrf':settings.csrfToken,'x-npcgen-frontend-context':settings.contextId},
+  body:JSON.stringify({requestType:type,idempotencyKey:'fixture-background-animation',payload:p})});
+ assert.equal((await post({...payload,references:{cinematic:draft}})).status,404);
+ assert.equal((await post(payload)).status,202);
+ assert.deepEqual(jobs.map(x=>x.payload),[payload]);
+ const group='request.official.'+'8'.repeat(64);
+ const seq='request.official.'+sha(JSON.stringify([group,'background_animation_cinematic']));
+ const seqDir=join(project,'cinematics','sequences',seq);
+ mkdirSync(seqDir,{recursive:true,mode:0o700});
+ writeFileSync(join(seqDir,'manifest.json'),JSON.stringify({schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',
+  officialRequestId:seq,sourceSha256:cinematic,group:{requestId:group,variant:'cinematic',backgroundSha256:pixel},
+  frameCount:45,frames:Array.from({length:45},(_,index)=>({index,sha256:'f'.repeat(64),bytes:80})),
+  masterFps:24,width:128,height:128,playback}),{mode:0o600});
+ assert.deepEqual((await (await fetch(origin+base+'&groups='+pixel,{headers:{cookie}})).json()).groups.map(x=>[x.requestId,x.variants]),
+  [[group,{cinematic:{id:seq,sourceSha256:cinematic}}]]);
+});
+
+test('background two-track comparison uses one submission and a shared timeline in Chromium',{skip:!process.env.CHROME_BIN},async t=>{
+ const {createServer}=await import('node:http');const {createReadStream}=await import('node:fs');
+ const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');
+ const profile=mkdtempSync(join(realpathSync(tmpdir()),'ngs-bg-pair-browser-'));t.after(()=>rmSync(profile,{force:true,recursive:true}));
+ const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXZkAAAAASUVORK5CYII=','base64');
+ const html=`<!doctype html><meta charset="utf-8"><div id="tools"></div><ul id="items"></ul><article id="detail"></article>
+ <p id="result">RUN</p><script type="module">
+ import {mountBackgroundWorkspace} from '/cinematic-workspace-ui.mjs';
+ const assert=(v,m)=>{if(!v)throw Error(m);};
+ const pixel={sha256:'b'.repeat(64),width:1536,height:1024,title:'안뜰 · 픽셀 보정'};
+ const original={...pixel,sha256:'a'.repeat(64),title:'안뜰 · 시네마틱 원본'};
+ const pr='request.official.'+'c'.repeat(64),co='request.official.'+'d'.repeat(64),px='request.official.'+'e'.repeat(64);
+ const refs={cinematic:{id:co,sourceSha256:original.sha256},pixel:{id:px,sourceSha256:pixel.sha256}};
+ const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,x:.5,y:.5,zoom:1}]};
+ const backgrounds=[{...pixel,displayTitle:'안뜰',cinematic:original,pixel}];
+ const sent=[];
+ const call=async url=>{
+  const params=new URL(url,location.origin).searchParams;
+  if(params.has('groups'))return {groups:[{requestId:pr,variants:refs}]};
+  if(params.has('sequence')){
+   const id=params.get('sequence'),variant=id===co?'cinematic':'pixel';
+   return {playback,sequence:{schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,
+    sourceSha256:refs[variant].sourceSha256,group:{requestId:pr,variant,backgroundSha256:pixel.sha256},width:128,height:128,
+    masterFps:24,frameCount:45,frames:Array.from({length:45},(_,index)=>({index,sha256:'f'.repeat(64),bytes:90})),playback}};
+  }
+  return {backgrounds};
+ };
+ let abort=new AbortController();
+ const mount=panel=>mountBackgroundWorkspace({items:document.querySelector('#items'),detail:document.querySelector('#detail'),
+  tools:document.querySelector('#tools'),projectId:'binari',item:pixel.sha256,panel,animationEnabled:true,
+  signal:abort.signal,request:call,navigate:()=>'',submit:async req=>{
+   sent.push(req);return Response.json({status:'queued',queueId:'ngs.local.a82bf7f5-c880-49e5-b490-3712b02eef72'},{status:202});
+  }});
+ try{
+  await mount('source');
+  assert(document.querySelectorAll('#detail img').length===2&&!document.querySelector('#detail').textContent.includes('픽셀 생성본'),'not two final stills');
+  abort.abort();abort=new AbortController();
+  await mount('animations');
+  document.querySelector('[aria-label="배경 애니메이션 추가"]').click();
+  const form=document.querySelector('dialog form'),text=form.querySelector('textarea');
+  assert([...form.querySelectorAll('fieldset input')].filter(i=>i.checked).length===2,'two picks unavailable');
+  text.value='바닥에서 옅은 안개가 흐른다';text.dispatchEvent(new Event('input',{bubbles:true}));
+  form.requestSubmit();await new Promise(r=>setTimeout(r,25));
+  assert(sent.length===1&&sent[0].requestType==='background.animation.workflow'&&Object.keys(sent[0].payload.references).length===2,'not one paired request');
+  [...document.querySelectorAll('#detail button')].find(b=>b.textContent==='두 영상 함께 재생').click();
+  for(let i=0;i<40&&!document.querySelector('.background-pair-player input[type=range]:enabled');i++)await new Promise(r=>setTimeout(r,100));
+  const host=document.querySelector('.background-pair-player'),range=host.querySelector('input[type=range]');
+  assert(host.querySelectorAll('canvas').length===2&&range&&!range.disabled&&host.querySelectorAll('input[type=range]').length===1,'no shared player');
+  range.value=48;range.dispatchEvent(new Event('input',{bubbles:true}));
+  assert(host.textContent.includes('2.00초'),'shared clock could not seek');
+  document.querySelector('#result').textContent='PASS';
+ }catch(e){document.querySelector('#result').textContent=e.message;}
+ </script>`;
+ const http=createServer((req,res)=>{
+  if(req.url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(html);return;}
+  if(req.url.startsWith('/api/')){res.setHeader('Content-Type','image/png');res.end(image);return;}
+  if(!/^\/[a-z0-9-]+\.mjs$/.test(req.url)){res.writeHead(404).end();return;}
+  res.setHeader('Content-Type','text/javascript; charset=utf-8');
+  createReadStream(new URL('../build'+req.url,import.meta.url)).on('error',()=>res.end()).pipe(res);
+ });
+ await new Promise(r=>http.listen(0,'127.0.0.1',r));t.after(()=>http.close());
+ const {stdout}=await promisify(execFile)(process.env.CHROME_BIN,['--headless','--disable-gpu','--disable-background-networking',
+  '--no-first-run','--user-data-dir='+profile,'--virtual-time-budget=7200','--dump-dom','http://127.0.0.1:'+http.address().port+'/'],
+  {timeout:25000,maxBuffer:1024*1024});
+ assert.match(stdout,/<p id="result">PASS<\/p>/,stdout.match(/<p id="result">.*?<\/p>/)?.[0]);
+});

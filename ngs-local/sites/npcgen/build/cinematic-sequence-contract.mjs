@@ -74,4 +74,12 @@ export const backgroundPixelSchema='ngs.background-pixel-workflow.v1';
 export const validBackgroundPixelRequest=p=>p?.schemaVersion===backgroundPixelSchema&&typeof p.title==='string'&&
  [...p.title].length<=105&&validBackgroundRequest({...p,schemaVersion:backgroundSourceSchema});
 export const validBackgroundResult=p=>p?.schemaVersion===backgroundResultSchema&&validCinematicSourceResult({...p,schemaVersion:cinematicSourceResultSchema});
-export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,cinematicSequencesRemoveType]);
+export const backgroundAnimationType='background.animation.workflow',backgroundAnimationSchema='ngs.background-animation-workflow.v1';
+export const validBackgroundAnimation=p=>exact(p,['schemaVersion','projectId','backgroundSha256','references','motionPrompt','playback'])&&
+ p.schemaVersion===backgroundAnimationSchema&&p.projectId==='binari'&&cinematicHash(p.backgroundSha256)&&
+ p.references&&typeof p.references==='object'&&!Array.isArray(p.references)&&Object.keys(p.references).length>=1&&
+ Object.entries(p.references).every(([variant,hash])=>['cinematic','pixel'].includes(variant)&&cinematicHash(hash))&&
+ new Set(Object.values(p.references)).size===Object.keys(p.references).length&&cinematicMotion(p.motionPrompt)&&validCinematicPlayback(p.playback);
+export const validBackgroundAnimationGroup=g=>exact(g,['requestId','variant','backgroundSha256'])&&
+ cinematicId(g.requestId)&&['cinematic','pixel'].includes(g.variant)&&cinematicHash(g.backgroundSha256);
+export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType]);
