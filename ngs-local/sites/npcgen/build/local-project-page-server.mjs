@@ -42,6 +42,7 @@ const assets=new Map([
  ['/cinematic-timeline.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-timeline.mjs',import.meta.url)]],
  ['/cinematic-player.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-player.mjs',import.meta.url)]],
  ['/cinematic-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-contract.mjs',import.meta.url)]],
+ ['/catalog-roster-edit.mjs',['text/javascript; charset=utf-8',new URL('./catalog-roster-edit.mjs',import.meta.url)]],
  ['/cinematic-workspace-ui.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-workspace-ui.mjs',import.meta.url)]],
  ['/prop-workspace-ui.mjs',['text/javascript; charset=utf-8',new URL('./prop-workspace-ui.mjs',import.meta.url)]],
  ['/prop-workspace-contract.mjs',['text/javascript; charset=utf-8',new URL('./prop-workspace-contract.mjs',import.meta.url)]],

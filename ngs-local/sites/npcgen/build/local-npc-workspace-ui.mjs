@@ -1,3 +1,4 @@
+import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {createNpcPlanningEditor,editableNpcPlanningDocument,npcPlanningSelection,renderNpcPlanningDocument} from './local-npc-planning-ui.mjs';
 import {createNpcOneStopIntake,mountNpcOneStop,readOneStopMotionPresets} from './local-npc-one-stop-ui.mjs';
 import {animationRegenerateType,motionSelectionOf,npcAnimationRegenerateRequest,
@@ -452,12 +453,13 @@ export function mountNpcAnimationRegenerate(owner,{npc,request,submit,intakes,mo
  return ()=>{mounted=false;disposeDialog();actions.remove();};
 }
 
-export async function loadNpcFolder({search,projectId,signal,request,post,submitOneStop,submitPlanning,note,items,detail,workspace,poseSelectionV2Enabled=false,basicPortraitRequests=false,scopedPortraitRequests=false}){
+export async function loadNpcFolder({search,projectId,signal,request,post,submitOneStop,submitPlanning,note,items,detail,workspace,poseSelectionV2Enabled=false,basicPortraitRequests=false,scopedPortraitRequests=false,deleteItem,listTools}){
  const planEditor=projectId==='binari'&&typeof submitPlanning==='function'?createNpcPlanningEditor({owner:workspace,submit:submitPlanning,signal}):null;
  const listPane=items.parentElement;
  listPane.classList.add('npc-roster-list');
  detail.classList.add('npc-detail');
  listPane.querySelector('h3').textContent='NPC';
+ const edit=mountCatalogRosterEdit({items,tools:listTools,modalOwner:workspace,deleteItem,signal});
  if(projectId==='binari'&&basicPortraitRequests&&typeof submitOneStop==='function')
   mountNpcOneStop(listPane,{submit:submitOneStop,request,signal,basic:true});
  const heading=workspace.querySelector('.project-content-heading');
@@ -528,11 +530,11 @@ export async function loadNpcFolder({search,projectId,signal,request,post,submit
     rosterLinks.set(npc.id,link);
     link.append(nodeOf('strong','',npc.name));
     if(present(npc.role))link.append(nodeOf('span','meta',npc.role));
-    entry.append(link);pool.append(entry);
+    entry.append(link);edit?.decorate(entry,npc.id,npc.name);pool.append(entry);
    }
   }
   if(!content.length)content.push(nodeOf('li','meta',filter?'검색 결과가 없습니다.':'조건에 맞는 NPC가 없습니다.'));
-  items.replaceChildren(...content);syncSelection();
+  items.replaceChildren(...content);edit?.refresh();syncSelection();
   if(keepScroll){
    if(focused)rosterLinks.get(focused)?.focus({preventScroll:true});
    for(const [label,pool] of rosterGroups)pool.scrollTop=groupScroll.get(label)??0;

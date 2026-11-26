@@ -17,6 +17,7 @@ test('Local background workspace requires the six inputs, queues one typed reque
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
  const origin='http://127.0.0.1:'+server.address().port,base=backgroundPath+'?projectId=binari';
  assert.equal((await fetch(origin+base)).status,401);
+ assert.equal((await fetch(origin+'/catalog-roster-edit.mjs')).status,200);
  const boot=await fetch(origin+'/__npcgen_session'),cookie=boot.headers.get('set-cookie').split(';')[0],settings=await boot.json();
  assert.equal(settings.backgroundSourceEnabled,true);
  const get=path=>fetch(origin+path,{headers:{cookie}});
@@ -51,9 +52,16 @@ test('background create dialog marks each required field and submits optional no
  const id=x=>document.getElementById(x),assert=(v,m)=>{if(!v)throw Error(m);};
  try{
  let received,max=0;
+ const saved=[];
+ const backgrounds=[1,2,3].map(n=>({title:'장면 '+n,sha256:String(n).repeat(64),width:1536,height:1024}));
  await mountBackgroundWorkspace({items:id('items'),detail:id('detail'),tools:id('tools'),projectId:'binari',
-  signal:new AbortController().signal,request:async()=>({backgrounds:[]}),navigate:()=>'',enabled:true,submit:async req=>{
+  signal:new AbortController().signal,request:async()=>({backgrounds}),navigate:()=>'',enabled:true,
+  deleteItem:async row=>{saved.push(row.title);},submit:async req=>{
    received=req;max++;return Response.json({status:'queued',queueId:'ngs.local.a82bf7f5-c880-49e5-b490-3712b02eef72'},{status:202});}});
+ const search=id('background-search');
+ assert(search?.matches('input.npc-search[type=search]'),'shared search missing');
+ assert(search.nextElementSibling===id('items'),'search not above the roster');
+ assert(document.querySelector('label[for=background-search]')?.textContent==='배경 검색','search has no accessible label');
  document.querySelector('[aria-label="배경 생성 요청"]').click();
  const form=document.querySelector('dialog form'),button=form.querySelector('button[type=submit]');
  assert(button.disabled,'required gate missing');
@@ -66,6 +74,17 @@ test('background create dialog marks each required field and submits optional no
  form.requestSubmit();
  await new Promise(r=>setTimeout(r,20));
  assert(max===1&&received.requestType==='background.source.generate'&&received.payload.additionalNotes===''&&received.payload.location==='안채','wrong request');
+ const modify=document.querySelector('[aria-label="목록 편집"]'),checks=[...id('items').querySelectorAll('input[type=checkbox]')];
+ assert(modify.textContent===''&&modify.querySelector('svg')&&checks.every(x=>x.hidden),'icon or hidden state wrong');
+ modify.click();
+ assert(checks.every(x=>!x.hidden)&&modify.getAttribute('aria-pressed')==='true','edit mode not opened');
+ checks[0].click();checks[2].click();
+ id('tools').querySelector('.prop-animation-delete').click();
+ const confirm=document.querySelector('dialog[open] .prop-animation-delete');
+ assert(saved.length===0&&confirm,'no confirmation boundary');
+ confirm.click();await new Promise(r=>setTimeout(r,20));
+ assert(JSON.stringify(saved)===JSON.stringify(['장면 1','장면 3']),'did not submit separately for selected rows');
+ assert(id('items').querySelectorAll('li').length===3,'optimistically erased rows');
  id('result').textContent='PASS';
  }catch(e){id('result').textContent=e.message;}
  </script>`;

@@ -48,7 +48,7 @@ test('hosted bundling uses the single authored Local source tree, with no parall
  const imports=readFileSync(new URL('../build/shared-ngs-assets.ts',import.meta.url),'utf8');
  const paths=[...imports.matchAll(/from "\.\.\/ngs-local\/sites\/npcgen\/(.+?)\?(?:raw|inline)";/g)].map(m=>m[1]);
  assert.deepEqual(paths,[
-  'build/local-project-page.html','build/local-project-page.css','build/local-project-page.js','build/prop-package-contract.mjs','build/cinematic-sequence-contract.mjs','build/cinematic-timeline.mjs','build/cinematic-player.mjs','build/cinematic-workspace-ui.mjs','build/cinematic-contract.mjs','build/prop-workspace-ui.mjs','build/prop-workspace-contract.mjs','build/local-npc-workspace-ui.mjs',
+  'build/local-project-page.html','build/local-project-page.css','build/local-project-page.js','build/prop-package-contract.mjs','build/cinematic-sequence-contract.mjs','build/cinematic-timeline.mjs','build/cinematic-player.mjs','build/cinematic-workspace-ui.mjs','build/catalog-roster-edit.mjs','build/cinematic-contract.mjs','build/prop-workspace-ui.mjs','build/prop-workspace-contract.mjs','build/local-npc-workspace-ui.mjs',
   'build/local-npc-one-stop-ui.mjs','build/npc-motion-selection.mjs','build/local-concept-category-ui.mjs','build/local-concept-category-contract.mjs',
   'build/local-npc-planning-ui.mjs','build/local-audio-workspace.mjs','build/local-request-queue-browser.mjs',
   'build/motion-preset-convert-2d.mjs',

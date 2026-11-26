@@ -1,3 +1,4 @@
+import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {cinematicPath,cinematicHash,cinematicId} from './cinematic-contract.mjs';
 import {cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateType,cinematicPlaybackUpdateSchema,
  cinematicSourceGenerateType,cinematicSourceGenerateSchema,cinematicSequencesRemoveType,cinematicSequencesRemoveSchema,
@@ -65,13 +66,17 @@ function requestForm(parent,{caption,send,makePayload,isValid,signal,body,notice
 
 const sceneLabel=s=>s.title??'시놉시스 원본 '+short(s.sourceSha256);
 const normalizeSearch=value=>value.normalize('NFC').trim().toLocaleLowerCase();
-function mountSceneRoster({items,scenes,selected,go,projectId,signal}){
- const storageKey='ngs:cinematic-roster:v1:'+projectId;
+function mountSourceRoster({items,scenes,selected,go,projectId,signal,area='cinematic',edit=null}){
+ const background=area==='background';
+ const keyOf=s=>background?s.sha256:s.sourceSha256;
+ const storageKey='ngs:'+area+'-roster:v1:'+projectId;
  const get=()=>{try{return JSON.parse(globalThis.sessionStorage.getItem(storageKey))??{};}catch{return {};}};
  const saved=get(),query=make('input',null,'npc-search cinematic-search');
- query.id='cinematic-search';query.type='search';query.maxLength=120;query.placeholder='장면 이름 검색';
- query.value=typeof saved.query==='string'?saved.query.slice(0,120):'';
- const label=make('label','장면 검색','npc-search-label');label.htmlFor=query.id;
+ query.id=area+'-search';query.type='search';query.maxLength=120;query.placeholder=background?'배경 이름 검색':'장면 이름 검색';
+ let previousSearch='';
+ if(background&&typeof saved.query!=='string')try{previousSearch=globalThis.sessionStorage.getItem('ngs.background.search:'+projectId)??'';}catch{}
+ query.value=(typeof saved.query==='string'?saved.query:previousSearch).slice(0,120);
+ const label=make('label',background?'배경 검색':'장면 검색','npc-search-label');label.htmlFor=query.id;
  items.before(label,query);
  const rows=new Map();
  const y=node=>node.getBoundingClientRect().top-items.getBoundingClientRect().top+items.scrollTop;
@@ -94,12 +99,14 @@ function mountSceneRoster({items,scenes,selected,go,projectId,signal}){
    const title=sceneLabel(scene);
    if(!filter.every(term=>normalizeSearch(title).includes(term)))return [];
    const li=make('li'),link=make('a',null,'request-item npc-roster-entry');
-   link.href=go({cineSource:scene.sourceSha256,item:''});
+   const id=keyOf(scene);link.href=go(background?{item:id}:{cineSource:id,item:''});
    if(scene===selected)link.setAttribute('aria-current','page');
-   link.append(make('strong',title),make('span','애니메이션 '+(scene.sequences.length+scene.clips.length)+'개','meta'));
-   li.append(link);rows.set(scene.sourceSha256,li);return [li];
+   link.append(make('strong',title));
+   if(!background)link.append(make('span','애니메이션 '+(scene.sequences.length+scene.clips.length)+'개','meta'));
+   li.append(link);edit?.decorate(li,id,title);rows.set(id,li);return [li];
   });
-  items.replaceChildren(...(nodes.length?nodes:[make('li',filter.length?'검색 결과가 없습니다.':'게시된 시네마틱이 없습니다.','meta')]));
+  items.replaceChildren(...(nodes.length?nodes:[make('li',filter.length?'검색 결과가 없습니다.':background?'게시된 배경이 없습니다.':'게시된 시네마틱이 없습니다.','meta')]));
+  edit?.refresh();
   const anchor=rows.get(restore?.anchor);
   const top=anchor&&typeof items.getBoundingClientRect==='function'?y(anchor)+(Number(restore.offset)||0):Number(restore?.top)||0;
   items.scrollTop=Math.max(0,top);
@@ -111,7 +118,7 @@ function mountSceneRoster({items,scenes,selected,go,projectId,signal}){
  signal.addEventListener('abort',()=>{remember();label.remove();query.remove();},{once:true});
 }
 export async function mountCinematicWorkspace({items,detail,tools,request,submit,projectId,item,source,panel,navigate,signal,
- enabled,playbackEnabled=false,sourceEnabled=false,removeEnabled=false}){
+ enabled,playbackEnabled=false,sourceEnabled=false,removeEnabled=false,deleteItem}){
  const {scenes}=await request(url(projectId,{grouped:'1'}));
  if(signal.aborted)return;
  if(!Array.isArray(scenes)||!scenes.every(s=>s&&cinematicHash(s.sourceSha256)&&(s.title===null||typeof s.title==='string')&&
@@ -137,7 +144,8 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
   add.setAttribute('aria-label','시네마틱 원본 생성');add.title='시네마틱 원본 생성';
   tools.replaceChildren(add);tools.hidden=false;
  }
- mountSceneRoster({items,scenes,selected,go,projectId,signal});
+ const edit=mountCatalogRosterEdit({items,tools,deleteItem,signal});
+ mountSourceRoster({items,scenes,selected,go,projectId,signal,edit});
  const heading=make('header',null,'npc-detail-heading prop-detail-heading');
  const title=make('div',null,'prop-identity'),actions=make('div',null,'prop-actions');
  heading.append(title,actions);
@@ -293,13 +301,10 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
  selection();
 }
 
-export async function mountBackgroundWorkspace({items,detail,tools,request,submit,projectId,item,navigate,signal,enabled}){
+export async function mountBackgroundWorkspace({items,detail,tools,request,submit,projectId,item,navigate,signal,enabled,deleteItem}){
  const url=values=>backgroundPath+'?'+new URLSearchParams({projectId,...values});
- const notice=statusLine(),toolbar=make('div',null,'prop-actions');
- const search=make('input');search.type='search';search.placeholder='배경 검색';search.setAttribute('aria-label','배경 검색');
- const key='ngs.background.search:'+projectId;
- try{search.value=sessionStorage.getItem(key)??'';}catch{}
- toolbar.append(search);
+ const notice=statusLine();
+ items.parentElement?.classList.add('npc-roster-list','prop-roster');
  if(enabled&&submit){
   const add=action('+',()=>{
    const inputs={},examples={title:'예: 의식 전의 한옥 안채',timeOfDay:'예: 해가 진 직후',season:'예: 늦가을',
@@ -317,25 +322,14 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
       inputs[field]=input;form.append(labeled(label,input));
      }
     }});
-  },signal,'prop-control prop-primary-control');
-  add.setAttribute('aria-label','배경 생성 요청');toolbar.append(add);
+  },signal,'npc-one-stop-trigger');
+  add.setAttribute('aria-label','배경 생성 요청');add.title='배경 생성 요청';tools.replaceChildren(add);tools.hidden=false;
  }
- tools.replaceChildren(toolbar);tools.hidden=false;
  const payload=await request(url({}));if(signal.aborted)return;
  const rows=Array.isArray(payload.backgrounds)?payload.backgrounds:[];
- function renderList(){
-  const text=search.value.trim().toLocaleLowerCase();
-  const result=rows.filter(x=>!text||x.title.toLocaleLowerCase().includes(text));
-  const entries=result.map(x=>{
-   const li=make('li'),a=make('a',x.title,'request-item');
-   a.href=navigate({item:x.sha256});if(x.sha256===item)a.setAttribute('aria-current','page');
-   li.append(a);return li;
-  });
-  items.replaceChildren(...(entries.length?entries:[make('li',text?'검색 결과가 없습니다.':'게시된 배경이 없습니다.','meta')]));
- }
- search.addEventListener('input',()=>{try{sessionStorage.setItem(key,search.value);}catch{}renderList();},{signal});
- renderList();
  const selected=rows.find(x=>x.sha256===item);
+ const edit=mountCatalogRosterEdit({items,tools,deleteItem,signal});
+ mountSourceRoster({items,scenes:rows,selected,go:navigate,projectId,signal,area:'background',edit});
  if(!selected){
   detail.replaceChildren(make('h3','배경 설계'),notice,make('p',enabled?'배경을 고르거나 +로 새 원본을 요청하세요.':'배경을 고르세요. 생성 기능이 아직 연결되지 않았습니다.','meta'));
   return;

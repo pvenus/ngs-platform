@@ -1,3 +1,4 @@
+import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {propPayload,propTypes,propWorkspacePath,propSlug,validPropGenerateReference,validPropPayload} from './prop-workspace-contract.mjs';
 import {propPackageMediaLimit} from './prop-package-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
@@ -98,7 +99,7 @@ function animationPreview(clip,lane,signal){
  return frame;
 }
 
-export async function mountPropWorkspace({items,detail,tools,item,propTab,propAnimation,navigate,request,submit,removeAnimations,actions=[],signal}){
+export async function mountPropWorkspace({items,detail,tools,item,propTab,propAnimation,navigate,request,submit,removeAnimations,actions=[],signal,deleteItem}){
  const can=action=>typeof submit==='function'&&actions.includes(action);
  const tab=propTab==='animation'?'animation':'basic';
  const sectionUrl=(id,key=tab,clip)=>navigate({item:id,propTab:key==='animation'?'animation':'',propAnimation:key==='animation'&&clip?clip:''});
@@ -114,12 +115,14 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   add.setAttribute('aria-label','프랍 생성');add.title='프랍 생성';
   add.addEventListener('click',()=>open('generate'));tools.replaceChildren(add);tools.hidden=false;
  }
+ const edit=mountCatalogRosterEdit({items,tools,deleteItem,signal});
  const rows=data.props;
  items.replaceChildren(...rows.map(row=>{
   const entry=node('li'),link=node('a',null,'request-item npc-roster-entry');
   link.href=sectionUrl(row.propId);if(item===row.propId)link.setAttribute('aria-current','page');
-  link.append(node('strong',row.title),node('span',row.propId,'meta'));entry.append(link);return entry;
+  link.append(node('strong',row.title),node('span',row.propId,'meta'));entry.append(link);edit?.decorate(entry,row.propId,row.title);return entry;
  }));
+ edit?.refresh();
  if(rows.length===0)items.append(node('li','게시된 프랍이 없습니다.','meta'));
  if(!item||!propSlug(item)||!rows.some(row=>row.propId===item)){
   const header=node('header',null,'npc-detail-heading');

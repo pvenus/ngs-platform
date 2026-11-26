@@ -5,6 +5,7 @@ import propPackageContract from "../ngs-local/sites/npcgen/build/prop-package-co
 import cine0 from "../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs?raw";
 import cine1 from "../ngs-local/sites/npcgen/build/cinematic-timeline.mjs?raw";
 import cine2 from "../ngs-local/sites/npcgen/build/cinematic-player.mjs?raw";
+import catalogRosterEdit from "../ngs-local/sites/npcgen/build/catalog-roster-edit.mjs?raw";
 import cinematicWorkspace from "../ngs-local/sites/npcgen/build/cinematic-workspace-ui.mjs?raw";
 import cinematicContract from "../ngs-local/sites/npcgen/build/cinematic-contract.mjs?raw";
 import propWorkspace from "../ngs-local/sites/npcgen/build/prop-workspace-ui.mjs?raw";
@@ -33,6 +34,7 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/cinematic-sequence-contract.mjs",{type:javascript,body:cine0}],
  ["/cinematic-timeline.mjs",{type:javascript,body:cine1}],
  ["/cinematic-player.mjs",{type:javascript,body:cine2}],
+ ["/catalog-roster-edit.mjs",{type:javascript,body:catalogRosterEdit}],
  ["/cinematic-workspace-ui.mjs",{type:javascript,body:cinematicWorkspace}],
  ["/cinematic-contract.mjs",{type:javascript,body:cinematicContract}],
  ["/prop-workspace-ui.mjs",{type:javascript,body:propWorkspace}],

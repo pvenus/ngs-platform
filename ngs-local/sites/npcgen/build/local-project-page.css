@@ -367,3 +367,13 @@ ul{padding:0;list-style:none}
  .cinematic-version-line:not(:has(input)){grid-template-columns:72px minmax(0,1fr)}
  .cinematic-row-actions{grid-column:1/-1;justify-content:flex-start}
 }
+
+/* Common folder roster edit mode; checkboxes are separate from links. */
+.catalog-roster-edit-tools{display:inline-flex;align-items:center;gap:6px}
+.catalog-roster-edit-trigger{display:inline-grid;place-items:center;width:34px;height:34px;padding:0}
+.catalog-roster-edit-trigger[aria-pressed=true]{background:var(--secondary);border-color:var(--primary)}
+.catalog-roster-edit-row{display:flex;align-items:center;gap:6px}
+.catalog-roster-edit-row>.request-item{flex:1;min-width:0}
+.catalog-roster-checkbox{flex:none;accent-color:var(--primary)}
+.catalog-roster-edit-tools>[hidden],.catalog-roster-checkbox[hidden],.catalog-roster-edit-status[hidden]{display:none}
+.catalog-roster-delete-targets{max-height:12rem;overflow:auto}
