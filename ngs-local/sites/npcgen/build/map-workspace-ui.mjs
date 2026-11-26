@@ -3,7 +3,7 @@ import {hashBrowserMap} from './map-contract.mjs';
 import {mapTypes,mapSchemas,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
-const button=(text,fn)=>{const b=el('button',text,'prop-control');b.type='button';b.onclick=fn;return b;};
+const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
 const empty=()=>({title:'',regions:[],startRegionId:null,connections:[]});
 export const mapDraftKey=(project,id)=>'ngs-map-draft:v1:'+project+':'+(id??'new');
 export function chooseMapDraft(saved,published){
@@ -47,12 +47,39 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
  const published=record?.map;
  if(record&&!validMapState(published))throw Error('MAP_READ_INVALID');
  const assets=new Map(backgrounds.filter(b=>backgroundId(b.backgroundId)&&!b.title.endsWith(' · 시네마틱 원본')).map(b=>[b.backgroundId,b]));
- const imageAligned=r=>!!r&&assets.get(r.backgroundId)?.sha256===r.imageSha256;
- const assetTitle=id=>assets.get(id)?.displayTitle??assets.get(id)?.title??(id?'누락된 배경 · '+id.slice(-8):'배경 미연결');
  const list=el('div',undefined,'cinematic-list');
  for(const m of maps){const a=el('a',m.title+' · r'+m.revision,'prop-control');a.href=navigate({item:m.mapId});if(m.mapId===item)a.setAttribute('aria-current','page');list.append(a);}
- items.replaceChildren(list);tools.replaceChildren(button('+ 새 맵',()=>{location.href=navigate({item:'new'});}),button('새로고침',()=>location.reload()));tools.hidden=false;
- if(!item){detail.replaceChildren(el('h3','맵 제작'),el('p','배경을 먼저 제작하고, 배경 설계 목록에서 이미지를 골라 구역과 포털을 연결하세요.'));return;}
+ const opener=button('+',openNew,'npc-one-stop-trigger');
+ opener.setAttribute('aria-label','새 맵');opener.title='새 맵';opener.disabled=!enabled||!submit;
+ let modal=null;
+ items.replaceChildren(list);tools.replaceChildren(opener,button('새로고침',()=>location.reload()));tools.hidden=false;
+ if(published)mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,published,submit,enabled});
+ else detail.replaceChildren(el('h3','맵 제작'),el('p','배경을 먼저 제작하고, + 버튼으로 새 맵을 만들어 구역과 포털을 연결하세요.'));
+ if(item==='new'&&enabled&&submit)openNew();
+ function openNew(){
+  if(modal||!enabled||!submit||signal?.aborted)return;
+  modal=el('dialog',undefined,'prop-workspace-dialog map-create-dialog');
+  const dialog=modal,content=el('div'),heading=el('h3','새 맵 생성 요청'),id='map-create-'+crypto.randomUUID();
+  heading.id=id;dialog.setAttribute('aria-labelledby',id);
+  dialog.append(heading,el('p','완성된 배경을 고르고 이동 순서를 정하세요. 문서 워커는 지정한 연결의 출입구와 도착점만 찾습니다.','meta'),content);
+  const abort=()=>dialog.close();
+  const close=()=>dialog.close();
+  const canClose=mountMapEditor({detail:content,maps,assets,projectId,navigate,signal,storage,submit,enabled,onClose:close});
+  dialog.addEventListener('cancel',ev=>{if(!canClose())ev.preventDefault();});
+  dialog.addEventListener('close',()=>{
+   signal?.removeEventListener('abort',abort);dialog.remove();modal=null;
+   if(!signal?.aborted)opener.focus({preventScroll:true});
+  },{once:true});
+  signal?.addEventListener('abort',abort,{once:true});
+  document.body.append(dialog);dialog.showModal();
+  dialog.querySelector('input:not(:disabled)')?.focus({preventScroll:true});
+ }
+}
+
+function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,published,submit,enabled,onClose}){
+ const q=new URLSearchParams({projectId});
+ const imageAligned=r=>!!r&&assets.get(r.backgroundId)?.sha256===r.imageSha256;
+ const assetTitle=id=>assets.get(id)?.displayTitle??assets.get(id)?.title??(id?'누락된 배경 · '+id.slice(-8):'배경 미연결');
  const key=mapDraftKey(projectId,published?.mapId);let saved;
  try{saved=JSON.parse(storage.getItem(key)??'null');}catch{}
  const draft=chooseMapDraft(saved,published);
@@ -90,7 +117,7 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
   }catch(e){bark.textContent=e.message==='MAP_REVISION_CONFLICT'?'다른 변경이 먼저 적용됐습니다. 새로고침해 확인해 주세요.':'정식 요청 접수를 확인하지 못했어요. 세션 초안은 그대로입니다.';}
   finally{busy=false;render();}
  }
- signal?.addEventListener('abort',()=>stopMovement(),{once:true});
+ if(published)signal?.addEventListener('abort',()=>stopMovement(),{once:true});
  function bindMovement(box,actor,positionLabel){
   let frame,last=0,target=null;
   const keys=new Set(),vectors={arrowup:[0,-1],arrowdown:[0,1],arrowleft:[-1,0],arrowright:[1,0],w:[0,-1],s:[0,1],a:[-1,0],d:[1,0]};
@@ -142,7 +169,7 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
    pick=null;render();
   });
   play.disabled=mode==='edit'&&(!validMapGraph(graph)||!graph.connections.length||graph.regions.some(r=>!imageAligned(r)));
-  head.append(label('맵 이름',name),play);
+  head.append(label('맵 이름',name));if(published)head.append(play);
   const side=el('div',undefined,'map-panel');
   if(conflict){side.append(el('p','현재 버전이 바뀌었습니다. 세션 초안은 유지되지만 이전 버전으로 적용할 수 없습니다.'),button('초안 버리고 최신 버전 열기',()=>{
    if(!globalThis.confirm('세션에만 저장된 초안을 버리고 최신 버전을 열까요?'))return;
@@ -277,9 +304,10 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
     };
    }
   }else view.append(el('p','완성된 배경을 선택하면 출입구와 도착점을 이미지 위에서 지정할 수 있어요.'));
-  const foot=el('div',undefined,'map-row');
+  const foot=el('div',undefined,onClose?'prop-actions map-modal-footer':'map-row');
+  if(onClose){const close=button('닫기',onClose);close.disabled=busy;foot.append(close);}
   if(mode==='edit'){
-   const action=button(busy?'접수 중…':published?'적용 · 정식 수정 요청':'생성 · 정식 요청',apply);
+   const action=button(busy?'접수 중…':published?'적용 · 정식 수정 요청':'요청 보내기',apply,onClose?'prop-control prop-primary-control':'prop-control');
    action.disabled=!enabled||!submit||busy||conflict||!!pending;foot.append(action);
   }
   if(pending&&!published&&maps.some(x=>x.mapId===pending.id))foot.append(button('생성된 맵 열기',()=>{storage.removeItem(key);location.href=navigate({item:pending.id});}));
@@ -289,8 +317,10 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
   if(pending&&!bark.textContent)bark.textContent='정식 요청 접수됨. OPS에서 진행 상태를 확인할 수 있어요.';
   if(!enabled&&!pending&&!bark.textContent)bark.textContent='정식 맵 요청을 접수할 수 없는 상태입니다.';
   const main=el('div',undefined,mode==='play'?'map-play-layout':'map-editor');if(mode==='edit')main.append(side);main.append(view);
-  detail.replaceChildren(el('h3',published?'맵 제작 · r'+published.revision:'새 맵'),head,main,foot,bark);
+  if(onClose)detail.replaceChildren(head,main,bark,foot);
+  else detail.replaceChildren(el('h3','맵 제작 · r'+published.revision),head,main,foot,bark);
   mountPlay?.();
  }
  render();
+ return ()=>!busy;
 }

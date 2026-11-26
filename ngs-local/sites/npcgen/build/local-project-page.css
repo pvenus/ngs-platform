@@ -407,3 +407,7 @@ ul{padding:0;list-style:none}
 .map-play-layout .map-exit{pointer-events:none;display:grid;place-content:center;background:#102d575e}
 .map-player{position:absolute;width:1rem;height:1rem;border-radius:50%;border:2px solid #fff7e6;background:#dea958;box-shadow:0 0 2px #100917,0 2px 10px #100917;transform:translate(-50%,-100%);pointer-events:none;z-index:2}
 .map-position{font-variant-numeric:tabular-nums}
+
+.map-create-dialog{width:min(62rem,calc(100vw - 2rem))}
+.map-create-dialog .map-modal-footer{margin-top:1rem}
+@media(max-width:540px){.map-create-dialog{width:calc(100vw - 16px)}}
