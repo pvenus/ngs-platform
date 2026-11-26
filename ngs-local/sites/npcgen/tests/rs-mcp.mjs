@@ -287,3 +287,33 @@ test('a slow or unavailable health receiver never delays handing off queue conte
   assert.equal((await pump.pollOnce()).acknowledged,1);
  }finally{release();}
 });
+
+test('only exact Local map creation and update reach RS, with unchanged payload',async()=>{
+ const regions=['entry','yard'].map((id,i)=>({id,name:id,description:'Go through the passage',
+  backgroundId:'background.'+String(i).repeat(64),imageSha256:String(i+2).repeat(64)}));
+ const edge={id:'entry-to-yard',from:'entry',to:'yard',label:'Enter',hit:null,spawn:null};
+ const graph={title:'Map smoke',startRegionId:'entry',regions,connections:[edge]};
+ const generate={...makeQueue(),requestType:'map.generate',payload:{schemaVersion:'ngs.map-generate.v1',projectId:'binari',graph,intent:'Keep the route'}};
+ const update={...makeQueue(),requestType:'map.update',payload:{schemaVersion:'ngs.map-update.v1',projectId:'binari',
+  mapId:idFor(generate.queueId),expectedRevision:1,graph:{...graph,connections:[{...edge,hit:{x:10,y:20,width:80,height:90},spawn:{x:20,y:40}}]}}};
+ const invalid=[{...makeQueue(),requestType:generate.requestType,payload:{...generate.payload,intent:''}},
+  {...makeQueue(),requestType:update.requestType,payload:{...update.payload,expectedRevision:0}}];
+ const accepted=new Map([generate,update].map(row=>[row.queueId,row]));
+ const calls=[];
+ const local=createRSQueueConsumer({callNGS:async(name,args)=>{
+  if(name===list)return {requests:[generate,update,...invalid]};
+  assert.equal(name,ack);assert.deepEqual(args.receipt,receipt(accepted.get(args.queueId)));
+  return {queueId:args.queueId,status:'acknowledged'};
+ },callRS:async(name,args)=>{
+  const row=accepted.get(args.idempotencyKey);assert.ok(row);
+  assert.equal(name,submit);assert.deepEqual(args,{sourceId:'local',requestType:row.requestType,idempotencyKey:row.queueId,payload:row.payload});
+  calls.push(row.requestType);return receipt(row);
+ }});
+ assert.deepEqual(await local.pollOnce(),{seen:4,acknowledged:2,unresolved:0,rejected:2,deferred:0});
+ assert.deepEqual(calls,['map.generate','map.update']);
+ const space=createSpaceRSQueueConsumer({callNGS:async name=>{
+  assert.equal(name,'space_requests_pending');
+  return {requests:[generate,update].map(row=>{const queueId=row.queueId.replace('ngs.local.','ngs.space.');return {...row,queueId,idempotencyKey:queueId};})};
+ },callRS:async()=>assert.fail('Space must never relay maps')});
+ assert.deepEqual(await space.pollOnce(),{seen:2,acknowledged:0,unresolved:0,rejected:2,deferred:0});
+});
