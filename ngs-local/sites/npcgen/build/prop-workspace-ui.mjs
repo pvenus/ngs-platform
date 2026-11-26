@@ -165,10 +165,25 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   const card=node('section',null,'prop-surface');
   card.append(node('h4','프랍 이미지','npc-media-heading'));
   const preview=node('div',null,'prop-preview-pair');
-  for(const [lane,label] of [['detail','디테일'],['pixel','픽셀']]){
+  const dims=lane=>{
+   const media=prop.media?.[lane];
+   return validSize(media?.width)&&validSize(media?.height)?media:null;
+  };
+  const validSize=n=>Number.isSafeInteger(n)&&n>0&&n<=2048;
+  const detailSize=dims('detail'),pixelSize=dims('pixel');
+  if(detailSize&&pixelSize){
+   preview.style.setProperty('--prop-detail-columns',String(detailSize.width)+'fr');
+   preview.style.setProperty('--prop-pixel-columns',String(pixelSize.width)+'fr');
+  }
+  for(const [lane,label,size] of [['detail','디테일',detailSize],['pixel','픽셀',pixelSize]]){
    const figure=node('figure',null,'npc-portrait-card'),art=node('div',null,'npc-portrait-art');
-   art.append(staticImage(prop.media?.[lane],prop.title+' '+label));
-   figure.append(art,node('figcaption',label));preview.append(figure);
+   figure.dataset.lane=lane;
+   const caption=node('figcaption',label);
+   if(size)caption.append(node('span',size.width+' × '+size.height+' px','prop-preview-dimensions'));
+   const image=staticImage(prop.media?.[lane],prop.title+' '+label);
+   if(size&&image.tagName==='IMG'){image.width=size.width;image.height=size.height;}
+   art.append(image);
+   figure.append(caption,art);preview.append(figure);
   }
   card.append(preview);panel.append(card);
   if(prop.interaction?.pixelOpen||prop.interaction?.detailTrigger){

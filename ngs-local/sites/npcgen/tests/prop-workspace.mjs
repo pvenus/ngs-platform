@@ -141,7 +141,8 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
  const {mountPropWorkspace}=await import('../build/prop-workspace-ui.mjs');
  class Element{
   constructor(tag){
-   this.tag=tag;this.children=[];this.attributes={};this.events={};
+   this.tag=tag;this.tagName=tag.toUpperCase();this.children=[];this.attributes={};this.events={};this.dataset={};
+   this.styles={};this.style={setProperty:(key,value)=>{this.styles[key]=value;}};
    this.classList={add:(...names)=>{this.className=[this.className,...names].filter(Boolean).join(' ');}};
   }
   append(...children){for(const child of children)child.parentElement=this;this.children.push(...children);}
@@ -180,7 +181,12 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   assert.match(basic.tools.children[0].className,/npc-one-stop-trigger/);
   assert.deepEqual(walk(basic.detail,x=>x.attributes.role==='tab').map(x=>[x.textContent,x.attributes['aria-selected']]),
    [['기본 정보','true'],['애니메이션','false']]);
-  assert.equal(walk(basic.detail,x=>x.tag==='img').length,2);
+  const stills=walk(basic.detail,x=>x.tag==='img');
+  assert.equal(stills.length,2);
+  const ratios=walk(basic.detail,x=>x.className==='prop-preview-pair')[0].styles;
+  assert.deepEqual(ratios,{'--prop-detail-columns':stills[0].width+'fr','--prop-pixel-columns':stills[1].width+'fr'});
+  assert.deepEqual(walk(basic.detail,x=>x.className==='prop-preview-dimensions').map(x=>x.textContent),
+   stills.map(x=>x.width+' × '+x.height+' px'));
   assert.equal(walk(basic.detail,x=>x.attributes['aria-label']==='프랍 애니메이션 목록').length,0);
   assert.equal(walk(basic.detail,x=>x.textContent==='재생성 요청').length,1);
   const previewController=new AbortController(),nativeFetch=fetch,fetches=[];
