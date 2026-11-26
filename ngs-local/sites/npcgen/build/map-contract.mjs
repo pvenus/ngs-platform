@@ -14,13 +14,23 @@ export const mapRect=v=>mapFields(v,['x','y','width','height'])&&['x','y','width
  v.x>=0&&v.y>=0&&v.width>0&&v.height>0&&v.x+v.width<=1000&&v.y+v.height<=1000;
 export const regionId=v=>typeof v==='string'&&/^[a-z][a-z0-9-]{0,31}$/.test(v);
 export const mapBackgroundIds=graph=>[...new Set(graph.regions.map(r=>r.backgroundId).filter(Boolean))];
+export const maxMapColliders=96;
+const graphFields=['title','startRegionId','regions','connections'];
+const colliderFields=['id','regionId','rect'];
 const edgeFields=Object.keys({id:null,from:null,to:null,hit:null,spawn:null,label:null});
 export function validMapGraph(v,{partial=false}={}){
- if(!mapFields(v,['title','startRegionId','regions','connections'])||!mapText(v.title,100)||!Array.isArray(v.regions)||
+ if(!mapFields(v,v&&Object.hasOwn(v,'colliders')?[...graphFields,'colliders']:graphFields)||!mapText(v.title,100)||!Array.isArray(v.regions)||
     v.regions.length<1||v.regions.length>24||!v.regions.every(r=>mapFields(r,['id','name','description','backgroundId','imageSha256'])&&
       regionId(r.id)&&mapText(r.name,100)&&mapText(r.description,1000)&&backgroundId(r.backgroundId)&&typeof r.imageSha256==='string'&&/^[a-f0-9]{64}$/.test(r.imageSha256)))return false;
  const ids=new Set(v.regions.map(r=>r.id));
  if(ids.size!==v.regions.length||!ids.has(v.startRegionId)||!Array.isArray(v.connections)||v.connections.length>96)return false;
+ if(Object.hasOwn(v,'colliders')){
+  const colliderIds=new Set();
+  if(!Array.isArray(v.colliders)||v.colliders.length>maxMapColliders||!v.colliders.every(c=>{
+   if(!mapFields(c,colliderFields)||!regionId(c.id)||colliderIds.has(c.id)||!ids.has(c.regionId)||!mapRect(c.rect))return false;
+   colliderIds.add(c.id);return true;
+  }))return false;
+ }
  const unique=new Set();
  return v.connections.every(e=>{
   if(!mapFields(e,edgeFields)||typeof e.id!=='string'||!/^[a-z][a-z0-9-]{0,31}$/.test(e.id)||
@@ -33,7 +43,7 @@ export function validMapRequest(v,type){
  const generate=type===mapTypes[0], i=generate?0:1;
  return (generate||type===mapTypes[1])&&mapFields(v,generate?['schemaVersion','projectId','graph','intent']:
  ['schemaVersion','projectId','graph','mapId','expectedRevision'])&&v.schemaVersion===mapSchemas[i]&&v.projectId==='binari'&&
- validMapGraph(v.graph,{partial:generate})&&(generate?(v.graph.regions.length>=2&&v.graph.regions.length<=12&&v.graph.connections.length>0&&v.graph.connections.every(e=>e.hit===null&&e.spawn===null)&&mapText(v.intent,2000)):officialId(v.mapId)&&
+ validMapGraph(v.graph,{partial:generate})&&(generate?((v.graph.colliders?.length??0)===0&&v.graph.regions.length>=2&&v.graph.regions.length<=12&&v.graph.connections.length>0&&v.graph.connections.every(e=>e.hit===null&&e.spawn===null)&&mapText(v.intent,2000)):officialId(v.mapId)&&
  Number.isSafeInteger(v.expectedRevision)&&v.expectedRevision>=1&&v.expectedRevision<Number.MAX_SAFE_INTEGER);
 }
 export function validMapState(v){

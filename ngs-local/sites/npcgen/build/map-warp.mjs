@@ -24,6 +24,8 @@ export function orderedMapChain(regions){
 export function createMapWarp(graph,{start={x:500,y:850}}={}){
  if(!validMapGraph(graph)||!mapPoint(start))throw Error('MAP_WARP_GRAPH_INVALID');
  const edges=new Map(graph.regions.map(r=>[r.id,[]]));
+ const walls=new Map(graph.regions.map(r=>[r.id,[]]));
+ for(const collider of graph.colliders??[])walls.get(collider.regionId).push(collider.rect);
  for(const e of graph.connections)edges.get(e.from).push(e);
  let regionId=graph.startRegionId,position={...start},blocked=new Set();
  const snapshot=()=>({regionId,position:{...position}});
@@ -35,14 +37,34 @@ export function createMapWarp(graph,{start={x:500,y:850}}={}){
    if(!Number.isFinite(x)||!Number.isFinite(y))throw Error('MAP_WARP_POSITION_INVALID');
    const next={x:clamp(x),y:clamp(y)};
    if(position.x===next.x&&position.y===next.y)return {...snapshot(),warp:null};
+   let wall=null;
+   for(const rect of walls.get(regionId)){
+    // A start or portal landing inside a wall may leave it. Once outside,
+    // the same rectangle protects against any re-entry.
+    if(inside(rect,position))continue;
+    const t=entryFraction(position,next,rect);
+    if(t!==null&&(wall===null||t<wall))wall=t;
+   }
    let first=null;
    for(const e of edges.get(regionId)){
-    if(blocked.has(e.id)){if(!inside(e.hit,next))blocked.delete(e.id);continue;}
+    if(blocked.has(e.id))continue;
     if(inside(e.hit,position))continue;
     const t=entryFraction(position,next,e.hit);
     if(t!==null&&(!first||t<first.t))first={edge:e,t};
    }
-   if(!first){position=next;return {...snapshot(),warp:null};}
+   if(wall!==null&&(!first||wall<=first.t)){
+    const dx=next.x-position.x,dy=next.y-position.y;
+    // Leave the footpoint strictly outside the inclusive wall boundary.
+    const travel=Math.max(0,wall-1e-6/Math.hypot(dx,dy));
+    position={x:position.x+dx*travel,y:position.y+dy*travel};
+    for(const e of edges.get(regionId))if(!inside(e.hit,position))blocked.delete(e.id);
+    return {...snapshot(),warp:null};
+   }
+   if(!first){
+    position=next;
+    for(const e of edges.get(regionId))if(!inside(e.hit,position))blocked.delete(e.id);
+    return {...snapshot(),warp:null};
+   }
    const e=first.edge,from=regionId;
    regionId=e.to;position={...e.spawn};blockLandingExits();
    // No leftover delta is transferred to the new screen; a single input
