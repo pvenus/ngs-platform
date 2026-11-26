@@ -6,14 +6,14 @@ import {join} from 'node:path';
 import test from 'node:test';
 import {createLocalProjectPageServer} from '../build/local-project-page-server.mjs';
 import {fileDeleteType,backgroundDeletePayloads,validBackgroundFileDelete} from '../build/prop-folder-delete-contract.mjs';
-import {backgroundPath,backgroundSourceSchema,backgroundSourceType,backgroundResultSchema,backgroundFields,validBackgroundRequest} from '../build/cinematic-sequence-contract.mjs';
+import {backgroundPath,backgroundSourceSchema,backgroundSourceType,backgroundPixelType,backgroundPixelSchema,backgroundResultSchema,backgroundFields,validBackgroundRequest} from '../build/cinematic-sequence-contract.mjs';
 
 test('Local background workspace requires the six inputs, queues one typed request and reads its published PNG',async t=>{
  const parent=mkdtempSync(join(realpathSync(tmpdir()),'ngs-bg-'));t.after(()=>rmSync(parent,{force:true,recursive:true}));
  const root=join(parent,'projects');mkdirSync(root,{mode:0o700});
  const project=join(root,'binari'),folder=join(project,'cinematics','backgrounds');
  mkdirSync(project,{mode:0o700});writeFileSync(join(project,'project.json'),'{"name":"비나리"}',{mode:0o600});
- const jobs=[];let deleteReady=false;const server=createLocalProjectPageServer({root,readBackgroundReady:async()=>true,readBackgroundDeleteReady:async()=>deleteReady,
+ const jobs=[];let deleteReady=false,pixelReady=false;const server=createLocalProjectPageServer({root,readBackgroundReady:async()=>true,readBackgroundPixelReady:async()=>pixelReady,readBackgroundDeleteReady:async()=>deleteReady,
   requestQueue:{enqueue(cmd){jobs.push(cmd);return {status:'queued'};}}});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
  const origin='http://127.0.0.1:'+server.address().port,base=backgroundPath+'?projectId=binari';
@@ -50,6 +50,14 @@ test('Local background workspace requires the six inputs, queues one typed reque
  assert.equal((await post({...deletion[0],target:{...deletion[0].target,path:'../a.png'}},fileDeleteType)).status,400);
  for(const job of deletion)assert.equal((await post(job,fileDeleteType)).status,202);
  assert.deepEqual(jobs.slice(1).map(x=>x.payload),deletion);
+ const chain={...payload,schemaVersion:backgroundPixelSchema};
+ assert.equal((await post(chain,backgroundPixelType)).status,404);
+ pixelReady=true;
+ assert.equal((await (await get('/__npcgen_session')).json()).backgroundPixelEnabled,true);
+ assert.equal((await post({...chain,resize:384},backgroundPixelType)).status,400);
+ assert.equal((await post(chain,backgroundPixelType)).status,202);
+ assert.deepEqual(jobs.at(-1).payload,chain);
+
  assert.equal((await get(base+'&image='+sha256)).status,200);
 
 });

@@ -1,6 +1,6 @@
 import {cinematicSequencePrefix,cinematicSequenceFramePath,cinematicSequenceFrameLimit,cinematicSequenceType,cinematicPlaybackUpdateType,
  validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,validCinematicPlaybackState,
- cinematicSourceGenerateType,backgroundSourceType,validBackgroundRequest,cinematicSequencesRemoveType,cinematicArchivePath,validCinematicSourceGenerate,validCinematicSourceResult,
+ cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,validBackgroundPixelRequest,validBackgroundRequest,cinematicSequencesRemoveType,cinematicArchivePath,validCinematicSourceGenerate,validCinematicSourceResult,
  validCinematicSequencesRemove,validCinematicArchive} from './cinematic-sequence-contract.mjs';
 import {hashReplicaBytes,readReplicaObject,replicaUnavailable} from './workspace-read-storage.mjs';
 import {cinematicHash,cinematicId,cinematicSourcePath,cinematicSourcePrefix,cinematicResultPrefix,maxCinematicBytes,
@@ -47,12 +47,12 @@ async function getSequence(p,id,{timeline=true}={}){
 export async function admitCinematicRequest({command,openProject,authorize}){
  const p=command?.payload,type=command?.requestType;
  const validator=type===cinematicSequenceType?validCinematicSequencePayload:
-  type===cinematicPlaybackUpdateType?validCinematicPlaybackUpdate:type===backgroundSourceType?validBackgroundRequest:type===cinematicSourceGenerateType?validCinematicSourceGenerate:
+  type===cinematicPlaybackUpdateType?validCinematicPlaybackUpdate:type===backgroundSourceType?validBackgroundRequest:type===backgroundPixelType?validBackgroundPixelRequest:type===cinematicSourceGenerateType?validCinematicSourceGenerate:
   type===cinematicSequencesRemoveType?validCinematicSequencesRemove:validCinematicPayload;
  if(!validator(p))throw failure('NGS_CINEMATIC_PAYLOAD_INVALID',400);
  if(await authorize(p.projectId,'cinematics')===false)throw failure('PROJECT_OR_RESOURCE_DENIED',403);
  const storage=await openProject(p.projectId);
- if(type===cinematicSourceGenerateType||type===backgroundSourceType){if(!storage)throw replicaUnavailable();return;}
+ if(type===cinematicSourceGenerateType||type===backgroundSourceType||type===backgroundPixelType){if(!storage)throw replicaUnavailable();return;}
  if(type===cinematicSequencesRemoveType){
   if(!storage)throw replicaUnavailable();
   const archived=await archivedSequences(storage);

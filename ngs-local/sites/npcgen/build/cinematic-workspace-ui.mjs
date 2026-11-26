@@ -2,7 +2,7 @@ import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {cinematicPath,cinematicHash,cinematicId} from './cinematic-contract.mjs';
 import {cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateType,cinematicPlaybackUpdateSchema,
  cinematicSourceGenerateType,cinematicSourceGenerateSchema,cinematicSequencesRemoveType,cinematicSequencesRemoveSchema,
- backgroundPath,backgroundSourceType,backgroundSourceSchema,backgroundFields,validBackgroundRequest,
+ backgroundPath,backgroundSourceType,backgroundSourceSchema,backgroundFields,validBackgroundRequest,backgroundPixelType,backgroundPixelSchema,validBackgroundPixelRequest,
  maxSelection,validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,
  validCinematicSourceGenerate,validCinematicSequencesRemove} from './cinematic-sequence-contract.mjs';
 import {defaultCinematicPlayback,validCinematicPlayback} from './cinematic-timeline.mjs';
@@ -301,29 +301,33 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
  selection();
 }
 
-export async function mountBackgroundWorkspace({items,detail,tools,request,submit,projectId,item,navigate,signal,enabled,deleteItem}){
+export async function mountBackgroundWorkspace({items,detail,tools,request,submit,projectId,item,navigate,signal,enabled,pixelEnabled,deleteItem}){
  const url=values=>backgroundPath+'?'+new URLSearchParams({projectId,...values});
  const notice=statusLine();
  items.parentElement?.classList.add('npc-roster-list','prop-roster');
- if(enabled&&submit){
-  const add=action('+',()=>{
+ if((enabled||pixelEnabled)&&submit){
+  function trigger(pixel){
+   const caption=pixel?'배경 원본 + 픽셀 제작 요청':'배경 생성 요청';
+   const add=action(pixel?'+ 픽셀':'+',()=>{
    const inputs={},examples={title:'예: 의식 전의 한옥 안채',timeOfDay:'예: 해가 진 직후',season:'예: 늦가을',
     mood:'예: 고요하지만 불길한 기운',color:'예: 먹색, 바랜 목재색, 옅은 등불색',
     location:'예: 한옥 안채에서 마당을 바라보는 구도',requirements:'예: 마루와 문턱이 분명하고 가운데에 이동 공간 확보',
     additionalNotes:'예: 바닥에 비친 부드러운 그림자'};
-   requestForm(detail,{caption:'배경 생성 요청',signal,notice,send:queueAction(submit,backgroundSourceType),
-    makePayload:()=>({schemaVersion:backgroundSourceSchema,projectId,...Object.fromEntries(
-     backgroundFields.map(([field])=>[field,inputs[field]?.value.trim()??'']))}),isValid:validBackgroundRequest,
+   requestForm(detail,{caption,signal,notice,send:queueAction(submit,pixel?backgroundPixelType:backgroundSourceType),
+    makePayload:()=>({schemaVersion:pixel?backgroundPixelSchema:backgroundSourceSchema,projectId,...Object.fromEntries(
+     backgroundFields.map(([field])=>[field,inputs[field]?.value.trim()??'']))}),isValid:pixel?validBackgroundPixelRequest:validBackgroundRequest,
     body(form){
      for(const [field,label,maximum] of backgroundFields){
       const input=make(maximum>500?'textarea':'input');
-      input.name=field;input.maxLength=maximum;input.required=field!=='additionalNotes';input.placeholder=examples[field];
+      input.name=field;input.maxLength=pixel&&field==='title'?105:maximum;input.required=field!=='additionalNotes';input.placeholder=examples[field];
       if(maximum>500)input.rows=3;
       inputs[field]=input;form.append(labeled(label,input));
      }
     }});
   },signal,'npc-one-stop-trigger');
-  add.setAttribute('aria-label','배경 생성 요청');add.title='배경 생성 요청';tools.replaceChildren(add);tools.hidden=false;
+   add.setAttribute('aria-label',caption);add.title=caption;return add;
+  }
+  tools.replaceChildren(...(enabled?[trigger(false)]:[]),...(pixelEnabled?[trigger(true)]:[]));tools.hidden=false;
  }
  const payload=await request(url({}));if(signal.aborted)return;
  const rows=Array.isArray(payload.backgrounds)?payload.backgrounds:[];
@@ -335,5 +339,23 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   return;
  }
  const img=make('img');img.alt=selected.title;img.src=url({image:selected.sha256});img.style.maxWidth='100%';img.style.height='auto';
- detail.replaceChildren(make('h3',selected.title),notice,img,make('p',selected.width+' × '+selected.height+' · 원본 PNG','meta'));
+ const comparison=make('nav',null,'detail-file-nav');
+ for(const candidate of rows.filter(x=>x.title.endsWith(' · 픽셀 보정'))){
+  if(signal.aborted)return;
+  const idFor=async key=>'request.official.'+Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',
+   new TextEncoder().encode(JSON.stringify([candidate.officialRequestId,key])))),b=>b.toString(16).padStart(2,'0')).join('');
+  const [originalId,pixelId]=await Promise.all([idFor('background_cinematic_source'),idFor('background_pixel_generate')]);
+  const pair=[['시네마틱 원본',rows.find(x=>x.officialRequestId===originalId)],['픽셀 생성본',rows.find(x=>x.officialRequestId===pixelId)],['픽셀 보정본',candidate]];
+  if(!pair.some(([,source])=>source?.sha256===selected.sha256))continue;
+  for(const [label,source] of pair){
+   if(!source)continue;
+   const button=make('a',label);button.href=navigate({item:source.sha256});
+   if(source.sha256===selected.sha256)button.setAttribute('aria-current','page');
+   comparison.append(button);
+  }
+  break;
+ }
+ if(signal.aborted)return;
+ detail.replaceChildren(make('h3',selected.title),notice,...(comparison.childNodes.length>1?[comparison]:[]),
+  img,make('p',selected.width+' × '+selected.height+' · PNG','meta'));
 }

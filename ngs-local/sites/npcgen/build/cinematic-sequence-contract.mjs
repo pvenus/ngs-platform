@@ -69,5 +69,9 @@ const bounds=(value,n,multi)=>typeof value==='string'&&value.isWellFormed()&&val
 export const validBackgroundRequest=p=>exact(p,['schemaVersion','projectId',...backgroundFields.map(x=>x[0])])&&
  p.schemaVersion===backgroundSourceSchema&&p.projectId==='binari'&&backgroundFields.every(([key,,n])=>
   key==='additionalNotes'&&p[key]===''||bounds(p[key],n,key==='requirements'||key==='additionalNotes'));
+export const backgroundPixelType='background.pixel.workflow';
+export const backgroundPixelSchema='ngs.background-pixel-workflow.v1';
+export const validBackgroundPixelRequest=p=>p?.schemaVersion===backgroundPixelSchema&&typeof p.title==='string'&&
+ [...p.title].length<=105&&validBackgroundRequest({...p,schemaVersion:backgroundSourceSchema});
 export const validBackgroundResult=p=>p?.schemaVersion===backgroundResultSchema&&validCinematicSourceResult({...p,schemaVersion:cinematicSourceResultSchema});
-export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicSourceGenerateType,backgroundSourceType,cinematicSequencesRemoveType]);
+export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,cinematicSequencesRemoveType]);
