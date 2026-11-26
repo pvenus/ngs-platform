@@ -1,7 +1,7 @@
-import {fileDeleteType,propsDeleteRoot,validNpcFolderDelete} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,validNpcFolderDelete} from './prop-folder-delete-contract.mjs';
 /** NGS browser app: serve the local replica and enqueue validated requests. */
 import {readFileSync,lstatSync,mkdirSync,realpathSync} from 'node:fs';
-import {createServer} from 'node:http';
+import {createServer,get as loopbackGet} from 'node:http';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {homedir} from 'node:os';
@@ -132,16 +132,29 @@ const readLocalBackgroundReady=()=>readWorkflowCapability('/v1/cinematics/owners
 const readLocalSourceReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-source','workflow.cinematic-source-write.v1');
 const readLocalRemoveReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence-remove','workflow.cinematic-sequence-remove.v1');
 const readLocalPropRemoveReady=()=>readWorkflowCapability('/v1/props/ownership/workflow-animation-remove','workflow.prop-animation-remove.v1');
-async function readLocalPropFolderDeleteReady(){
- try{
-  const r=await fetch('http://127.0.0.1:8030/v1/storage/delete-target',{redirect:'error',signal:AbortSignal.timeout(350)});
-  if(!r.ok)return false;
-  const v=await r.json();
-  return v?.schemaVersion==='workflow.single-target-delete.v1'&&v.enabled===true&&
-   Array.isArray(v.roots)&&v.roots.includes(propsDeleteRoot);
- }catch{return false;}
+async function readLocalFolderDeleteReady(path,root){
+ // This capability is authoritative. Probe it independently of the burst of
+ // unrelated capability reads during bootstrap and never infer readiness.
+ return await new Promise(resolve=>{
+  const req=loopbackGet({host:'127.0.0.1',port:8030,path,
+    agent:false,signal:AbortSignal.timeout(2000)},res=>{
+   if(res.statusCode!==200){res.resume();resolve(false);return;}
+   let raw='';
+   res.setEncoding('utf8');res.on('error',()=>resolve(false));
+   res.on('data',data=>{raw+=data;if(raw.length>8192){res.destroy();resolve(false);}});
+   res.on('end',()=>{
+    try{
+     const v=JSON.parse(raw);
+     resolve(v?.schemaVersion==='workflow.single-target-delete.v1'&&v.enabled===true&&
+      Array.isArray(v.roots)&&v.roots.includes(root));
+    }catch{resolve(false);}
+   });
+  });
+  req.on('error',()=>resolve(false));
+ });
 }
-const readLocalNpcFolderDeleteReady=()=>readWorkflowCapability('/v1/storage/delete-target/npc-standalone','workflow.single-target-delete.v1');
+const readLocalPropFolderDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target',propsDeleteRoot);
+const readLocalNpcFolderDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target/npc-standalone',npcDeleteRoot);
 export function configuration(env=process.env,{platform=process.platform,entryPoint=process.argv[1]}={}){
 
  const port=Number(env.NGS_PROJECT_LISTEN_PORT??'5274');
@@ -370,7 +383,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const session=auth.bootstrap(req);
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
-    const [actions,legacyCine,sequenceCine,playbackCine,sourceCine,backgroundReady,removeCine,removeProp,deleteProp,deleteNpc]=await Promise.all([activePropActions(),activeCinematic(cinematicType),activeCinematic(cinematicSequenceType),activeCinematic(cinematicPlaybackUpdateType),activeCinematic(cinematicSourceGenerateType),activeCinematic(backgroundSourceType),activeCinematic(cinematicSequencesRemoveType),activePropRemoval(),propFolderDeleteReady(),npcFolderDeleteReady()]);
+    const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady();
+    const [actions,legacyCine,sequenceCine,playbackCine,sourceCine,backgroundReady,removeCine,removeProp]=await Promise.all([activePropActions(),activeCinematic(cinematicType),activeCinematic(cinematicSequenceType),activeCinematic(cinematicPlaybackUpdateType),activeCinematic(cinematicSourceGenerateType),activeCinematic(backgroundSourceType),activeCinematic(cinematicSequencesRemoveType),activePropRemoval()]);
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
      ...(actions.length?{propActions:actions}:{}),
      ...(legacyCine?{cinematicEnabled:true}:{}),
