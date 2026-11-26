@@ -1,3 +1,4 @@
+import {mountMapWorkspace} from './map-workspace-ui.mjs';
 import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
@@ -448,7 +449,7 @@ async function load(){
 const areas=[
  ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',false],
  ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',document.documentElement?.dataset.puzzleWorkspace==='enabled'],
- ['cinematic','시네마틱 영상',true],['resources','배경 설계',true],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
+ ['cinematic','시네마틱 영상',true],['resources','배경 설계',true],['maps','맵 제작',true],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
 ];
 const iconPaths={
  concept:'M4 19V5a1 1 0 0 1 1-1h7v16H5a1 1 0 0 1-1-1Zm8-15h7a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-7M7 8h2m6 0h2m-10 4h2m6 0h2',
@@ -673,6 +674,11 @@ async function loadWorkspace(search){
   // Same metadata and workspace routes in both environments; only the replica
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
+  if(tab==='maps'){
+   await mountMapWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,enabled:!hosted&&session.mapEnabled===true});
+   if(!signal.aborted)note('');
+   return;
+  }
   if(tab==='resources'){
    const deleteItem=!hosted&&session.backgroundDeleteEnabled===true&&submit?async row=>{
     // Each accepted request owns one physical object. Stable idempotency keys

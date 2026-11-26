@@ -1,3 +1,6 @@
+import mapWarp from "../ngs-local/sites/npcgen/build/map-warp.mjs?raw";
+import mapContract from "../ngs-local/sites/npcgen/build/map-contract.mjs?raw";
+import mapWorkspace from "../ngs-local/sites/npcgen/build/map-workspace-ui.mjs?raw";
 import backgroundPlayback from "../ngs-local/sites/npcgen/build/background-playback.mjs?raw";
 import propFolderDelete from "../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs?raw";
 import html from "../ngs-local/sites/npcgen/build/local-project-page.html?raw";
@@ -35,6 +38,9 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/prop-package-contract.mjs", {type: javascript, body: propPackageContract}],
  ["/cinematic-sequence-contract.mjs",{type:javascript,body:cine0}],
  ["/cinematic-timeline.mjs",{type:javascript,body:cine1}],
+ ["/map-warp.mjs",{type:javascript,body:mapWarp}],
+ ["/map-contract.mjs",{type:javascript,body:mapContract}],
+ ["/map-workspace-ui.mjs",{type:javascript,body:mapWorkspace}],
  ["/background-playback.mjs",{type:javascript,body:backgroundPlayback}],
  ["/cinematic-player.mjs",{type:javascript,body:cine2}],
  ["/prop-folder-delete-contract.mjs",{type:javascript,body:propFolderDelete}],

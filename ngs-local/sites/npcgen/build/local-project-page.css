@@ -388,3 +388,22 @@ ul{padding:0;list-style:none}
 .background-frame-controls{margin-top:8px}
 .background-frame-controls label{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .background-frame-controls input,.background-media-body input[type=range]{width:min(40vw,340px)}
+
+/* Map overlay uses the image content rect, never the outer panel. */
+.map-editor{display:grid;grid-template-columns:minmax(13rem,18rem) minmax(0,1fr);gap:1rem}
+.map-panel,.map-field{display:grid;gap:.45rem}.map-preview{min-width:0}.map-row{display:flex;align-items:end;gap:.65rem;flex-wrap:wrap;margin:.6rem 0}
+.map-panel fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4rem;border:1px solid currentColor;padding:.45rem;min-width:0}
+.map-panel fieldset>button{grid-column:1/-1}.map-field input,.map-field select,.map-field textarea{width:100%;min-width:0;font:inherit;color:inherit;background:transparent}
+.map-field select>option{color:#16161c}.map-canvas{position:relative;width:100%;overflow:hidden;line-height:0}
+.map-canvas>img{width:100%;height:auto;display:block}.map-exit,.map-pick,.map-spawn{position:absolute}
+.map-exit{padding:0;overflow:hidden;min-height:0;color:#fff;border:1px solid #8fcefe;background:#102d578c;font:inherit;line-height:1}
+.map-exit.selected{border:2px solid #ffe19b}.map-spawn{transform:translate(-50%,-50%);padding:.25rem;border-radius:80px;background:#ffe19b;color:#242029;line-height:1}
+.map-pick{inset:0;touch-action:none;cursor:crosshair;box-shadow:inset 0 0 0 2px #ffe19b}.map-status{min-height:1.3em}
+@media(max-width:780px){.map-editor{grid-template-columns:1fr}}
+
+.map-order{margin:0;padding-left:1.8rem}.map-order li{margin:.25rem 0}
+.map-order button{min-height:1.7rem;padding:.1rem .5rem;margin-left:.2rem}
+.map-play-layout{max-width:70rem}.map-play-layout .map-canvas{cursor:crosshair}
+.map-play-layout .map-exit{pointer-events:none;display:grid;place-content:center;background:#102d575e}
+.map-player{position:absolute;width:1rem;height:1rem;border-radius:50%;border:2px solid #fff7e6;background:#dea958;box-shadow:0 0 2px #100917,0 2px 10px #100917;transform:translate(-50%,-100%);pointer-events:none;z-index:2}
+.map-position{font-variant-numeric:tabular-nums}

@@ -1,4 +1,5 @@
 import {cinematicSequencePrefix,cinematicArchivePath,validCinematicArchive,validCinematicSequenceResult,validBackgroundResult} from './cinematic-sequence-contract.mjs';
+import {backgroundIdFromRequest} from './map-contract.mjs';
 import {validBackgroundLoopPlayback} from './cinematic-timeline.mjs';
 import {cinematicHash,cinematicId,maxCinematicBytes} from './cinematic-contract.mjs';
 import {hashReplicaBytes,readReplicaObject,replicaUnavailable} from './workspace-read-storage.mjs';
@@ -9,7 +10,7 @@ async function record(p,sha){
  if(!validBackgroundResult(row)||row.sha256!==sha)throw replicaUnavailable();
  const meta=await p.head(root+'/'+sha+'.png');
  if(!meta||meta.size!==row.bytes||meta.sha256!==undefined&&meta.sha256!==sha)return null;
- return {...row,modifiedAtMs:Number.isSafeInteger(meta.modifiedAtMs)?meta.modifiedAtMs:0};
+ return {...row,backgroundId:backgroundIdFromRequest(row.officialRequestId),modifiedAtMs:Number.isSafeInteger(meta.modifiedAtMs)?meta.modifiedAtMs:0};
 }
 const encode=value=>new TextEncoder().encode(JSON.stringify(value));
 const publicationId=async(id,key)=>'request.official.'+await hashReplicaBytes(encode([id,key]));
