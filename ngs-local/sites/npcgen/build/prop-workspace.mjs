@@ -96,7 +96,8 @@ function publicMedia(pointer,media){
  return {url:url(pointer,sha256),width,height,mediaType,frameDurationsMs};
 }
 function publicPair(pointer,media){
- return {detail:publicMedia(pointer,media.detail),pixel:publicMedia(pointer,media.pixel)};
+ return {detail:publicMedia(pointer,media.detail),pixel:publicMedia(pointer,media.pixel),
+  ...(media.spirit?{spirit:publicMedia(pointer,media.spirit)}:{})};
 }
 
 export async function propWorkspaceRead({query,openProject,authorize}){

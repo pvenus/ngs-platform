@@ -1,3 +1,4 @@
+// The versioned local relay binds the optional spirit-v1 prop generation envelope.
 import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete,validCinematicFileDelete,validMapFolderDelete} from './prop-folder-delete-contract.mjs';
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
 import {createNgsHealthRelay} from './rs-ops-ngs-health.mjs';

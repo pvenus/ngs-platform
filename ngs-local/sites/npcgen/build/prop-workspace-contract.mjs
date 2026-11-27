@@ -9,6 +9,7 @@ const utf8=new TextEncoder();
 export const propSlug=v=>typeof v==='string'&&v.length>=2&&v.length<=80&&/^[a-z0-9]+(?:[-._][a-z0-9]+)*$/u.test(v)&&v===v.trim();
 export const propSha=v=>typeof v==='string'&&v.length===64&&/^[a-f0-9]{64}$/u.test(v);
 export const propRevision=v=>Number.isSafeInteger(v)&&v>0&&v<Number.MAX_SAFE_INTEGER;
+export const propSpiritProfile='spirit-v1';
 export const propMotion=v=>v==='still'||v==='subtle';
 export const exactPropKeys=(v,keys)=>!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const text=(v,max)=>typeof v==='string'&&v.isWellFormed()&&v===v.trim()&&v.length>0&&utf8.encode(v).length<=max&&
@@ -27,10 +28,10 @@ export function validPropPayload(type,p){
  const k=propAction(type),base=['schemaVersion','projectId','propId'];
  if(!k||p?.schemaVersion!==schema[k]||p.projectId!=='binari'||!propSlug(p.propId))return false;
  if(k==='generate'||k==='regenerate'){
-  const reference=k==='generate'&&Object.hasOwn(p,'reference');
+  const reference=k==='generate'&&Object.hasOwn(p,'reference'),profile=Object.hasOwn(p,'presentationProfile');
   const fields=[...base,...(k==='regenerate'?['source']:[]),'intent','designContextSha256',
-   ...(Object.hasOwn(p,'motion')?['motion']:[]),...(reference?['reference']:[])];
-  return exactPropKeys(p,fields)&&(k!=='regenerate'||source(p.source))&&(!reference||validPropGenerateReference(p.reference,p.propId))&&
+   ...(Object.hasOwn(p,'motion')?['motion']:[]),...(reference?['reference']:[]),...(profile?['presentationProfile']:[])];
+  return exactPropKeys(p,fields)&&(!profile||p.presentationProfile===propSpiritProfile)&&(k!=='regenerate'||source(p.source))&&(!reference||validPropGenerateReference(p.reference,p.propId))&&
    text(p.intent,4000)&&propSha(p.designContextSha256)&&(!Object.hasOwn(p,'motion')||propMotion(p.motion));
  }
  const profile=Object.hasOwn(p,'renderProfile');

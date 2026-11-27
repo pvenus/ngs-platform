@@ -50,13 +50,18 @@ function rect(v,action,m){
 }
 
 function pair(value,motion){
- insist(keys(value,['detail','pixel']),'PROP_PACKAGE_MEDIA');
+ const hasSpirit=motion==='still'&&keys(value,['detail','pixel','spirit']);
+ insist(hasSpirit||keys(value,['detail','pixel']),'PROP_PACKAGE_MEDIA');
  const detail=parseMedia(value.detail,'detail',motion),pixel=parseMedia(value.pixel,'pixel',motion);
  insist(pixel.width<=detail.width&&pixel.height<=detail.height&&pixel.width*pixel.height<detail.width*detail.height&&
   Math.abs(pixel.width*detail.height-pixel.height*detail.width)<=Math.max(detail.width,detail.height),'PROP_PACKAGE_PIXEL_SCALE');
  insist(pixel.frameDurationsMs.length===detail.frameDurationsMs.length&&
   pixel.frameDurationsMs.every((d,i)=>d===detail.frameDurationsMs[i]),'PROP_PACKAGE_MEDIA_SYNC');
- return {detail,pixel};
+ if(!hasSpirit)return {detail,pixel};
+ const spirit=parseMedia(value.spirit,'spirit','still');
+ insist(pixel.width===Math.round(detail.width/5)&&pixel.height===Math.round(detail.height/5)&&
+  spirit.width===pixel.width&&spirit.height===pixel.height,'PROP_PACKAGE_SPIRIT_SCALE');
+ return {detail,pixel,spirit};
 }
 export function parsePropPackage(v){
  insist(keys(v,['schemaVersion','projectId','propId','revision','officialRequestId','requestSha256','designContextSha256',

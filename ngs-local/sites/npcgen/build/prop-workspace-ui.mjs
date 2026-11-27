@@ -1,5 +1,5 @@
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
-import {propPayload,propTypes,propWorkspacePath,propSlug,validPropGenerateReference,validPropPayload} from './prop-workspace-contract.mjs';
+import {propPayload,propTypes,propSpiritProfile,propWorkspacePath,propSlug,validPropGenerateReference,validPropPayload} from './prop-workspace-contract.mjs';
 import {propPackageMediaLimit} from './prop-package-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const node=(tag,text,className)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(className)n.className=className;return n;};
@@ -180,16 +180,45 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
    preview.style.setProperty('--prop-detail-columns',String(detailSize.width)+'fr');
    preview.style.setProperty('--prop-pixel-columns',String(pixelSize.width)+'fr');
   }
-  for(const [lane,label,size] of [['detail','디테일',detailSize],['pixel','픽셀',pixelSize]]){
-   const figure=node('figure',null,'npc-portrait-card'),art=node('div',null,'npc-portrait-art');
-   figure.dataset.lane=lane;
+  const spiritSize=dims('spirit');
+  const figure=(lane,label,size)=>{
+   const block=node('figure',null,'npc-portrait-card'),art=node('div',null,'npc-portrait-art');
+   block.dataset.lane=lane;
    const caption=node('figcaption',label);
    if(size)caption.append(node('span',size.width+' × '+size.height+' px','prop-preview-dimensions'));
    const image=staticImage(prop.media?.[lane],prop.title+' '+label);
    if(size&&image.tagName==='IMG'){image.width=size.width;image.height=size.height;}
-   art.append(image);
-   figure.append(caption,art);preview.append(figure);
+   block.append(caption,art);return {block,art,image,caption};
+  };
+  const original=figure('detail','큰 원본',detailSize);
+  const placement=figure('pixel',spiritSize?'배치 미리보기 · 1/5':'픽셀',pixelSize);
+  if(original.image.tagName==='IMG'){
+   const enlarge=node('button',null,'npc-media-enlarge-trigger');
+   enlarge.type='button';enlarge.setAttribute('aria-label','큰 원본 확대');enlarge.setAttribute('aria-haspopup','dialog');
+   enlarge.append(original.image);original.art.append(enlarge);
+   enlarge.onclick=()=>openOriginal(prop,enlarge);
+  }else original.art.append(original.image);
+  placement.art.append(placement.image);
+  if(spiritSize&&verifiedURL(prop.media.spirit)&&placement.image.tagName==='IMG'){
+   preview.classList.add('prop-spirit-previews');
+   const switcher=node('button','서진 능력 사용','prop-control prop-spirit-toggle');
+   switcher.type='button';switcher.setAttribute('aria-pressed','false');
+   const caption=node('span','능력 OFF · 픽셀','meta prop-spirit-mode');
+   const control=node('div',null,'prop-panel-heading prop-spirit-control');
+   caption.setAttribute('role','status');control.append(switcher,caption);
+   card.append(control);
+   let active=false;
+   switcher.onclick=()=>{
+    active=!active;
+    switcher.setAttribute('aria-pressed',String(active));
+    switcher.textContent=active?'서진 능력 끄기':'서진 능력 사용';
+    caption.textContent=active?'능력 ON · 시네마틱':'능력 OFF · 픽셀';
+    placement.block.dataset.lane=active?'spirit':'pixel';
+    placement.image.src=verifiedURL(active?prop.media.spirit:prop.media.pixel);
+    placement.image.alt=prop.title+(active?' 시네마틱 배치 미리보기':' 픽셀 배치 미리보기');
+   };
   }
+  preview.append(original.block,placement.block);
   card.append(preview);panel.append(card);
   if(prop.interaction?.pixelOpen||prop.interaction?.detailTrigger){
    const interaction=node('section',null,'prop-surface prop-interaction');
@@ -198,6 +227,19 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
    if(prop.interaction.detailTrigger)interaction.append(node('p','디테일 보기: 작동','meta'));
    panel.append(interaction);
   }
+ }
+ function openOriginal(prop,returnTo){
+  if(signal?.aborted||!verifiedURL(prop.media?.detail))return;
+  const dialog=node('dialog',null,'prop-workspace-dialog background-media-dialog');
+  const header=node('div',null,'prop-panel-heading'),title=node('h3',prop.title+' · 큰 원본');
+  const close=node('button','닫기','prop-control');close.type='button';
+  title.id='prop-original-'+crypto.randomUUID();dialog.setAttribute('aria-labelledby',title.id);header.append(title,close);
+  const stage=node('div',null,'npc-media-enlarge-stage'),img=staticImage(prop.media.detail,prop.title+' 큰 원본');
+  const {width,height}=prop.media.detail;img.width=width;img.height=height;img.loading='eager';
+  stage.append(img);dialog.append(header,stage,node('p',width+' × '+height+' px','meta'));
+  const abort=()=>dialog.close();signal?.addEventListener('abort',abort,{once:true});
+  dialog.addEventListener('close',()=>{signal?.removeEventListener('abort',abort);dialog.remove();if(!signal?.aborted)returnTo.focus({preventScroll:true});},{once:true});
+  close.onclick=abort;document.body.append(dialog);dialog.showModal();close.focus();
  }
  function showAnimations(panel,prop){
   const heading=node('div',null,'prop-panel-heading');
@@ -328,6 +370,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
    if(referenceOptions.size)form.append(node('p','선택한 프랍의 디테일 이미지를 기준으로 새 프랍을 만들어요. 유지할 부분과 바꿀 부분을 요청에 적어 주세요.','meta'));
   }
   if(action==='regenerate')form.append(node('p','완성된 새 프랍으로 교체합니다. 이전 버전은 보존되며, 기존 애니메이션은 새 버전에 자동으로 가져오지 않습니다.','meta'));
+  if(action!=='animation')form.append(node('p','시네마틱 원본과 1/5 시네마틱·픽셀 배치 이미지가 함께 생성됩니다.','meta'));
   if(motionId)form.append(field('애니메이션 이름',motionId));
   form.append(field(action==='animation'?'움직임 프롬프트':'요청 내용',intent));
   const info=node('p',null,'meta');info.setAttribute('role','status');
@@ -356,6 +399,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
     else {
      body.intent=intent.value.trim();
      body.motion='still';
+     body.presentationProfile=propSpiritProfile;
      body.designContextSha256=(await request(api({view:'design'}))).designContextSha256;
     }
     if(signal?.aborted||!modal.open)return;

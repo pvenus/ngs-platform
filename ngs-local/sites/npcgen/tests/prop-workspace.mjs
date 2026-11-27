@@ -201,6 +201,23 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
    stills.map(x=>x.width+' × '+x.height+' px'));
   assert.equal(walk(basic.detail,x=>x.attributes['aria-label']==='프랍 애니메이션 목록').length,0);
   assert.equal(walk(basic.detail,x=>x.textContent==='재생성 요청').length,1);
+  const newMedia={detail:{...body.json.prop.media.detail,width:1536,height:1024},
+   pixel:{...body.json.prop.media.pixel,width:307,height:205},
+   spirit:{...body.json.prop.media.pixel,width:307,height:205,url:'/api/prop-workspace?asset=spirit'}};
+  const vision=await mount({request:async path=>path.includes('propId=')?
+   {prop:{...body.json.prop,media:newMedia}}:{props:[pointer]}});
+  const visionImages=walk(vision.detail,n=>n.tag==='img');
+  const switcher=walk(vision.detail,n=>n.textContent==='서진 능력 사용')[0];
+  const originalPopup=walk(vision.detail,n=>n.attributes['aria-label']==='큰 원본 확대')[0];
+  assert.deepEqual(visionImages.map(n=>n.src),[newMedia.detail.url,newMedia.pixel.url]);
+  switcher.onclick();
+  assert.deepEqual(visionImages.map(n=>n.src),[newMedia.detail.url,newMedia.spirit.url]);
+  assert.equal(switcher.attributes['aria-pressed'],'true');
+  originalPopup.onclick();
+  assert.equal(walk(document.body,n=>n.tag==='img')[0].src,newMedia.detail.url);
+  walk(document.body,n=>n.tag==='dialog')[0].close();
+  switcher.onclick();
+  assert.deepEqual(visionImages.map(n=>n.src),[newMedia.detail.url,newMedia.pixel.url]);
   const submissions=[];
   const modalFixture=await mount({
    request:async path=>path.includes('view=design')?{designContextSha256:pin}:path.includes('propId=')?{prop:body.json.prop}:{props:[pointer]},
@@ -216,6 +233,7 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   await modal.children[0].events.submit({preventDefault(){}});
   assert.deepEqual(submissions[0].payload.reference,{propId,revision:pointer.revision,sha256:pointer.sha256});
   assert.equal(submissions[0].payload.propId,'new-bell-prop');
+  assert.equal(submissions[0].payload.presentationProfile,'spirit-v1');
   modalFixture.tools.children[0].click();
   modal=document.body.children[0];
   walk(modal,x=>x.tag==='input')[0].value='unreferenced-prop';
@@ -329,4 +347,24 @@ test('published reference pin is optional, distinct and exact on CREATE only',as
  await assert.rejects(run({...valid,reference:{...ref,propId:'unpublished-prop'}}),/PROP_WORKSPACE_REFERENCE_STALE/);
  // Reaching the ordinary design pin check proves admission accepted the published reference.
  await assert.rejects(run(valid),/PROP_DESIGN_REPLICA_UNAVAILABLE/);
+});
+
+test('new presentation accepts only the fixed profile and serves three pinned image lanes',async()=>{
+ const profile=propPayload('generate',{propId,intent:'테스트 프랍',designContextSha256:pin,motion:'still',presentationProfile:'spirit-v1'});
+ assert.ok(validPropPayload(propTypes.generate,profile));
+ assert.ok(!validPropPayload(propTypes.generate,{...profile,presentationProfile:'legacy-custom'}));
+ assert.ok(!validPropPayload(propTypes.animation,{...animation,presentationProfile:'spirit-v1'}));
+ const large=png(80,80),small=png(16,16),smooth=Buffer.from(small);
+ const m={detail:still(80,large),pixel:still(16,small),spirit:still(16,smooth)};
+ const result={...release,media:m,animations:[],interaction:{pixelOpen:null,detailTrigger:null}};
+ const manifest=Buffer.from(canonicalPropPackage(result)),source={revision:1,sha256:digest(manifest)};
+ const items=new Map([[p+'/metadata.json',Buffer.from(JSON.stringify({...pointer,...source}))],
+  [p+'/releases/1/manifest.json',manifest],[p+'/assets/'+m.spirit.assetId,smooth]]);
+ const read=q=>propWorkspaceRead({query:new URLSearchParams(q),openProject:()=>({readBytes:async key=>items.get(key)??null}),authorize:()=>{}});
+ const {prop}= (await read({projectId:'binari',propId})).json;
+ assert.equal(prop.media.detail.width,80);
+ assert.equal(prop.media.pixel.width,16);
+ assert.equal(prop.media.spirit.width,16);
+ assert.deepEqual((await read(new URL(prop.media.spirit.url,'http://example.invalid').searchParams)).bytes,smooth);
+ assert.throws(()=>canonicalPropPackage({...result,media:{...m,spirit:{...m.spirit,width:17}}}),/PROP_PACKAGE_SPIRIT_SCALE/);
 });

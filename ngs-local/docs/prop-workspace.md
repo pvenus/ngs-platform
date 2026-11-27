@@ -50,3 +50,11 @@ with no preset pickers and no new base image. Accepted responses only prove
 queueing; assets remain listed only after canonical publication and normal
 replica sync. This change does not install runtime providers or author test
 assets in the real project.
+
+### 시네마틱 배치 이미지와 서진 능력 미리보기
+
+새 생성·재생성의 `spirit-v1` 프로필은 큰 원본과 동일한 프레이밍을 쓰는 1/5 크기의
+시네마틱 배치 이미지와 1/5 픽셀 후처리 결과를 같은 프랍 묶음에 보관한다. 크기는 각
+원본 축의 1/5을 반올림한다. 원본을 누르면 확대 팝업을 열며 원본은 능력 전환과 독립적이다.
+기본 정보에서 ‘서진 능력 사용’을 누르면 배치 미리보기만 픽셀(OFF)과 시네마틱(ON)
+사이를 오간다. 기존 디테일·픽셀만 있는 프랍과 두 레인의 프랍 애니메이션은 계속 읽을 수 있다.
