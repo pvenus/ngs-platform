@@ -58,8 +58,8 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  const meterView=el('section',null,'well-demo-meter');meterView.hidden=true;
  const title=el('strong','뚜껑 열기'),meterHelp=el('span','스페이스 연타');
  const gauge=el('progress');gauge.max=meter.target;gauge.setAttribute('aria-label','뚜껑 열기 게이지');
- const push=button('힘주기 (Space)','prop-control'),cancel=button('취소','prop-control');
- meterView.append(title,meterHelp,gauge,push,cancel);well.append(meterView);status.textContent='제상 위의 빈 물그릇을 챙기세요.';
+ const push=button('힘주기','prop-control'),cancel=button('취소','prop-control');
+ meterView.append(title,meterHelp,gauge,push,cancel);(rehearsal?scene:well).append(meterView);status.textContent='제상 위의 빈 물그릇을 챙기세요.';
  let currentRegion=rehearsal?.initialRegion;
  const bg=el('img',null,'well-demo-map-bg'),route=el('nav',null,'well-demo-route'),jump=el('select');
  if(rehearsal){
@@ -73,7 +73,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  const tell=msg=>{status.textContent=msg;};
  function placeNode(node,p){node.style.left=p.x+'%';node.style.top=p.y+'%';}
  placeNode(altar,points.altar);placeNode(well,points.well);
- if(rehearsal&&points.well.y>=50)well.dataset.meterSide='above';
+ if(rehearsal)meterView.style.setProperty('--well-meter-x',points.well.x+'%');
  function showRegion(id){
   if(!rehearsal)return;
   const region=rehearsal.regions.find(r=>r.id===id);if(!region)return;

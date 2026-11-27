@@ -513,6 +513,6 @@ ul{padding:0;list-style:none}
 .well-demo-item .well-demo-sprite{position:static;width:34px;height:22px;display:inline-block;margin-right:.27rem;vertical-align:middle}
 .well-demo-item[data-state=filled]{border-color:#44818a;background:#dbf3f6}
 
-.well-demo-map .well-demo-meter{position:absolute;top:100%;z-index:2}
-.well-demo-map .well-demo-well:has(.well-demo-meter:not([hidden])){z-index:2}
-.well-demo-map .well-demo-well[data-meter-side=above] .well-demo-meter{top:auto;bottom:100%}
+.well-demo-map .well-demo-meter:not([hidden]){display:grid;grid-template-columns:1fr 1fr;gap:.15rem .35rem;align-items:center;position:absolute;top:6px;left:clamp(45%,var(--well-meter-x),55%);transform:translateX(-50%);z-index:2;width:min(13rem,86%);color:#fffef1;text-align:center}
+.well-demo-map .well-demo-meter progress{grid-column:1/-1;height:.8rem}
+.well-demo-map .well-demo-meter button + button{margin-left:0}
