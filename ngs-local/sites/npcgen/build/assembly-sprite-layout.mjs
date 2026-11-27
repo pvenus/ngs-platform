@@ -1,4 +1,4 @@
-import {mapDecorPinKey} from './map-contract.mjs';
+import {mapDecorPinKey,mapDecorationRotation} from './map-contract.mjs';
 /** Convert source PNG pixels to map units; viewport zoom never changes a placement. */
 export const spriteRoles=['table','bowl','well','lid'];
 export const spriteParents={table:'altar',bowl:'altar',well:'well',lid:'well',spirit:'spirit'};
@@ -31,11 +31,16 @@ export function decorationBox(row,art,region,spirit){
  if((row.visibility!=='both'&&row.visibility!==mode)||!imageSize(region))return null;
  const asset=art?.[mode];
  if(!imageSize(asset))return null;
- return {src:asset.url,x:row.anchor.x/10,y:row.anchor.y/10,width:asset.width*row.scale/region.width,height:asset.height*row.scale/region.height};
+ return {src:asset.url,x:row.anchor.x/10,y:row.anchor.y/10,width:asset.width*row.scale/region.width,height:asset.height*row.scale/region.height,rotation:mapDecorationRotation(row)};
 }
 export function paintDecoration(node,box){
  applyAssemblySpriteBox(node,box);
- if(box&&node.getAttribute('src')!==box.src)node.src=box.src;
+ if(box){
+  // The image's bottom center remains pinned to its placement marker.
+  node.style.transformOrigin='50% 100%';
+  node.style.transform='translate(-50%,-100%) rotate('+box.rotation+'deg)';
+  if(node.getAttribute('src')!==box.src)node.src=box.src;
+ }
 }
 export function renderMapDecorations(host,placements,loaded,region,spirit,keyOf){
  host.replaceChildren(...placements.filter(p=>p.regionId===region?.id).flatMap(p=>{

@@ -26,7 +26,10 @@ test('Manifestation is initially visible only with ability ON, requires proximit
 });
 test('Decoration uses its selected lane, with no lost one-sided visibility or geometry at a different zoom',async()=>{
  const images=decorationArt(art,pin);
- assert.deepEqual(decorationBox(row,images,region,false),{src:art.media.pixel.url,x:65,y:60,width:15,height:12.5});
+ assert.deepEqual(decorationBox(row,images,region,false),{src:art.media.pixel.url,x:65,y:60,width:15,height:12.5,rotation:0});
+ const turned={...row,rotation:273};
+ assert.equal(decorationBox(turned,images,region,false).rotation,273);
+ assert.equal(decorationBox(turned,images,region,true).rotation,273);
  assert.equal(decorationBox(row,images,region,true).src,art.media.spirit.url);
  assert.equal(decorationBox({...row,visibility:'cinematic'},images,region,false),null);
  assert.equal(decorationBox({...row,visibility:'pixel'},images,region,true),null);

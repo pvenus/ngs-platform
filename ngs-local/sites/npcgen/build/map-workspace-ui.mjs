@@ -4,7 +4,7 @@ import {orderedMapChain} from './map-warp.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
 import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations} from './assembly-sprite-layout.mjs';
 import {hashBrowserMap} from './map-contract.mjs';
-import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
+import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
@@ -701,7 +701,18 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     chosen.scale=scale.valueAsNumber;changed();
    };
    roster.append(label('표시 모드',visibility));
-   const sizeField=el('div',undefined,'map-decoration-size');sizeField.append(label('크기 (%)',scale));decoration.append(sizeField);
+   const rotation=el('input');rotation.type='number';rotation.min='0';rotation.max='359';rotation.step='1';
+   rotation.value=mapDecorationRotation(chosen);rotation.disabled=locked;
+   rotation.onchange=()=>{
+    const angle=rotation.valueAsNumber;
+    if(!Number.isInteger(angle)||angle<0||angle>359){rotation.value=mapDecorationRotation(chosen);return;}
+    if(angle===mapDecorationRotation(chosen))return;
+    if(angle===0)delete chosen.rotation;else chosen.rotation=angle;
+    changed();restoreControl('꾸미기 프랍 회전');
+   };
+   rotation.setAttribute('aria-label','꾸미기 프랍 회전');
+   const sizeField=el('div',undefined,'map-decoration-size');
+   sizeField.append(label('크기 (%)',scale),label('회전 (°)',rotation));decoration.append(sizeField);
   }
   function createDecorationPrompt(){
    const prompt=card('4. 꾸미기','map-decoration-card');

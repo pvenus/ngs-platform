@@ -594,7 +594,7 @@ ul{padding:0;list-style:none}
 .map-decoration-view button[aria-pressed=true]{color:var(--card);background:var(--primary);border-color:var(--primary)}
 .map-decoration-roster{min-width:0;display:grid;gap:.5rem;padding:.65rem;border:1px solid var(--border);border-radius:8px}
 .map-decoration-actions{display:grid;gap:.35rem}
-.map-decoration-size{width:min(10rem,100%);justify-self:end}
+.map-decoration-size{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem;width:min(20rem,100%);justify-self:end}
 .map-decoration-list{display:grid;gap:.35rem;list-style:none;margin:0;padding:0;max-height:22rem;overflow:auto;overscroll-behavior:contain}
 .map-decoration-list-item{width:100%;display:grid;gap:.15rem;text-align:left;white-space:normal;overflow-wrap:anywhere}
 .map-decoration-list-item small{font-size:.78rem;color:var(--muted-foreground)}

@@ -48,7 +48,9 @@ The fourth editor tab applies a complete map snapshot using the existing
 `file.update` pipeline. Its placement draft is independent from start, portal
 and collision drafts. Each placement pins a published prop revision, uses a
 bottom-center anchor in natural-canvas thousandths, and scales the reduced prop
-relative to natural map pixels. `both` swaps pixel and cinematic variants with
+relative to natural map pixels. An optional integer `rotation` is clockwise,
+0–359 degrees about the same bottom-center anchor; older placements default to 0.
+The same value is used in editing, warp preview, and assembled play. `both` swaps pixel and cinematic variants with
 the ability switch; `pixel` (OFF) and `cinematic` (ON) are absent in the other
 mode. Decorations never register a puzzle interaction, collision, or portal.
 Warp and assembled puzzle playback read these map-level placements.
