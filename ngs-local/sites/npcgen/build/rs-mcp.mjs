@@ -19,6 +19,7 @@ import {cinematicType} from './cinematic-contract.mjs';
 import {propTypes} from './prop-workspace-contract.mjs';
 // Release together with map-contract.mjs: the relay checks map.generate v2 stage
 // options and optional start points, as well as older map and collider packets.
+// Relay v3 map decoration candidates and authored spirit puzzle metadata unchanged.
 import {mapTypes,validMapRequest} from './map-contract.mjs';
 // Bind the assembly v2 multi-puzzle intake to this relay release as well as the shared contract.
 function validateAssemblyRelay(type,payload){

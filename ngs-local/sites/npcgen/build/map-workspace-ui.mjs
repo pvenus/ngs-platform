@@ -540,12 +540,14 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    const row=el('div',undefined,'map-row');
    row.append(label('사용할 프랍',selector),label('표시 모드',vis),action);host.append(row);
   }
+  const decorPaintTicket=new WeakMap();
   const drawDecorArt=(host,placements,mapRegion,sight,dropSignal=signal)=>{
+   const ticket=Symbol();decorPaintTicket.set(host,ticket);
    const area=mapRegion&&assets.get(mapRegion.backgroundId);
    const size=area&&{id:mapRegion.id,width:area.width,height:area.height};
    const here=placements.filter(p=>p.regionId===mapRegion?.id);
    const paint=()=>{
-    if(host.isConnected===false||dropSignal?.aborted)return;
+    if(host.isConnected===false||dropSignal?.aborted||decorPaintTicket.get(host)!==ticket)return;
     renderMapDecorations(host,here,decorArt.cache,size,sight,mapDecorPinKey);
    };
    paint();if(here.length)void decorArt.load(here).then(paint);
