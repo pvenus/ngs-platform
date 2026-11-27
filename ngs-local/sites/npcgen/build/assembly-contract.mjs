@@ -1,5 +1,5 @@
 import {exactScale} from './assembly-sprite-layout.mjs';
-import {mapFields,officialId,mapText,regionId} from './map-contract.mjs';
+import {mapFields,officialId,mapText,regionId,validRoleZOrder} from './map-contract.mjs';
 import {propSlug,propSha,propRevision} from './prop-workspace-contract.mjs';
 export const assemblyTypes=['assembly.generate','assembly.update'];
 export const assemblyPath='/api/assembly-workspace',assemblyRoot='cinematics/assemblies';
@@ -17,11 +17,12 @@ export function permitsAssemblyPortal(conditions,id,propState){
  const matches=(conditions??[]).filter(c=>c.portalId===id);
  return matches.every(c=>propState(c.propRole)===c.requiredState);
 }
-const validManifestation=p=>mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[])])&&
+const validManifestation=p=>mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'zOrder')?['zOrder']:[]),...(p&&Object.hasOwn(p,'scale')?['scale']:[])])&&
  typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&
  mapFields(p.layout,['spirit'])&&mapFields(p.layout.spirit,['regionId','x','y'])&&regionId(p.layout.spirit.regionId)&&coordinate(p.layout.spirit,10,90)&&
  mapFields(p.attachments,[])&&mapFields(p.bindings,['spirit'])&&mapFields(p.bindings.spirit,['propId','revision','sha256'])&&
  propSlug(p.bindings.spirit.propId)&&propRevision(p.bindings.spirit.revision)&&propSha(p.bindings.spirit.sha256)&&
+ (!Object.hasOwn(p,'zOrder')||validRoleZOrder(p.zOrder,['spirit']))&&
  (!Object.hasOwn(p,'scale')||mapFields(p.scale,['spirit'])&&exactScale(p.scale.spirit));
 const actions=['pickup','drop','activate'],modules=['inventory.move.v1','prop.interact.v1','switch.v1'];
 const label=v=>typeof v==='string'&&v.length>=1&&v.length<=64&&/^[a-z][a-z0-9]*(?:[-._][a-z0-9]+)*$/u.test(v);
@@ -65,7 +66,8 @@ export function validPuzzleDefinition(v){
 }
 export function validAssemblyPuzzle(p){
  if(p?.type===spiritPuzzleType)return validManifestation(p);
- return mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[]),...(p&&Object.hasOwn(p,'portalConditions')?['portalConditions']:[]),...(p&&Object.hasOwn(p,'definition')?['definition']:[])])&&
+ return mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'zOrder')?['zOrder']:[]),...(p&&Object.hasOwn(p,'scale')?['scale']:[]),...(p&&Object.hasOwn(p,'portalConditions')?['portalConditions']:[]),...(p&&Object.hasOwn(p,'definition')?['definition']:[])])&&
+  (!Object.hasOwn(p,'zOrder')||validRoleZOrder(p.zOrder,roleNames))&&
   (!Object.hasOwn(p,'definition')||validPuzzleDefinition(p.definition))&&
   (!Object.hasOwn(p,'portalConditions')||validPortalConditions(p.portalConditions))&&
   (!Object.hasOwn(p,'scale')||mapFields(p.scale,roleNames)&&roleNames.every(k=>exactScale(p.scale[k])))&&typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&p.type===assemblyPuzzleType&&

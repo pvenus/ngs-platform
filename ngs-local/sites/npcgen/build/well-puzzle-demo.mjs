@@ -1,5 +1,5 @@
 import {bowlStates,permitsAssemblyPortal,spiritPuzzleType} from './assembly-contract.mjs';
-import {assemblySpriteBox,applyAssemblySpriteBox,decorationBox,paintDecoration,renderMapDecorations} from './assembly-sprite-layout.mjs';
+import {assemblySpriteBox,applyAssemblySpriteBox,decorationBox,paintDecoration,renderMapDecorations,paintPropDepth,puzzleZOrder} from './assembly-sprite-layout.mjs';
 import {mapDecorPinKey} from './map-contract.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
 import {createPuzzleRuntime,advancePressMeter,prepareCsharpWater} from './puzzle-state-runtime.mjs';
@@ -58,7 +58,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  const wellArt=addArt('well',worldSized?scene:rimArt),lidArt=addArt('lid',worldSized?scene:rimArt);
  const worldArt={table:tableArt,bowl:bowlArt,well:wellArt,lid:lidArt};
  if(worldSized){
-  scene.classList.add('well-world-sized');for(const [role,img] of Object.entries(worldArt))if(img){img.className='well-world-sprite';img.dataset.role=role;}
+  scene.classList.add('well-world-sized');for(const [role,img] of Object.entries(worldArt))if(img){img.className='well-world-sprite';img.dataset.role=role;paintPropDepth(img,puzzleZOrder(rehearsal.zOrder,role),'puzzle');}
  }
  if(altarArt.children.length){socket.classList.add('well-demo-has-art');socket.append(altarArt);}
  if(rimArt.children.length){water.classList.add('well-demo-has-art');water.append(rimArt);}
@@ -80,7 +80,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  let currentRegion=rehearsal?.initialRegion;
  const bg=el('img',null,'well-demo-map-bg'),route=el('nav',null,'well-demo-route'),jump=el('select'),portals=el('div',null,'well-play-portals');
  if(rehearsal){
-  scene.classList.add('well-demo-map');bg.alt='';bg.draggable=false;scene.prepend(bg,decorLayer);if(useActor)scene.append(portals);
+  scene.classList.add('well-demo-map','prop-depth-scene');bg.alt='';bg.draggable=false;scene.prepend(bg,decorLayer);if(useActor)scene.append(portals);
   const label=el('label','테스트 구역 바로가기');jump.setAttribute('aria-label','테스트 구역 바로가기');
   for(const region of rehearsal.regions){const option=el('option',region.name);option.value=region.id;jump.append(option);}
   label.append(jump);if(!useActor)root.append(label);root.append(route);
@@ -279,6 +279,7 @@ function spiritManifestationLayer(scene,configs,regions){
   const badge=el(cfg.media?'img':'span',cfg.media?null:'✦','map-decor-sprite spirit-manifestation-prop');
   badge.dataset.manifestationId=cfg.id??'preview';badge.hidden=true;
   if(cfg.media){badge.alt='';badge.draggable=false;}
+  paintPropDepth(badge,puzzleZOrder(cfg.zOrder,'spirit'),'spirit');
   layer.append(badge);return {cfg,badge,model:createSpiritManifestation()};
  });
  function paint(regionId,sight){
@@ -287,8 +288,8 @@ function spiritManifestationLayer(scene,configs,regions){
    const visible=cfg.point.regionId===regionId&&model.visible(sight);
    badge.dataset.state=model.state();badge.dataset.view=sight?'cinematic':'pixel';
    if(cfg.media){
-    const row={visibility:'both',anchor:{x:cfg.point.x*10,y:cfg.point.y*10},scale:cfg.scale};
-    paintDecoration(badge,visible?decorationBox(row,cfg.media,region,sight):null);
+    const row={visibility:'both',anchor:{x:cfg.point.x*10,y:cfg.point.y*10},scale:cfg.scale,zOrder:puzzleZOrder(cfg.zOrder,'spirit')};
+    paintDecoration(badge,visible?decorationBox(row,cfg.media,region,sight):null,'spirit');
    }else{
     badge.hidden=!visible;badge.style.left=cfg.point.x+'%';badge.style.top=cfg.point.y+'%';
    }
@@ -312,7 +313,7 @@ export function mountSpiritManifestation(host,{signal,rehearsal}){
  const engage=button('상호작용 (F)','prop-control'),story=el('p',null,'well-demo-status');
  scene.tabIndex=0;scene.setAttribute('aria-label','영물 현현 플레이');
  story.setAttribute('role','status');if(!rehearsal)story.textContent='서진 능력을 켜고 F로 상호작용한 뒤, 능력을 꺼서 결과를 확인하세요.';
- if(rehearsal){scene.classList.add('well-demo-map');regionArt.alt='';regionArt.draggable=false;scene.append(regionArt,decor);}
+ if(rehearsal){scene.classList.add('well-demo-map','prop-depth-scene');regionArt.alt='';regionArt.draggable=false;scene.append(regionArt,decor);}
  const point=rehearsal?.point??{regionId:'test',x:50,y:56};
  const layers=spiritManifestationLayer(scene,rehearsal?.manifestations??[{...rehearsal,point}],rehearsal?.regions??[]);
  let sight=false,actor,regionId=rehearsal?.graph.startRegionId??'test';

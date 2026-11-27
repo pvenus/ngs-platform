@@ -478,7 +478,7 @@ test('decoration roster and map share selection, including hidden props, and del
  const layout=parts().find(n=>n.className==='map-decoration-editor');
  assert.equal(layout.children[0].attrs['aria-label'],'배치한 프랍');
  assert.equal(layout.children[1].className,'map-preview map-decoration-map');
- assert.ok(find('배치한 프랍 (2)'));assert.ok(find('능력 ON · 시네마틱만 · 현재 숨김'));
+ assert.ok(find('배치한 프랍 (2)'));assert.ok(find('능력 ON · 시네마틱만 · Z 0 · 현재 숨김'));
  assert.equal(find('선택한 프랍 배치 삭제').disabled,true);
  assert.equal(find('선택한 프랍 복제').disabled,true);
  byAria('배치 2 · 등불').onclick();await settle();
@@ -493,7 +493,7 @@ test('decoration roster and map share selection, including hidden props, and del
  const draft=()=>JSON.parse(memory.get(mapDraftKey('binari',mapId))).graph.decorations;
  const scale=parts().find(n=>n.tag==='label'&&n.textContent==='크기 (%)').children[0];
  const rotation=byAria('꾸미기 프랍 회전');
- assert.deepEqual(parts().filter(n=>n.tag==='input'&&n.type==='number'),[scale,rotation]);
+ assert.deepEqual(parts().filter(n=>n.tag==='input'&&n.type==='number'),[scale,rotation,byAria('꾸미기 프랍 Z Order')]);
  assert.equal(rotation.value,0);
  assert.equal(rotation.min,'-180');assert.equal(rotation.max,'180');
  for(const invalid of [-181,181]){rotation.valueAsNumber=invalid;rotation.onchange();assert.equal(rotation.value,0);}
@@ -530,18 +530,16 @@ test('decoration roster and map share selection, including hidden props, and del
  assert.deepEqual(state.graph.decorations,[decorations[0],decorations[2],decorations[1]]);
  const second={...decorations[1],scale:185,rotation:285,flipX:true,flipY:true};
  assert.deepEqual(draft(),[decorations[0],decorations[2],second]);
- const behind='선택한 프랍 한 단계 뒤로',ahead='선택한 프랍 한 단계 앞으로';
  byAria('배치 2 · 등불').onclick();await settle();
- assert.equal(byAria(ahead).disabled,true);
- byAria(behind).onclick();await settle();
- assert.equal(byAria('배치 1 · 등불').attrs['aria-pressed'],'true');
- assert.equal(byAria(behind).disabled,true);
- assert.deepEqual(draft(),[second,decorations[2],decorations[0]]);
- assert.deepEqual(parts().filter(n=>n.className?.includes('map-decoration-selectable')).map(n=>n.dataset.decorationId),['d-cinema','d-pixel']);
- byAria(ahead).onclick();await settle();
- assert.deepEqual(draft(),[decorations[0],decorations[2],second]);
- byAria(behind).onclick();await settle();
+ const z=byAria('꾸미기 프랍 Z Order');
+ assert.equal(z.value,0);
+ z.valueAsNumber=1001;z.onchange();assert.equal(z.value,0);
+ z.valueAsNumber=17;z.onchange();await settle();
+ byAria('꾸미기 서진 능력 미리보기').onclick();await settle();
+ assert.equal(sprites()[0].style.zIndex,'3052');
+ const expected=[decorations[0],decorations[2],{...second,zOrder:17}];
+ assert.deepEqual(draft(),expected);
  assert.equal(posts.length,0);await find('꾸미기 적용').onclick();
  assert.equal(posts.length,1);assert.equal(posts[0].requestType,'file.update');
- assert.deepEqual(posts[0].payload.content.decorations,[second,decorations[2],decorations[0]]);
+ assert.deepEqual(posts[0].payload.content.decorations,expected);
 });

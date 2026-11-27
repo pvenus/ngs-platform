@@ -1,9 +1,16 @@
-import {mapDecorPinKey,mapDecorationRotation} from './map-contract.mjs';
+import {mapDecorPinKey,mapDecorationRotation,validPropZOrder,propZMin} from './map-contract.mjs';
 /** Convert source PNG pixels to map units; viewport zoom never changes a placement. */
 export const spriteRoles=['table','bowl','well','lid'];
 export const spriteParents={table:'altar',bowl:'altar',well:'well',lid:'well',spirit:'spirit'};
 export const exactScale=s=>Number.isInteger(s)&&s>=10&&s<=300;
 export const scaleOf=(scale,role)=>exactScale(scale?.[role])?scale[role]:100;
+export const decorationZOrder=row=>validPropZOrder(row?.zOrder)?row.zOrder:0;
+const defaultPuzzleZ={table:-100,bowl:-99,well:-100,lid:-99,spirit:100};
+export const puzzleZOrder=(values,role)=>validPropZOrder(values?.[role])?values[role]:defaultPuzzleZ[role]??0;
+export function paintPropDepth(node,value,kind='decoration'){
+ const tie=kind==='spirit'?2:kind==='puzzle'?1:0;
+ if(node)node.style.zIndex=String(((validPropZOrder(value)?value:0)-propZMin)*3+tie+1);
+}
 export const imageSize=art=>Number.isInteger(art?.width)&&art.width>0&&Number.isInteger(art?.height)&&art.height>0;
 export function assemblySpriteBox({role,layout,attachments,scale,asset,region}){
  const base=layout?.[spriteParents[role]];
@@ -31,11 +38,12 @@ export function decorationBox(row,art,region,spirit){
  if((row.visibility!=='both'&&row.visibility!==mode)||!imageSize(region))return null;
  const asset=art?.[mode];
  if(!imageSize(asset))return null;
- return {src:asset.url,x:row.anchor.x/10,y:row.anchor.y/10,width:asset.width*row.scale/region.width,height:asset.height*row.scale/region.height,rotation:mapDecorationRotation(row),flipX:row.flipX===true,flipY:row.flipY===true};
+ return {src:asset.url,x:row.anchor.x/10,y:row.anchor.y/10,width:asset.width*row.scale/region.width,height:asset.height*row.scale/region.height,rotation:mapDecorationRotation(row),flipX:row.flipX===true,flipY:row.flipY===true,zOrder:decorationZOrder(row)};
 }
-export function paintDecoration(node,box){
+export function paintDecoration(node,box,kind='decoration'){
  applyAssemblySpriteBox(node,box);
  if(box){
+  paintPropDepth(node,box.zOrder,kind);
   // The image's bottom center remains pinned to its placement marker.
   node.style.transformOrigin='50% 100%';
   const translateY=box.flipY?' translateY(-100%)':'';

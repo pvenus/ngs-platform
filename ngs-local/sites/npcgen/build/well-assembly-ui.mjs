@@ -1,8 +1,8 @@
 import {fileUpdateType,fileUpdateSchema,assemblyUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
-import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,decorationArt,decorationsLoader} from './assembly-sprite-layout.mjs';
+import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,decorationArt,decorationsLoader,renderMapDecorations,paintPropDepth,puzzleZOrder} from './assembly-sprite-layout.mjs';
 import {assemblyReachable,bowlStates,validPortalConditions} from './assembly-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
-import {validMapState} from './map-contract.mjs';
+import {validMapState,validPropZOrder,propZMin,propZMax,mapDecorPinKey} from './map-contract.mjs';
 import {wellDemoId,wellDemoTitle,wellAssemblySlots,mountWellPuzzleDemo,spiritDemoId,spiritDemoTitle,mountSpiritManifestation,prepareWellPuzzle} from './well-puzzle-demo.mjs';
 
 const slots=Object.entries(wellAssemblySlots),spiritSlots=[['spirit','영물']],allSlots=[...slots,...spiritSlots];
@@ -75,7 +75,7 @@ export function dragWellPlacement({role,regionId,clientX,clientY,rect,layout,att
  return base?{layout:{...layout,[base]:{regionId,x:clamp(x,10,90),y:clamp(y,10,90)}},attachments}:null;
 }
 
-export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bindings,media,pins,scale,portalConditions}){
+export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bindings,media,pins,scale,zOrder,portalConditions}){
  if(!validMapState(map))throw Error('MAP_INVALID');
  if(!['altar','well'].every(key=>viewPoint(layout[key])&&map.graph.regions.some(x=>x.id===layout[key].regionId)))throw Error('PLACEMENT_INVALID');
  if(attachments&&!['bowl','lid'].every(key=>offsetOk(attachments[key])))throw Error('ATTACHMENT_INVALID');
@@ -91,14 +91,14 @@ export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bin
   if(spirit?.mediaType==='image/png'&&spirit.width===pixel.width&&spirit.height===pixel.height&&safeMedia(spirit.url))
    spiritArt[role]=spirit.url;
  }
- return {initialRegion:map.graph.startRegionId,regions,connections:map.graph.connections,positions:layout,attachments,scale,art,spiritArt,artSizes,graph:map.graph,portalConditions};
+ return {initialRegion:map.graph.startRegionId,regions,connections:map.graph.connections,positions:layout,attachments,scale,zOrder,art,spiritArt,artSizes,graph:map.graph,portalConditions};
 }
 
-export function buildSpiritRehearsal(map,backgrounds,point,scale,prop,pin,decorArt){
+export function buildSpiritRehearsal(map,backgrounds,point,scale,prop,pin,decorArt,zOrder){
  const media=pin?decorationArt(prop,pin):null;
  if(!media?.pixel||!media.cinematic||!viewPoint(point)||!map.graph.regions.some(r=>r.id===point.regionId)||!exactScale(scale))
   throw Error('SPIRIT_PLACEMENT_OR_ART_INVALID');
- return {graph:map.graph,regions:mapRehearsalRegions(map,backgrounds),point,scale,media,decorArt};
+ return {graph:map.graph,regions:mapRehearsalRegions(map,backgrounds),point,scale,media,decorArt,zOrder};
 }
 
 export async function mountWellAssembly({items,detail,request,projectId,signal,published,submit,updateEnabled=true}){
@@ -115,7 +115,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  const mapSelect=el('select'),puzzle=el('select');
  puzzle.append(option(wellDemoId,wellDemoTitle),option(spiritDemoId,spiritDemoTitle));
  const inputs=el('div',null,'well-assembly-grid');inputs.append(field('맵',mapSelect));
- const positionInputs={},propInputs={},offsetInputs={},scaleInputs={},sizeLabels={},retryArt={},bindingGroups={},positionGroups={},offsetGroups={};
+ const positionInputs={},propInputs={},offsetInputs={},scaleInputs={},zInputs={},sizeLabels={},retryArt={},bindingGroups={},positionGroups={},offsetGroups={};
  const placement=el('div',null,'well-assembly-grid');
  const bindingFields=el('div',null,'well-assembly-grid');
  for(const [role,label] of allSlots){
@@ -137,7 +137,9 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   dimensions.setAttribute('aria-live','polite');
   const retry=control('이미지 다시 불러오기');retry.hidden=true;retryArt[role]=retry;
   retry.addEventListener('click',()=>{if(selected)void paintArt(selected,role);},{signal});
-  group.append(field(label,select),scaleLine,dimensions,retry);bindingGroups[role]=group;bindingFields.append(group);
+  const z=el('input');z.type='number';z.min=String(propZMin);z.max=String(propZMax);z.step='1';z.value=String(puzzleZOrder(null,role));
+  z.setAttribute('aria-label',label+' Z Order');zInputs[role]=z;
+  group.append(field(label,select),scaleLine,field('Z Order',z),dimensions,retry);bindingGroups[role]=group;bindingFields.append(group);
  }
  for(const [key,title] of [['altar','제상 위치 · 그릇 자리 포함'],['well','우물 위치 · 뚜껑 포함'],['spirit','영물 위치']]){
   const group=el('fieldset'),legend=el('legend',title),region=el('select'),coords=el('div',null,'well-assembly-grid');
@@ -294,7 +296,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    bindingGroups[key].hidden=!applicable(preset,key);if(bindingGroups[key].hidden)continue;
    const id=preset.bindings[key]??'';
    if(id&&!Array.from(entry.options).some(o=>o.value===id))entry.append(option(id,id+' (게시본 참조)'));
-   entry.value=id;scaleInputs[key].value=scaleOf(preset.scale,key);
+   entry.value=id;scaleInputs[key].value=scaleOf(preset.scale,key);zInputs[key].value=puzzleZOrder(preset.zOrder,key);
   }
   gates.hidden=usesSpirit(preset);
   for(const [role] of slotsFor(preset))showDimensions(preset,role);
@@ -349,8 +351,11 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(view&&view.img.parentNode!==layer)layer.append(view.img);
   if(pin.parentNode!==layer)layer.append(pin);
   pin.style.left=(point.x+delta.x)+'%';pin.style.top=(point.y+delta.y)+'%';
-  if(view)applyAssemblySpriteBox(view.img,assemblySpriteBox({role,layout:preset.layout,attachments:preset.attachments,
-   scale:preset.scale,asset:view.asset,region:layer.assemblyRegion}));
+  if(view){
+   paintPropDepth(view.img,puzzleZOrder(preset.zOrder,role),role==='spirit'?'spirit':'puzzle');
+   applyAssemblySpriteBox(view.img,assemblySpriteBox({role,layout:preset.layout,attachments:preset.attachments,
+    scale:preset.scale,asset:view.asset,region:layer.assemblyRegion}));
+  }
  }
  function showDimensions(preset,role){
   if(selected!==preset)return;
@@ -416,14 +421,18 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   overview.classList.toggle('zoomed',Boolean(zoom.value));
   for(const region of mapRehearsalRegions(map,backgrounds).filter(r=>!zoom.value||r.id===zoom.value)){
    const tile=el('section',null,'well-assembly-region');
-   const image=el('img',null,'well-assembly-map-art'),layer=el('div',null,'well-assembly-layer');
+   const image=el('img',null,'well-assembly-map-art'),layer=el('div',null,'well-assembly-layer prop-depth-scene');
    image.src=region.src;image.alt='';image.draggable=false;image.loading='lazy';
    layer.style.aspectRatio=String(region.width/region.height);layer.dataset.regionId=region.id;layer.assemblyRegion=region;
    const caption=el('header',null,'well-assembly-region-heading'),zoomButton=control(zoom.value?'전체 보기':'크게 보기');
    zoomButton.setAttribute('aria-label',zoom.value?'전체 구역 보기':region.name+' 크게 보기');
    zoomButton.addEventListener('click',()=>{zoom.value=zoom.value?'':region.id;renderBoard();zoom.focus({preventScroll:true});},{once:true});
    caption.append(el('h5',region.name),zoomButton);
-   layer.append(image);tile.append(caption,layer);overview.append(tile);overlays.set(region.id,layer);
+   const decorations=el('div',null,'map-decoration-layer'),placed=map.graph.decorations??[];
+   layer.append(image,decorations);tile.append(caption,layer);overview.append(tile);overlays.set(region.id,layer);
+   if(placed.length)void loadDecor.load(placed).then(cache=>{
+    if(!signal.aborted&&overlays.get(region.id)===layer)renderMapDecorations(decorations,placed,cache,region,false,mapDecorPinKey);
+   });
   }
   renderPins();
  }
@@ -519,6 +528,13 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   selected.scale={...Object.fromEntries(slotsFor(selected).map(([k])=>[k,scaleOf(selected.scale,k)])),[role]:Number(input.value)};
   movePin(selected,role);showDimensions(selected,role);if(run)stopPlay();remember();refresh();
  },{signal});
+ for(const [role,input] of Object.entries(zInputs))input.addEventListener('change',()=>{
+  if(!selected||!applicable(selected,role))return;
+  const next=input.valueAsNumber,previous=puzzleZOrder(selected.zOrder,role);
+  if(!validPropZOrder(next)){input.value=previous;return;}
+  if(next===previous)return;
+  selected.zOrder={...selected.zOrder,[role]:next};movePin(selected,role);if(run)stopPlay();remember();refresh();
+ },{signal});
  for(const [role,input] of Object.entries(propInputs))input.addEventListener('change',()=>{if(selected)void paintArt(selected,role);},{signal});
  stop.addEventListener('click',()=>{stopPlay();setStatus('테스트를 종료했어요. 연결 값은 그대로예요.');play.focus();},{signal});
  play.addEventListener('click',async()=>{
@@ -532,11 +548,11 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    if(selected!==instance||JSON.stringify(chosen)!==JSON.stringify(bindings())||JSON.stringify(coords)!==JSON.stringify(layout())||JSON.stringify(offsets)!==JSON.stringify(attachments())||JSON.stringify(sizes)!==JSON.stringify(scale())){setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');return;}
    if(usesSpirit(instance)){
     const pin=instance.pinned?.spirit??props.find(p=>p.propId===chosen.spirit);
-    const config=buildSpiritRehearsal(latest,art,coords.spirit,sizes.spirit,media.spirit,pin,decorArt);
+    const config=buildSpiritRehearsal(latest,art,coords.spirit,sizes.spirit,media.spirit,pin,decorArt,instance.zOrder);
     run=new AbortController();mountSpiritManifestation(stage,{signal:run.signal,rehearsal:config});stop.hidden=false;
     setStatus('영물 현현 테스트 중이에요.');return;
    }
-   const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned,portalConditions:instance.portalConditions});
+   const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned,zOrder:instance.zOrder,portalConditions:instance.portalConditions});
    rehearsal.decorArt=decorArt;rehearsal.makeRuntime=await prepareWellPuzzle(instance.definition);if(signal.aborted||ticket!==generation)return;
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal});stop.hidden=false;
    setStatus('테스트 중이에요. WASD로 움직이고, 표시된 포털 영역에 걸어 들어가면 이동해요.');
@@ -550,7 +566,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(selected&&(!Object.values(layout()).every(viewPoint)||!Object.values(attachments()).every(offsetOk)||!Object.values(scale()).every(exactScale))){setStatus('선택한 퍼즐의 좌표 범위를 확인하세요.');return;}
   snapshotSelected();
   const puzzles=instances.map(p=>({id:p.id,type:p.type,layout:p.layout,attachments:p.attachments,...(p.scale?{scale:p.scale}:{}),
-   ...(p.definition?{definition:p.definition}:{}),
+   ...(p.definition?{definition:p.definition}:{}),...(p.zOrder?{zOrder:p.zOrder}:{}),
    ...(p.portalConditions?.length?{portalConditions:p.portalConditions}:{}),
    bindings:Object.fromEntries(slotsFor(p).map(([role])=>{
     const row=p.pinned?.[role]??props.find(x=>x.propId===p.bindings[role]);
@@ -587,7 +603,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    if(signal.aborted)return;
    const revealConfigs=await Promise.all(reveals.map(async puzzle=>{
     const pin=puzzle.bindings.spirit,{prop}=await pinnedRead(pin);
-    const config=buildSpiritRehearsal(latest,art,puzzle.layout.spirit,puzzle.scale?.spirit??100,prop,pin,decorArt);
+    const config=buildSpiritRehearsal(latest,art,puzzle.layout.spirit,puzzle.scale?.spirit??100,prop,pin,decorArt,puzzle.zOrder);
     return {...config,id:puzzle.id,onReveal:change=>{
      detail.dispatchEvent(new CustomEvent('ngs:prop-changed',{bubbles:true,detail:{type:'prop.changed',assemblyId:published.assemblyId,
       presetId:puzzle.id,asset:pin,role:'spirit',regionId:puzzle.layout.spirit.regionId,...change}}));
@@ -601,7 +617,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
     run=new AbortController();mountSpiritManifestation(stage,{signal:run.signal,rehearsal:config});stop.hidden=false;
     setStatus('게시 리비전 '+published.revision+'로 플레이 중이에요.');return;
    }
-   const config=buildWellRehearsal({map:latest,backgrounds:art,props,layout:original.layout,attachments:original.attachments,scale:original.scale,bindings:Object.fromEntries(Object.entries(original.bindings).map(([k,v])=>[k,v.propId])),pins:original.bindings,media,portalConditions:original.portalConditions});
+   const config=buildWellRehearsal({map:latest,backgrounds:art,props,layout:original.layout,attachments:original.attachments,scale:original.scale,bindings:Object.fromEntries(Object.entries(original.bindings).map(([k,v])=>[k,v.propId])),pins:original.bindings,media,zOrder:original.zOrder,portalConditions:original.portalConditions});
    config.manifestations=revealConfigs;config.makeRuntime=await prepareWellPuzzle(original.definition);if(signal.aborted)return;
    config.decorArt=decorArt;config.formal=true;config.onPropChanged=change=>{
     const event={type:'prop.changed',assemblyId:published.assemblyId,presetId:original.id,asset:original.bindings[change.role],...change};

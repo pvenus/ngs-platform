@@ -105,7 +105,7 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
       (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
       (assemblyTypes.includes(row.requestType)&&!validateAssemblyRelay(row.requestType,row.payload))||
       (mapTypes.includes(row.requestType)&&!validMapRequest(row.payload,row.requestType))||
-      // Validate the full graph, including optional prop rotation and flips, before relaying a map edit.
+      // Validate the full graph, including optional prop rotation, flips and depth, before relaying a map edit.
       // The validator agrees with the file worker and still accepts legacy no-rotation maps.
       (row.requestType===fileUpdateType&&!validFileUpdate(row.payload))||
       (row.requestType===fileDeleteType&&!(validMapFolderDelete(row.payload)||validAssemblyFolderDelete(row.payload)||

@@ -22,11 +22,14 @@ test('Manifestation is initially visible only with ability ON, requires proximit
  assert.equal(s.visible(false),true);assert.equal(s.visible(true),true);
  assert.equal(s.activate({sight:true,near:true}),null);assert.equal(other.visible(false),false);
  const p={id:'spirit-fixture',type:spiritPuzzleType,layout:{spirit:{regionId:id,x:40,y:50}},attachments:{},bindings:{spirit:pin},scale:{spirit:80}};
- assert.equal(validAssemblyPuzzle(p),true);assert.equal(validAssemblyPuzzle({...p,portalConditions:[]}),false);
+ assert.equal(validAssemblyPuzzle(p),true);
+ assert.equal(validAssemblyPuzzle({...p,zOrder:{spirit:15}}),true);
+ assert.equal(validAssemblyPuzzle({...p,zOrder:{spirit:1001}}),false);
+ assert.equal(validAssemblyPuzzle({...p,zOrder:{bowl:15}}),false);assert.equal(validAssemblyPuzzle({...p,portalConditions:[]}),false);
 });
 test('Decoration uses its selected lane, with no lost one-sided visibility or geometry at a different zoom',async()=>{
  const images=decorationArt(art,pin);
- assert.deepEqual(decorationBox(row,images,region,false),{src:art.media.pixel.url,x:65,y:60,width:15,height:12.5,rotation:0,flipX:false,flipY:false});
+ assert.deepEqual(decorationBox(row,images,region,false),{src:art.media.pixel.url,x:65,y:60,width:15,height:12.5,rotation:0,flipX:false,flipY:false,zOrder:0});
  const turned={...row,rotation:273,flipX:true,flipY:true};
  assert.equal(decorationBox(turned,images,region,false).rotation,273);
  assert.equal(decorationBox(turned,images,region,true).rotation,273);

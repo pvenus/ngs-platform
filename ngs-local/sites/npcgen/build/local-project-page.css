@@ -594,10 +594,9 @@ ul{padding:0;list-style:none}
 .map-decoration-view button[aria-pressed=true]{color:var(--card);background:var(--primary);border-color:var(--primary)}
 .map-decoration-roster{min-width:0;display:grid;gap:.5rem;padding:.65rem;border:1px solid var(--border);border-radius:8px}
 .map-decoration-actions{display:grid;gap:.35rem}
-.map-decoration-order{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}
 .map-decoration-flips{display:flex;gap:1rem;flex-wrap:wrap;justify-self:end}
 .map-decoration-flip{display:inline-flex;align-items:center;gap:.35rem;font-size:.86rem}
-.map-decoration-size{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem;width:min(20rem,100%);justify-self:end}
+.map-decoration-size{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem;width:min(28rem,100%);justify-self:end}
 .map-decoration-list{display:grid;gap:.35rem;list-style:none;margin:0;padding:0;max-height:22rem;overflow:auto;overscroll-behavior:contain}
 .map-decoration-list-item{width:100%;display:grid;gap:.15rem;text-align:left;white-space:normal;overflow-wrap:anywhere}
 .map-decoration-list-item small{font-size:.78rem;color:var(--muted-foreground)}
@@ -609,3 +608,10 @@ ul{padding:0;list-style:none}
 .map-decoration-source-preview{display:grid;gap:.35rem;justify-items:start;width:min(13rem,100%);padding:.55rem;border:1px solid var(--border);border-radius:8px}
 .map-decoration-source-preview[hidden],.map-decoration-source-preview img[hidden]{display:none}
 .map-decoration-source-preview img{display:block;width:100%;height:7rem;object-fit:contain;background:var(--muted);border-radius:5px}
+
+/* Scene sprites share a depth range; UI handles and the actor remain above it. */
+.prop-depth-scene{isolation:isolate}
+.prop-depth-scene>.map-decoration-layer{z-index:auto}
+.map-decoration-layer>.map-decoration-anchor{z-index:10000}
+.prop-depth-scene .well-assembly-pin,.prop-depth-scene .well-demo-target,.prop-depth-scene .assembly-actor,.prop-depth-scene .well-demo-meter{z-index:10000}
+.prop-depth-scene .well-assembly-pin.active{z-index:10001}

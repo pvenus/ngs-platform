@@ -2,9 +2,9 @@ import {fileUpdateType,fileUpdateSchema,mapUpdateRoot,validFileUpdate} from './f
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {orderedMapChain} from './map-warp.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
-import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations} from './assembly-sprite-layout.mjs';
+import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations,decorationZOrder} from './assembly-sprite-layout.mjs';
 import {hashBrowserMap} from './map-contract.mjs';
-import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
+import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,validPropZOrder,propZMin,propZMax,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
@@ -623,30 +623,13 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     const entry=el('li'),caption='배치 '+(index+1)+' · '+namedProp(row.prop);
     const pick=button('',()=>select(row,caption),'map-decoration-list-item');
     pick.setAttribute('aria-label',caption);pick.setAttribute('aria-pressed',String(row===chosen));
-    pick.append(el('span',caption),el('small',visibilityLabels[row.visibility]+(matchesView(row)?'':' · 현재 숨김')));
+    pick.append(el('span',caption),el('small',visibilityLabels[row.visibility]+' · Z '+decorationZOrder(row)+(matchesView(row)?'':' · 현재 숨김')));
     entry.append(pick);list.append(entry);
    }
    if(here.length){roster.append(list);queueMicrotask(()=>{if(list.isConnected!==false)list.scrollTop=decorListScroll;});}
    else roster.append(el('p','이 구역에는 배치한 꾸미기 프랍이 없어요.','meta'));
    if(here.length){
-    roster.append(el('p','목록 위쪽은 뒤, 아래쪽은 앞에 그려져요.','meta'));
-    const at=here.indexOf(chosen);
-    const order=el('div',undefined,'map-decoration-order');
-    for(const [step,caption] of [[-1,'↑ 뒤로'],[1,'↓ 앞으로']]){
-     const neighbor=at>=0?here[at+step]:null;
-     const accessible=step<0?'선택한 프랍 한 단계 뒤로':'선택한 프랍 한 단계 앞으로';
-     const move=button(caption,()=>{
-      if(locked||decorAdding||!neighbor)return;
-      const next=[...rows],a=next.indexOf(chosen),b=next.indexOf(neighbor);
-      [next[a],next[b]]=[next[b],next[a]];
-      graph.decorations=next;changed();
-      const nextIndex=at+step;
-      restoreControl(here[nextIndex+step]?accessible:'배치 '+(nextIndex+1)+' · '+namedProp(chosen.prop));
-     });
-     move.disabled=locked||decorAdding||!neighbor;
-     move.setAttribute('aria-label',accessible);move.title=accessible;order.append(move);
-    }
-    roster.append(order);
+    roster.append(el('p','Z Order가 큰 프랍이 앞에 보여요. 값이 같으면 목록 뒤쪽 프랍이 앞에 보여요.','meta'));
     const remove=button('선택한 프랍 배치 삭제',()=>{
      if(!chosen||locked)return;
      graph.decorations=(graph.decorations??[]).filter(r=>r.id!==chosen.id);
@@ -732,7 +715,16 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    };
    rotation.setAttribute('aria-label','꾸미기 프랍 회전');
    const sizeField=el('div',undefined,'map-decoration-size');
-   sizeField.append(label('크기 (%)',scale),label('회전 (°)',rotation));decoration.append(sizeField);
+   const depth=el('input');depth.type='number';depth.min=String(propZMin);depth.max=String(propZMax);depth.step='1';
+   depth.value=decorationZOrder(chosen);depth.disabled=locked;depth.setAttribute('aria-label','꾸미기 프랍 Z Order');
+   depth.onchange=()=>{
+    const next=depth.valueAsNumber;
+    if(!validPropZOrder(next)){depth.value=decorationZOrder(chosen);return;}
+    if(decorationZOrder(chosen)===next)return;
+    if(next===0)delete chosen.zOrder;else chosen.zOrder=next;
+    changed();restoreControl('꾸미기 프랍 Z Order');
+   };
+   sizeField.append(label('크기 (%)',scale),label('회전 (°)',rotation),label('Z Order',depth));decoration.append(sizeField);
    const flips=el('div',undefined,'map-decoration-flips');
    for(const [key,caption] of [['flipX','좌우 반전'],['flipY','상하 반전']]){
     const flip=el('input');flip.type='checkbox';flip.checked=chosen[key]===true;flip.disabled=locked;
