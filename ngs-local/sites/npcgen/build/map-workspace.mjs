@@ -1,7 +1,41 @@
-import {officialId,mapRoot,validMapState} from './map-contract.mjs';
-import {readReplicaObject,replicaUnavailable} from './workspace-read-storage.mjs';
+import {officialId,mapRoot,validMapState,mapFields} from './map-contract.mjs';
+import {readReplicaObject,replicaUnavailable,hashReplicaBytes} from './workspace-read-storage.mjs';
 export const mapPath='/api/map-workspace';
 const error=(message,status)=>Object.assign(Error(message),{status});
+const componentNames=['start','portals','collisions'];
+const groupFields=['schemaVersion','projectId','mapId','revision','updatedAt','officialRequestId','title','regions','parts'];
+const hash=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
+const maxMapMetadataBytes=65536;
+async function readMapRevision(project,base,id,rev){
+ const prefix=base+'/'+rev;
+ const stored=await readReplicaObject(project,prefix+'.json',maxMapMetadataBytes);
+ if(stored===null)return null;
+ if(stored.mapId!==id||stored.revision!==rev)throw replicaUnavailable();
+ if(stored.schemaVersion!=='ngs.map-group.v1'){
+  if(!validMapState(stored))throw replicaUnavailable();
+  return stored;
+ }
+ if(!mapFields(stored,groupFields)||!mapFields(stored.parts,componentNames)||!componentNames.every(key=>hash(stored.parts[key])))
+  throw replicaUnavailable();
+ const parts=await Promise.all(componentNames.map(async key=>{
+  const bytes=await project.readBytes(prefix+'.'+key+'.json',maxMapMetadataBytes);
+  if(bytes===null)return null;
+  if(!(bytes instanceof Uint8Array)||bytes.length>maxMapMetadataBytes||await hashReplicaBytes(bytes)!==stored.parts[key])throw replicaUnavailable();
+  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+  catch{throw replicaUnavailable();}
+ }));
+ // Sync might copy the group manifest before a referenced part. Keep the
+ // preceding complete revision visible without mixing any version's parts.
+ if(parts.some(part=>part===null))return null;
+ const [start,portals,collisions]=parts;
+ if(!mapFields(start,['startRegionId'])||!mapFields(portals,['connections'])||
+    !(mapFields(collisions,['colliders'])||mapFields(collisions,[])))throw replicaUnavailable();
+ const {projectId,mapId,revision,updatedAt,officialRequestId,title,regions}=stored;
+ const composite={schemaVersion:'ngs.map-metadata.v1',projectId,mapId,revision,updatedAt,officialRequestId,
+  graph:{title,regions,...start,...portals,...collisions}};
+ if(!validMapState(composite))throw replicaUnavailable();
+ return composite;
+}
 export async function mapWorkspaceRead({query,openProject,authorize}){
  const projectId=query.get('projectId'),item=query.get('item'),keys=[...query.keys()];
  if(projectId!=='binari'||keys.length!==new Set(keys).size||keys.some(k=>!['projectId','item'].includes(k))||
@@ -13,10 +47,11 @@ export async function mapWorkspaceRead({query,openProject,authorize}){
   const base=mapRoot+'/'+id, files=await p.listChildren(base);
   const revisions=files.filter(f=>f.kind==='file'&&/^[1-9]\d{0,15}\.json$/.test(f.name))
    .map(f=>Number(f.name.slice(0,-5))).filter(Number.isSafeInteger).sort((a,b)=>b-a);
-  if(!revisions.length)return null;
-  const row=await readReplicaObject(p,base+'/'+revisions[0]+'.json',65536);
-  if(!validMapState(row)||row.mapId!==id||row.revision!==revisions[0])throw replicaUnavailable();
-  return row;
+  for(const revision of revisions){
+   const row=await readMapRevision(p,base,id,revision);
+   if(row)return row;
+  }
+  return null;
  }
  if(item!==null){
   const map=await latest(item);
