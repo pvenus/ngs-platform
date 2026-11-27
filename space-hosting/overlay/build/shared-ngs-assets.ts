@@ -7,6 +7,7 @@ import assembly5 from "../ngs-local/sites/npcgen/build/assembly-sprite-layout.mj
 import assembly6 from "../ngs-local/sites/npcgen/build/assembly-actor.mjs?raw";
 import mapWarp from "../ngs-local/sites/npcgen/build/map-warp.mjs?raw";
 import mapContract from "../ngs-local/sites/npcgen/build/map-contract.mjs?raw";
+import fileUpdate from "../ngs-local/sites/npcgen/build/file-update-envelope.mjs?raw";
 import mapWorkspace from "../ngs-local/sites/npcgen/build/map-workspace-ui.mjs?raw";
 import backgroundPlayback from "../ngs-local/sites/npcgen/build/background-playback.mjs?raw";
 import propFolderDelete from "../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs?raw";
@@ -54,6 +55,7 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/assembly-sprite-layout.mjs",{type:javascript,body:assembly5}],
  ["/assembly-actor.mjs",{type:javascript,body:assembly6}],
  ["/map-contract.mjs",{type:javascript,body:mapContract}],
+ ["/file-update-envelope.mjs",{type:javascript,body:fileUpdate}],
  ["/map-workspace-ui.mjs",{type:javascript,body:mapWorkspace}],
  ["/background-playback.mjs",{type:javascript,body:backgroundPlayback}],
  ["/cinematic-player.mjs",{type:javascript,body:cine2}],

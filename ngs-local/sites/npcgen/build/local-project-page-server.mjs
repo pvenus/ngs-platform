@@ -1,3 +1,4 @@
+import {fileUpdateType,fileUpdatePds,validFileUpdate} from './file-update-envelope.mjs';
 import {assemblyTypes,assemblyPath,assemblyPds,assemblyCapability,validAssemblyRequest,assemblyReachable} from './assembly-contract.mjs';
 import {assemblyWorkspaceRead} from './assembly-workspace.mjs';
 import {mapTypes,mapPds,mapCapability,validMapRequest} from './map-contract.mjs';
@@ -44,7 +45,7 @@ const assets=new Map([
  ['/prop-package-contract.mjs',['text/javascript; charset=utf-8',new URL('./prop-package-contract.mjs',import.meta.url)]],
  ['/cinematic-sequence-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-sequence-contract.mjs',import.meta.url)]],
  ['/cinematic-timeline.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-timeline.mjs',import.meta.url)]],
- ...['map-contract.mjs','map-workspace-ui.mjs','map-warp.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
+ ...['file-update-envelope.mjs','map-contract.mjs','map-workspace-ui.mjs','map-warp.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
  ...['puzzle-state-runtime.mjs','well-puzzle-demo.mjs','well-assembly-ui.mjs','assembly-contract.mjs','assembly-catalog-ui.mjs','assembly-sprite-layout.mjs','assembly-actor.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
  ['/background-playback.mjs',['text/javascript; charset=utf-8',new URL('./background-playback.mjs',import.meta.url)]],
  ['/cinematic-player.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-player.mjs',import.meta.url)]],
@@ -178,6 +179,7 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
+  readFileUpdateReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(fileUpdatePds,'workflow.file-update.v1'):undefined,
   readMapReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(mapPds,mapCapability):undefined,
   readAssemblyReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(assemblyPds,assemblyCapability):undefined,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
@@ -185,7 +187,7 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',npcBasicPortraitEnabled:env.NGS_NPC_BASIC_PORTRAIT_ENABLED!=='0',npcScopedPortraitEnabled:env.NGS_NPC_SCOPED_PORTRAIT_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -211,6 +213,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const npcFolderDeleteReady=async()=>Boolean(queue&&typeof readNpcFolderDeleteReady==='function'&&await readNpcFolderDeleteReady());
  const backgroundDeleteReady=async()=>Boolean(queue&&typeof readBackgroundDeleteReady==='function'&&await readBackgroundDeleteReady());
  const assemblyDeleteReady=async()=>Boolean(queue&&typeof readAssemblyDeleteReady==='function'&&await readAssemblyDeleteReady());
+ const fileUpdateReady=async()=>Boolean(queue&&typeof readFileUpdateReady==='function'&&await readFileUpdateReady());
  const mapDeleteReady=async()=>Boolean(queue&&typeof readMapDeleteReady==='function'&&await readMapDeleteReady());
  const cinematicDeleteReady=async()=>Boolean(queue&&typeof readCinematicDeleteReady==='function'&&await readCinematicDeleteReady());
  const activePropActions=async()=>{
@@ -327,6 +330,21 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      }else{
       q.set('item',p.mapId);await readWorkspace('/api/map-workspace',q,()=>{});
      }
+     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+    }
+    if(command.requestType===fileUpdateType){
+     if(!await fileUpdateReady())throw failure('FILE_UPDATE_WORKFLOW_UNAVAILABLE',404);
+     const p=command.payload;
+     if(!validFileUpdate(p))throw failure('NGS_FILE_UPDATE_PAYLOAD_INVALID',400);
+     const q=new URLSearchParams({projectId:p.projectId});
+     const {json:{backgrounds}}=await readWorkspace('/api/background-workspace',q,()=>{});
+     const available=new Map(backgrounds.filter(b=>!b.title.endsWith(' · 시네마틱 원본')).map(b=>[b.backgroundId,b.sha256]));
+     if(!p.content.regions.every(r=>available.get(r.backgroundId)===r.imageSha256))throw failure('MAP_BACKGROUND_NOT_FOUND',404);
+     q.set('item',p.target.path);
+     const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
+     if(map.revision!==p.expected.revision||map.officialRequestId!==p.expected.officialRequestId)
+      throw failure('FILE_UPDATE_REVISION_CONFLICT',409);
+     if(map.graph.title!==p.content.title)throw failure('MAP_TITLE_IMMUTABLE',409);
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
     if(mapTypes.includes(command.requestType)){
@@ -471,11 +489,11 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
     const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady(),deleteBackground=await backgroundDeleteReady(),deleteCinematic=await cinematicDeleteReady();
-    const [mapReady,deleteMap,assemblyReady,deleteAssembly]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly(),assemblyDeleteReady()]);
+    const [mapReady,deleteMap,assemblyReady,deleteAssembly,updateReady]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly(),assemblyDeleteReady(),fileUpdateReady()]);
     const [pixelBackground,animateBackground]=await Promise.all([activeCinematic(backgroundPixelType),activeCinematic(backgroundAnimationType)]);
     const [actions,legacyCine,sequenceCine,playbackCine,sourceCine,backgroundReady,removeCine,removeProp]=await Promise.all([activePropActions(),activeCinematic(cinematicType),activeCinematic(cinematicSequenceType),activeCinematic(cinematicPlaybackUpdateType),activeCinematic(cinematicSourceGenerateType),activeCinematic(backgroundSourceType),activeCinematic(cinematicSequencesRemoveType),activePropRemoval()]);
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
-     ...(actions.length?{propActions:actions}:{}),...(mapReady?{mapEnabled:true}:{}),...(assemblyReady?{assemblyEnabled:true}:{}),...(deleteMap?{mapDeleteEnabled:true}:{}),...(deleteAssembly?{assemblyDeleteEnabled:true}:{}),
+     ...(actions.length?{propActions:actions}:{}),...(mapReady?{mapEnabled:true}:{}),...(updateReady?{fileUpdateEnabled:true}:{}),...(assemblyReady?{assemblyEnabled:true}:{}),...(deleteMap?{mapDeleteEnabled:true}:{}),...(deleteAssembly?{assemblyDeleteEnabled:true}:{}),
      ...(legacyCine?{cinematicEnabled:true}:{}),
      ...(sequenceCine?{cinematicSequenceEnabled:true}:{}),...(playbackCine?{cinematicPlaybackEnabled:true}:{}),
      ...(sourceCine?{cinematicSourceEnabled:true}:{}),...(backgroundReady?{backgroundSourceEnabled:true}:{}),...(pixelBackground?{backgroundPixelEnabled:true}:{}),...(animateBackground?{backgroundAnimationEnabled:true}:{}),...(removeCine?{cinematicRemoveEnabled:true}:{}),...(removeProp?{propAnimationRemoveEnabled:true}:{}),...(deleteProp?{propFolderDeleteEnabled:true}:{}),...(deleteNpc?{npcFolderDeleteEnabled:true}:{}),...(deleteBackground?{backgroundDeleteEnabled:true}:{}),...(deleteCinematic?{cinematicDeleteEnabled:true}:{}),

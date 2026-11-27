@@ -1,3 +1,4 @@
+import {fileUpdateType,validFileUpdate} from './file-update-envelope.mjs';
 import {assemblyTypes,validAssemblyRequest} from './assembly-contract.mjs';
 // The versioned local relay binds the optional spirit-v1 prop generation envelope.
 import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete,validCinematicFileDelete,validMapFolderDelete,validAssemblyFolderDelete} from './prop-folder-delete-contract.mjs';
@@ -25,7 +26,7 @@ function validateAssemblyRelay(type,payload){
  if(type==='assembly.generate'&&!['ngs.assembly-generate.v1','ngs.assembly-generate.v2'].includes(payload?.schemaVersion))return false;
  return validAssemblyRequest(payload,type);
 }
-const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),...mapTypes,...assemblyTypes,fileDeleteType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
+const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),...mapTypes,...assemblyTypes,fileDeleteType,fileUpdateType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const queueId=(v,source)=>typeof v==='string'&&v.length===46&&v.startsWith('ngs.'+source+'.')&&uuid.test(v.slice(10));
@@ -103,6 +104,7 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
       (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
       (assemblyTypes.includes(row.requestType)&&!validateAssemblyRelay(row.requestType,row.payload))||
       (mapTypes.includes(row.requestType)&&!validMapRequest(row.payload,row.requestType))||
+      (row.requestType===fileUpdateType&&!validFileUpdate(row.payload))||
       (row.requestType===fileDeleteType&&!(validMapFolderDelete(row.payload)||validAssemblyFolderDelete(row.payload)||
        local&&(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload))))){result.rejected++;continue;}
    // Background media v2 has real scheduler stages; relay the contract unchanged,

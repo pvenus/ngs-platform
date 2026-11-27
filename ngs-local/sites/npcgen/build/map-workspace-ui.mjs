@@ -1,8 +1,9 @@
+import {fileUpdateType,fileUpdateSchema,mapUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {orderedMapChain} from './map-warp.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
 import {hashBrowserMap} from './map-contract.mjs';
-import {mapTypes,mapSchemas,mapGenerateDesignSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation} from './map-contract.mjs';
+import {mapTypes,mapGenerateDesignSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
@@ -83,7 +84,7 @@ export function parseMapRoutes(text,regions){
  return result;
 }
 
-export async function mountMapWorkspace({items,detail,tools,request,submit,projectId,item,enabled,navigate,signal,deleteItem,storage=globalThis.sessionStorage}){
+export async function mountMapWorkspace({items,detail,tools,request,submit,projectId,item,enabled,updateEnabled=enabled,navigate,signal,deleteItem,storage=globalThis.sessionStorage}){
  const q=new URLSearchParams({projectId}), mapUrl='/api/map-workspace?'+q;
  const itemUrl=item&&item!=='new'?mapUrl+'&item='+encodeURIComponent(item):null;
  const [{maps:listed},{backgrounds},record]=await Promise.all([request(mapUrl),request('/api/background-workspace?'+q),itemUrl?
@@ -125,7 +126,7 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
  renderRoster(rosterState.top);
  function showDetail(){
   editorAbort?.abort();editorAbort=new AbortController();
-  if(published)editor=mountMapEditor({detail,maps,assets,projectId,navigate,signal:editorAbort.signal,storage,published,submit,enabled});
+  if(published)editor=mountMapEditor({detail,maps,assets,projectId,navigate,signal:editorAbort.signal,storage,published,submit,enabled:updateEnabled});
   else detail.replaceChildren(el('h3','맵 제작'),el('p','배경을 먼저 제작하고, + 버튼으로 새 맵을 만들어 구역과 포털을 연결하세요.','meta'));
  }
  showDetail();
@@ -234,7 +235,6 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  const locate=(ev,box)=>{const r=box.getBoundingClientRect(),cap=v=>Math.max(0,Math.min(1000,Math.round(v)));return{x:cap((ev.clientX-r.left)*1000/r.width),y:cap((ev.clientY-r.top)*1000/r.height)};};
  async function apply(){
   if(!enabled||!submit||busy||conflict||pending)return;
-  const i=published?1:0;
   const currentTab=tab;
   if(published&&!dirty(currentTab))return;
   const scoped=published?projectMapTab(published.graph,graph,currentTab):graph;
@@ -246,9 +246,13 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   }
   if(!published&&!startSelected){bark.textContent='시작 맵 구역을 먼저 선택해 주세요.';return;}
   if(!published&&!['suggest','none'].includes(design.collisionMode)){bark.textContent='충돌 방식에서 자동 제안 또는 사용 안 함을 먼저 선택해 주세요.';return;}
-  const payload={schemaVersion:published?mapSchemas[i]:mapGenerateDesignSchema,projectId,graph:structuredClone(scoped),
-   ...(published?{mapId:published.mapId,expectedRevision:published.revision}:{intent:intent.trim(),design:Object.fromEntries(Object.entries(design).map(([key,value])=>[key,value.trim()]))})};
-  if(!validMapRequest(payload,mapTypes[i])){
+  const requestType=published?fileUpdateType:mapTypes[0];
+  const payload=published?{
+   schemaVersion:fileUpdateSchema,projectId,target:{root:mapUpdateRoot,path:published.mapId,kind:'metadata'},
+   expected:{revision:published.revision,officialRequestId:published.officialRequestId},content:structuredClone(scoped),
+  }:{schemaVersion:mapGenerateDesignSchema,projectId,graph:structuredClone(scoped),
+   intent:intent.trim(),design:Object.fromEntries(Object.entries(design).map(([key,value])=>[key,value.trim()]))};
+  if(!(published?validFileUpdate(payload):validMapRequest(payload,requestType))){
    bark.textContent=published?(currentTab==='links'?'모든 연결의 출입구와 도착점을 지정하고, 시작 구역과 충돌 영역이 있는 구역은 남겨 주세요.':'선택한 구역과 영역 좌표를 확인해 주세요. 새 구역은 이동 연결에서 먼저 적용해야 해요.'):'맵 이름, 배경 2개 이상, 시작 구역과 방향 연결을 확인하세요.';return;
   }
   if(scoped.regions.some(r=>!imageAligned(r))){bark.textContent='누락된 배경을 제거하거나 교체해 주세요.';return;}
@@ -256,14 +260,14 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   if(!lastToken||lastBody!==body){lastToken='map:'+crypto.randomUUID();lastBody=body;store();}
   busy=true;render();
   try{
-   const response=await submit({requestType:mapTypes[i],idempotencyKey:lastToken,payload});
+   const response=await submit({requestType,idempotencyKey:lastToken,payload});
    const value=await response.json().catch(()=>null);
    if(!isQueuedRequest(response,value))throw Error(value?.error??'MAP_REQUEST_NOT_ACCEPTED');
    pending={id:await hashBrowserMap(projectId,value.queueId)};
-   if(published)submission={id:pending.id,tab:currentTab,graph:payload.graph};
+   if(published)submission={id:pending.id,tab:currentTab,graph:payload.content};
    store();
    bark.textContent=published?tabTitle(currentTab)+' 적용 요청을 접수했어요. 완료하면 다른 탭은 초안으로 남아요.':'정식 요청이 접수됐습니다. 완료 후 결과를 확인하세요.';
-  }catch(e){bark.textContent=e.message==='MAP_REVISION_CONFLICT'?'다른 변경이 먼저 적용됐습니다. 새로고침해 확인해 주세요.':'정식 요청 접수를 확인하지 못했어요. 세션 초안은 그대로입니다.';}
+  }catch(e){bark.textContent=['MAP_REVISION_CONFLICT','FILE_UPDATE_REVISION_CONFLICT'].includes(e.message)?'다른 변경이 먼저 적용됐습니다. 새로고침해 확인해 주세요.':'정식 요청 접수를 확인하지 못했어요. 세션 초안은 그대로입니다.';}
   finally{busy=false;render();}
  }
  signal?.addEventListener('abort',()=>stopMovement(),{once:true});

@@ -286,17 +286,17 @@ test('colliders draw, move, resize and delete by region and only Apply queues th
  const turn=field('회전 (°)');turn.valueAsNumber=90;turn.onchange();
  await detail.descendants().find(n=>n.textContent==='충돌 영역 적용').onclick();
  assert.equal(requests.length,1);const {payload,requestType}=requests[0];
- assert.equal(requestType,'map.update');assert.ok(validMapRequest(payload,requestType));
- assert.equal(payload.expectedRevision,1);assert.deepEqual(payload.graph.colliders,local().colliders);
- assert.deepEqual(payload.graph.connections,graph.connections);
- assert.equal(payload.graph.startRegionId,graph.startRegionId);
+ assert.equal(requestType,'file.update');assert.ok((await import('../build/file-update-envelope.mjs')).validFileUpdate(payload));
+ assert.equal(payload.expected.revision,1);assert.deepEqual(payload.content.colliders,local().colliders);
+ assert.deepEqual(payload.content.connections,graph.connections);
+ assert.equal(payload.content.startRegionId,graph.startRegionId);
  assert.equal(local().startRegionId,'r3');assert.equal(local().connections[0].label,'게시하지 않을 연결 초안');
  const {chooseMapDraft,projectMapTab}=await import('../build/map-workspace-ui.mjs');
  const packed=JSON.parse(saved.get(mapDraftKey('binari',mapId)));
- const next={...state,revision:2,officialRequestId:packed.submission.id,graph:payload.graph};
+ const next={...state,revision:2,officialRequestId:packed.submission.id,graph:payload.content};
  const rebased=chooseMapDraft(packed,next);
  assert.equal(rebased.conflict,false);assert.equal(rebased.done,true);
- assert.deepEqual(rebased.graph.colliders,payload.graph.colliders);
+ assert.deepEqual(rebased.graph.colliders,payload.content.colliders);
  assert.equal(rebased.graph.startRegionId,'r3');
  assert.equal(rebased.graph.connections[0].label,'게시하지 않을 연결 초안');
  assert.equal(projectMapTab(next.graph,rebased.graph,'links').startRegionId,'r1');
@@ -367,9 +367,9 @@ test('several portal edits survive blur, rebase over newly published reverse lin
  assert.equal(find('이동 연결 적용'),apply,'blur does not replace the button about to be clicked');
  assert.equal(apply.disabled,false);assert.equal(calls.length,0);
  await apply.onclick();
- assert.equal(calls.length,1);assert.equal(calls[0].requestType,'map.update');
- assert.equal(calls[0].payload.expectedRevision,2);
- assert.deepEqual(calls[0].payload.graph.connections.map(e=>[e.id,e.hit.x]),[
+ assert.equal(calls.length,1);assert.equal(calls[0].requestType,'file.update');
+ assert.equal(calls[0].payload.expected.revision,2);
+ assert.deepEqual(calls[0].payload.content.connections.map(e=>[e.id,e.hit.x]),[
   ['order-1',760],['order-2',765],['order-3',800],['order-4',800],['return-1',20],
  ]);
 });

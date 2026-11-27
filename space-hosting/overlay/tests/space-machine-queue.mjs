@@ -448,6 +448,9 @@ test('map and assembly queue rights use the native Binari roster, never queue-on
  const mapUpdate={requestType:'map.update',idempotencyKey:'map-update',payload:{
   schemaVersion:'ngs.map-update.v1',projectId:'binari',mapId:fixtureId,expectedRevision:1,
   graph:{...graph,connections:[{...graph.connections[0],hit:{x:500,y:500,width:10,height:10},spawn:{x:200,y:500}}]}}};
+ const fileUpdate={requestType:'file.update',idempotencyKey:'file-update',payload:{
+  schemaVersion:'ngs.file-update.v1',projectId:'binari',target:{root:'canonical-files/binari/cinematics/maps',path:fixtureId,kind:'metadata'},
+  expected:{revision:1,officialRequestId:fixtureId},content:mapUpdate.payload.graph}};
  const assembly={requestType:'assembly.generate',idempotencyKey:'assembly-generate',payload:{
   schemaVersion:'ngs.assembly-generate.v1',projectId:'binari',mapId:fixtureId,title:'Assembly',
   puzzleType:'binari.ritual-well-water-demo',intent:'Fixture'}};
@@ -462,10 +465,11 @@ test('map and assembly queue rights use the native Binari roster, never queue-on
   assert.equal(s.mapReadEnabled,who==='queue-only'?undefined:true);
   assert.equal(s.assemblyReadEnabled,who==='queue-only'?undefined:true);
   assert.equal(s.mapEnabled,['owner','editor'].includes(who)?true:undefined);
+  assert.equal(s.fileUpdateEnabled,['owner','editor'].includes(who)?true:undefined);
   assert.equal(s.assemblyEnabled,['owner','editor'].includes(who)?true:undefined);
   assert.equal(s.mapDeleteEnabled,who==='owner'?true:undefined);
   assert.equal(s.assemblyDeleteEnabled,who==='owner'?true:undefined);
-  for(const cmd of [map,mapUpdate,assembly,assemblyUpdate]){
+  for(const cmd of [map,mapUpdate,fileUpdate,assembly,assemblyUpdate]){
    const out=await post(who,s,cmd);
    assert.equal(out.status,['owner','editor'].includes(who)?202:403,JSON.stringify(await out.json()));
   }
