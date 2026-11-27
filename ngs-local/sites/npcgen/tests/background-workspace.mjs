@@ -183,7 +183,7 @@ test('background two-track comparison uses one submission and a shared timeline 
  const refs={cinematic:{id:co,sourceSha256:original.sha256},pixel:{id:px,sourceSha256:pixel.sha256}};
  const playback={durationFrames:264,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,x:.5,y:.5,zoom:1}]};
  const backgrounds=[{...pixel,displayTitle:'안뜰',cinematic:original,pixel}];
- const sent=[];
+ const sent=[];let groupLoads=0;
  // One decoded fixture pixel suffices for testing the player DOM and its frame URL contract.
  const sample=document.createElement('img');
  sample.src='data:image/png;base64,${image.toString('base64')}';
@@ -201,7 +201,7 @@ test('background two-track comparison uses one submission and a shared timeline 
  });
  const call=async url=>{
   const params=new URL(url,location.origin).searchParams;
-  if(params.has('groups'))return {groups:[{requestId:pr,variants:refs}]};
+  if(params.has('groups')){groupLoads++;return {groups:[{requestId:pr,variants:refs}]};}
   if(params.has('sequence')){
    const id=params.get('sequence'),variant=id===co?'cinematic':'pixel';
    return {playback,sequence:{schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,
@@ -214,40 +214,40 @@ test('background two-track comparison uses one submission and a shared timeline 
  let abort=new AbortController(),routed;
  const mount=panel=>mountBackgroundWorkspace({items:document.querySelector('#items'),detail:document.querySelector('#detail'),
   tools:document.querySelector('#tools'),projectId:'binari',item:pixel.sha256,panel,animationEnabled:true,
-  signal:abort.signal,request:call,navigate:options=>{if(options.cineTab==='play')routed=options;return '?'+new URLSearchParams(options);},submit:async req=>{
+  signal:abort.signal,request:call,navigate:options=>{routed=options;return '?'+new URLSearchParams(options);},submit:async req=>{
    sent.push(req);return Response.json({status:'queued',queueId:'ngs.local.a82bf7f5-c880-49e5-b490-3712b02eef72'},{status:202});
   }});
  try{
-  await mount('source');
-  assert(document.querySelectorAll('#detail img').length===2&&!document.querySelector('#detail').textContent.includes('픽셀 생성본'),'not two final stills');
-  const openStill=document.querySelector('[aria-label="시네마틱 스타일 원본 확대"]');
-  openStill.click();
-  const still=document.querySelector('dialog.background-media-dialog[open]');
-  assert(still?.querySelector('img')?.src===openStill.querySelector('img').src,'full source image not in popup');
-  still.querySelector('button').click();await new Promise(r=>setTimeout(r,25));
-  assert(!document.querySelector('dialog[open]'),'image popup did not close');
-  assert(document.querySelector('#background-tab-play')?.getAttribute('href').includes('cineTab=play'),'missing published play tab');
-  abort.abort();abort=new AbortController();
   const realRaf=globalThis.requestAnimationFrame,realCancel=globalThis.cancelAnimationFrame;
   let pending,nextId=0;
   globalThis.requestAnimationFrame=fn=>(pending=fn,++nextId);
   globalThis.cancelAnimationFrame=()=>{pending=undefined;};
   const frame=time=>{const callback=pending;pending=undefined;callback?.(time);};
-  await mount('play');
-  const active=document.querySelector('#background-tab-play'),play=document.querySelector('[data-flag="seojin.spiritSight"]');
-  assert(routed.item===pixel.sha256&&active?.getAttribute('aria-selected')==='true','play is not a selected resource tab');
-  assert(document.querySelector('[data-motion=paired]'),'did not load verified pair');
-  const spirit=document.querySelector('[data-layer=spirit]'),normal=document.querySelector('[data-layer=normal]');
-  frame(0);frame(250);
-  assert(spirit.dataset.frame==='2'&&normal.dataset.frame==='2','both layers do not use the same phase');
-  play.click();
-  assert(play.getAttribute('aria-pressed')==='true'&&play.textContent.includes('끄기'),'cannot activate the flag');
-  frame(400);
+  await mount('play'); // Old bookmarks open the merged source tab.
+  const active=document.querySelector('#background-tab-source'),play=document.querySelector('[data-flag="seojin.spiritSight"]');
+  assert(routed.item===pixel.sha256&&active?.getAttribute('aria-selected')==='true','legacy play URL did not open source');
+  assert(document.querySelectorAll('#detail [role=tab]').length===2&&!document.querySelector('#background-tab-play'),'separate play tab still present');
+  const stage=document.querySelector('.background-playable-stage');
+  const spirit=stage.querySelector('[data-layer=spirit]'),normal=stage.querySelector('[data-layer=normal]');
+  assert(groupLoads===0&&!document.querySelector('#detail canvas')&&pending===undefined,'source loads animation or runs an idle clock');
+  const enlarged=async(label,source)=>{
+   const trigger=document.querySelector('[aria-label="'+label+' 확대"]');
+   trigger.click();
+   const popup=document.querySelector('dialog.background-media-dialog[open]');
+   assert(new URL(popup?.querySelector('img')?.src).searchParams.get('image')===source.sha256,'wrong still in popup');
+   popup.querySelector('button').click();await new Promise(r=>setTimeout(r,25));
+  };
+  assert(spirit.style.opacity==='0'&&normal.style.opacity==='1','pixel still is not the default');
+  await enlarged('픽셀 보정본',pixel);
+  play.click();frame(0);frame(160);
   const incoming=Number(spirit.style.opacity);
-  assert(incoming>0&&incoming<1&&spirit.dataset.frame==='3','blend is not gradual or phase reset when turned on');
-  play.click();frame(450);
-  assert(play.getAttribute('aria-pressed')==='false'&&play.textContent.includes('켜기')&&Number(spirit.style.opacity)>0&&
-   Number(spirit.style.opacity)<incoming&&spirit.dataset.frame===normal.dataset.frame,'cannot reverse blend from the current phase');
+  assert(play.getAttribute('aria-pressed')==='true'&&incoming>0&&incoming<1,'cannot blend toward spirit mode');
+  play.click();frame(210);frame(260);
+  assert(Number(spirit.style.opacity)>0&&Number(spirit.style.opacity)<incoming,'cannot reverse an in-progress blend');
+  frame(800);assert(spirit.style.opacity==='0'&&pending===undefined,'did not settle on pixel still');
+  play.click();frame(900);frame(1500);
+  assert(spirit.style.opacity==='1'&&pending===undefined,'did not settle on cinematic still');
+  await enlarged('시네마틱 스타일 원본',original);
   abort.abort();abort=new AbortController();
   globalThis.requestAnimationFrame=realRaf;globalThis.cancelAnimationFrame=realCancel;
   await mount('animations');

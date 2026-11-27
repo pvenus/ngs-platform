@@ -338,13 +338,12 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
   if(entry?.cinematic)await deleteItem({id:entry.cinematic.sha256,expected:{sourceRequestId:entry.cinematic.officialRequestId}});
   await deleteItem(row);
  }),signal});
- mountSourceRoster({items,scenes:rows,selected,go:options=>navigate({cineTab:['animations','play'].includes(panel)?panel:'source',...options}),projectId,signal,area:'background',edit});
+ mountSourceRoster({items,scenes:rows,selected,go:options=>navigate({cineTab:panel==='animations'?'animations':'source',...options}),projectId,signal,area:'background',edit});
  if(!selected){
   detail.replaceChildren(make('h3','배경 설계'),notice,make('p',(enabled||pixelEnabled)?'배경을 고르거나 +로 새 배경을 요청하세요.':'배경을 고르세요. 생성 기능이 아직 연결되지 않았습니다.','meta'));
   return;
  }
  const pages=[['source','원본 이미지'],['animations','애니메이션']];
- if(selected.pixel&&selected.cinematic)pages.push(['play','플레이']);
  const active=pages.some(([key])=>panel===key)?panel:'source',go=key=>navigate({item:selected.sha256,cineTab:key});
  const header=make('header',null,'npc-detail-heading prop-detail-heading');
  header.append(make('h3',selected.displayTitle??selected.title));
@@ -368,23 +367,32 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
  const variants=selected.pixel?{cinematic:selected.cinematic,pixel:selected.pixel}:{cinematic:selected,pixel:null};
  const available=Object.entries(variants).filter(([,v])=>v);
  if(active==='source'){
+  if(variants.pixel&&variants.cinematic){
+   const title=selected.displayTitle??selected.title;
+   const still=source=>({url:url({image:source.sha256}),width:source.width,height:source.height});
+   mountPlayableBackground(section,{signal,stills:{normal:still(variants.pixel),spirit:still(variants.cinematic),title},
+    onEnlarge:enabled=>openStill(enabled?'cinematic':'pixel',enabled?variants.cinematic:variants.pixel)});
+   return;
+  }
   const grid=backgroundComparison();section.append(grid);
   for(const [variant,source] of Object.entries(variants)){
    const card=make('section',null,'prop-surface');card.append(make('h4',labels[variant],'npc-media-heading'));
    if(source){
     const img=make('img',null,'cinematic-source-image');img.src=url({image:source.sha256});img.alt=labels[variant]+': '+(selected.displayTitle??selected.title);
-    const enlarge=action('',()=>{
-     const {body}=backgroundMediaDialog(detail,img.alt,variant,signal);
-     const stage=make('div',null,'npc-media-enlarge-stage');
-     const full=make('img');full.alt=img.alt;full.src=img.src;
-     stage.append(full);body.append(stage,make('p',source.width+' × '+source.height+' · PNG','meta'));
-    },signal,'npc-media-enlarge-trigger background-still-enlarge');
+    const enlarge=action('',()=>openStill(variant,source),signal,'npc-media-enlarge-trigger background-still-enlarge');
     enlarge.setAttribute('aria-label',labels[variant]+' 확대');enlarge.setAttribute('aria-haspopup','dialog');
     enlarge.append(img);card.append(enlarge,make('p',source.width+' × '+source.height+' · PNG','meta'));
    }else card.append(make('p','게시된 이미지가 없습니다.','meta'));
    grid.append(card);
   }
   return;
+ }
+ function openStill(variant,source){
+  const title=labels[variant]+': '+(selected.displayTitle??selected.title);
+  const {body}=backgroundMediaDialog(detail,title,variant,signal);
+  const stage=make('div',null,'npc-media-enlarge-stage'),full=make('img');
+  full.alt=title;full.src=url({image:source.sha256});
+  stage.append(full);body.append(stage,make('p',source.width+' × '+source.height+' · PNG','meta'));
  }
  const urlForCine=values=>cinematicPath+'?'+new URLSearchParams({projectId,...values});
  async function loadTrack(group,[variant,result]){
@@ -397,25 +405,6 @@ export async function mountBackgroundWorkspace({items,detail,tools,request,submi
  }
  const publishedResults=group=>Object.entries(group.variants??{}).filter(([variant,value])=>
   variants[variant]?.sha256===value?.sourceSha256&&cinematicId(value?.id));
- if(active==='play'){
-  const still=source=>({url:url({image:source.sha256}),width:source.width,height:source.height});
-  const player=mountPlayableBackground(section,{signal,stills:{normal:still(variants.pixel),spirit:still(variants.cinematic),title:selected.displayTitle??selected.title},
-   loadPair:async()=>{
-    const {groups}=await request(url({groups:selected.sha256}));
-    for(const group of Array.isArray(groups)?groups:[]){
-     if(!cinematicId(group.requestId))continue;
-     const results=publishedResults(group);if(results.length!==2)continue;
-     try{
-      const tracks=await Promise.all(results.map(entry=>loadTrack(group,entry)));
-      return Object.fromEntries(tracks.map(track=>[track.manifest.group.variant==='pixel'?'normal':'spirit',
-       {frames:track.manifest.frames.map(f=>track.frameUrl(f.index))}]));
-     }catch{signal.throwIfAborted();}
-    }
-    return null;
-   }});
-  await player.ready;
-  return;
- }
  const card=make('section',null,'prop-surface'),bar=make('div',null,'prop-panel-heading');
  bar.append(make('h4','애니메이션','npc-media-heading'));card.append(bar);section.append(card);
  if(animationEnabled&&submit&&available.length){
