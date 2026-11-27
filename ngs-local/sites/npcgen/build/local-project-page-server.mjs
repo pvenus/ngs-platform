@@ -529,8 +529,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
    if(url.pathname==='/api/assembly-prop'){
     const session=auth.read(req);if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
     if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
-    // Local shares the project-level grant of /api/prop-workspace; allowPin below narrows it to one published reference.
-    const authorize=id=>projectPermission(session.principal,id,undefined,false);
+    const authorize=(id,resource)=>projectPermission(session.principal,id,resource,false);
     const result=await assemblyPinnedPropRead({query:url.searchParams,openProject,authorize,allowPin:async pin=>{
      const query=new URLSearchParams({projectId:'binari',item:pin.assemblyId??''});
      const {json:{assembly}}=await assemblyWorkspaceRead({query,openProject,authorize});
