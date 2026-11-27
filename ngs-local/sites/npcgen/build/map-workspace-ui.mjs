@@ -541,10 +541,33 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    const action=button('프랍 추가',()=>{if(locked||decorAdding||action.disabled)return;const row=rows.find(p=>p.propId===selector.value);if(row)void onAdd(pinProp(row),vis.value);});
    selector.disabled=vis.disabled=locked||decorAdding||!rows.length;
    action.disabled=selector.disabled||!selector.value;
-   selector.onchange=()=>{if(selection)selection.propId=selector.value;action.disabled=selector.disabled||!selector.value;};
+   const sample=el('div',undefined,'map-decoration-source-preview');
+   sample.setAttribute('aria-label','추가할 프랍 미리보기');
+   sample.hidden=true;
+   let version=0;
+   const showSample=async()=>{
+    const ticket=++version,selected=rows.find(p=>p.propId===selector.value);
+    sample.hidden=!selected;sample.replaceChildren();
+    if(!selected)return;
+    const status=el('p','프랍 이미지 불러오는 중…','meta');
+    status.setAttribute('role','status');sample.append(status);
+    const prop=pinProp(selected),art=(await decorArt.load([{prop}])).get(mapDecorPinKey(prop));
+    if(signal?.aborted||sample.isConnected===false||ticket!==version)return;
+    const imgAsset=art?.detail??art?.cinematic;
+    if(!imgAsset){status.textContent='이 프랍의 비픽셀 미리보기를 불러올 수 없어요.';return;}
+    const img=el('img');img.alt=selected.title+' 비픽셀 미리보기';img.draggable=false;
+    img.width=imgAsset.width;img.height=imgAsset.height;
+    img.onerror=()=>{img.hidden=true;status.textContent='이 프랍의 비픽셀 미리보기를 불러올 수 없어요.';};
+    img.src=imgAsset.url;status.textContent=art.detail?'비픽셀 원본 미리보기':'비픽셀 배치 이미지 미리보기';sample.append(img);
+   };
+   selector.onchange=()=>{
+    if(selection)selection.propId=selector.value;
+    action.disabled=selector.disabled||!selector.value;void showSample();
+   };
    vis.onchange=()=>{if(selection)selection.visibility=vis.value;};
    const row=el('div',undefined,'map-row');
-   row.append(label('사용할 프랍',selector),label('표시 모드',vis),action);host.append(row);
+   row.append(label('사용할 프랍',selector),label('표시 모드',vis),action);host.append(row,sample);
+   if(selector.value)queueMicrotask(()=>void showSample());
   }
   const decorPaintTicket=new WeakMap();
   const drawDecorArt=(host,placements,mapRegion,sight,dropSignal=signal)=>{

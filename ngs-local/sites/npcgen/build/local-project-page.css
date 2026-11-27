@@ -602,3 +602,7 @@ ul{padding:0;list-style:none}
 .map-decoration-canvas .map-decoration-selectable{pointer-events:auto;cursor:pointer}
 .map-decoration-canvas .map-decoration-selectable[hidden]{display:none}
 @media(max-width:1050px){.map-decoration-editor{grid-template-columns:minmax(0,1fr)}}
+
+.map-decoration-source-preview{display:grid;gap:.35rem;justify-items:start;width:min(13rem,100%);padding:.55rem;border:1px solid var(--border);border-radius:8px}
+.map-decoration-source-preview[hidden],.map-decoration-source-preview img[hidden]{display:none}
+.map-decoration-source-preview img{display:block;width:100%;height:7rem;object-fit:contain;background:var(--muted);border-radius:5px}

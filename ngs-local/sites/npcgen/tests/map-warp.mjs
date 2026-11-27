@@ -406,6 +406,7 @@ for(const visibility of ['cinematic','pixel'])test('map decoration tab reveals '
  const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
  const pin={propId:'lantern-art',revision:1,sha256:'a'.repeat(64)},row={...pin,title:'등불'};
  const art={propId:pin.propId,source:{revision:pin.revision,sha256:pin.sha256},media:{
+  detail:{mediaType:'image/png',url:'/api/prop-workspace?detail',width:1000,height:500},
   pixel:{mediaType:'image/png',url:'/api/prop-workspace?pixel',width:200,height:100},
   spirit:{mediaType:'image/png',url:'/api/prop-workspace?spirit',width:200,height:100}}};
  await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',
@@ -420,7 +421,13 @@ for(const visibility of ['cinematic','pixel'])test('map decoration tab reveals '
  const prop=field('사용할 프랍');prop.value=pin.propId;prop.onchange();
  const on=visibility==='cinematic',modeLabel=flag=>'서진 능력 · '+(flag?'ON':'OFF');
  if(!on){find(modeLabel(false)).onclick();await settle();}
- field('표시 모드').value=visibility;find('프랍 추가').onclick();await settle();
+ field('표시 모드').value=visibility;await settle();
+ const sample=()=>parts().find(n=>n.attrs['aria-label']==='추가할 프랍 미리보기');
+ assert.equal(sample().children.find(n=>n.tag==='img').src,'/api/prop-workspace?detail');
+ assert.equal(posts.length,0);
+ assert.equal(JSON.parse(memory.get(mapDraftKey('binari',mapId))??'null')?.graph.decorations?.length??0,0);
+ find('프랍 추가').onclick();await settle();
+ assert.equal(sample().hidden,true);
  const current=()=>JSON.parse(memory.get(mapDraftKey('binari',mapId))).graph;
  const sprite=()=>parts().find(n=>n.tag==='img'&&n.className?.split(' ').includes('map-decor-sprite')&&!n.hidden);
  assert.equal(current().decorations.length,1);

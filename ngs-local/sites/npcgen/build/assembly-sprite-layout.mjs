@@ -24,7 +24,7 @@ export function decorationArt(prop,pin){
   const x=prop.media?.[key];
   return x?.mediaType==='image/png'&&imageSize(x)&&typeof x.url==='string'&&x.url.startsWith('/api/prop-workspace?')?x:null;
  };
- return {pixel:lane('pixel'),cinematic:lane('spirit')};
+ return {pixel:lane('pixel'),cinematic:lane('spirit'),detail:lane('detail')};
 }
 export function decorationBox(row,art,region,spirit){
  const mode=spirit?'cinematic':'pixel';
