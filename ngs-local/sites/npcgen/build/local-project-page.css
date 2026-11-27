@@ -616,7 +616,9 @@ ul{padding:0;list-style:none}
 .prop-depth-scene .well-assembly-pin,.prop-depth-scene .well-demo-target,.prop-depth-scene .assembly-actor,.prop-depth-scene .well-demo-meter{z-index:10000}
 .prop-depth-scene .well-assembly-pin.active{z-index:10001}
 
-.map-depth-anchor{position:absolute;transform:translate(-50%,-50%);pointer-events:none;padding:.18rem .35rem;border:1px solid #e3c784;border-radius:8px;background:#252727;color:#fff3cc;font-size:.72rem;white-space:nowrap}
+.map-depth-anchor{position:absolute;transform:translate(-50%,-50%);touch-action:none;cursor:grab;z-index:1;min-height:24px;padding:.22rem .48rem;line-height:1;border:1px solid #e3c784;border-radius:8px;background:#252727;color:#fff3cc;font-size:.72rem;white-space:nowrap}
+.map-depth-anchor:active{cursor:grabbing}
+.map-depth-anchor:focus-visible{outline:2px solid #fff3cc;outline-offset:2px;z-index:2}
 .map-perspective-card fieldset{border:1px solid #535e55;margin:.55rem 0;padding:.55rem}
 .assembly-perspective-viewport{position:relative;overflow:hidden;border-radius:12px;isolation:isolate}
 .assembly-perspective-viewport .well-demo-scene{transform-origin:0 0}

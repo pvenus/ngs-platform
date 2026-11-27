@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 318,
+  "fileCountIncludingManifest": 319,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1228,24 +1228,24 @@
       "sha256": "c69c0d548745ebcc86b8981f2e9bc1ce5daf69591b2230a86fa2ab3f928aeba0"
     },
     "ngs-local/docs/map-workspace.md": {
-      "bytes": 8035,
-      "sha256": "1947de28f67d15eeebaac7fffe955fc641104fca11d3151e0cb322399ae2be1a"
+      "bytes": 8080,
+      "sha256": "52c230ed5652d10f5685f8f1499b009c6103893ecb70789a1382e05ae8e93da5"
     },
     "ngs-local/sites/npcgen/build/assembly-actor.mjs": {
       "bytes": 11753,
       "sha256": "4eb51e91dea1fd30033b65c624bb242ee92cc16e63224af866a93a97ef74175a"
     },
     "ngs-local/sites/npcgen/build/local-project-page.css": {
-      "bytes": 58203,
-      "sha256": "45803791df770115c8f3d77153ed7de6dee1280c28c47c4f03f37f925d1d8db2"
+      "bytes": 58383,
+      "sha256": "6f067d59276b1a3b8d927be582c1a3ab7f53ca4b38f93a20f4db8758de1cc4d1"
     },
     "ngs-local/sites/npcgen/build/map-contract.mjs": {
       "bytes": 13814,
       "sha256": "43d44ff27d5797eec43e897bfd82b2b75b84c0cb1f58881f9b34b706e2ad465f"
     },
     "ngs-local/sites/npcgen/build/map-workspace-ui.mjs": {
-      "bytes": 75560,
-      "sha256": "a6c0c42ffd18ae3dd3cdf7f66c1e6ed5b4ef31d55c8d07e5a0aa5fe40930e0bb"
+      "bytes": 76749,
+      "sha256": "a199ad959113c8d181916c20fdcaaa50721703dd7b582538e3c3a9cee38f7db9"
     },
     "ngs-local/sites/npcgen/build/well-puzzle-demo.mjs": {
       "bytes": 23161,
@@ -1261,7 +1261,7 @@
     },
     "ngs-local/source-manifest.json": {
       "bytes": 19265,
-      "sha256": "a89329cf69e0b42dfaea77a7dd357e9a59a559241afb33a0ed8786c2c92d7ab3"
+      "sha256": "1867c75fbb37c2dceca40d23620c428b98a42bb4394b7073af4f5e0fe559686b"
     },
     "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
       "bytes": 16820,
@@ -1270,6 +1270,10 @@
     "ngs-local/sites/npcgen/tests/rs-mcp.mjs": {
       "bytes": 22150,
       "sha256": "7672fa544c0b50bfa03edb253d6c941ce9e4bb83ea3e4eb014ecbd6df16230d0"
+    },
+    "ngs-local/sites/npcgen/tests/map-warp.mjs": {
+      "bytes": 43727,
+      "sha256": "e12fb0d4c58bca2f1819872634e4b6bd2f56a67a68db3d1166bbf7bfbd6f7b50"
     }
   }
 }

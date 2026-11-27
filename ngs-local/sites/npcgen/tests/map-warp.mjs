@@ -543,3 +543,44 @@ test('decoration roster and map share selection, including hidden props, and del
  assert.equal(posts.length,1);assert.equal(posts[0].requestType,'file.update');
  assert.deepEqual(posts[0].payload.content.decorations,expected);
 });
+
+test('perspective handles and numeric inputs edit both anchors directly and apply all regions once',async t=>{
+ const {mountMapWorkspace,mapDraftKey}=await import('../build/map-workspace-ui.mjs');
+ const {validFileUpdate}=await import('../build/file-update-envelope.mjs');
+ const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div');
+ const mapId='request.official.'+'a'.repeat(64);
+ const setup={near:{point:{x:520,y:850},actorHeight:350,viewWidth:870},far:{point:{x:485,y:500},actorHeight:95,viewWidth:540}};
+ const withProfiles={...graph,regions:regions.map((r,i)=>i<2?{...r,perspective:structuredClone(setup)}:r)};
+ const state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph:withProfiles};
+ const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1500,height:1000}));
+ const saved=new Map(),requests=[];
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',
+  storage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},
+  request:async url=>url.includes('background')?{backgrounds}:url.includes('item=')?{map:state}:{maps:[]},
+  submit:async packet=>{requests.push(packet);return Response.json({status:'queued',queueId:'ngs.local.15d60410-3f24-480d-9072-cd51f3d2a006'},{status:202});}});
+ const locate=aria=>detail.descendants().find(n=>n.attrs['aria-label']===aria);
+ const read=()=>JSON.parse(saved.get(mapDraftKey('binari',mapId))).graph;
+ const event=(x,y)=>({button:0,pointerId:8,clientX:x,clientY:y,preventDefault(){}});
+ const drag=(marker,x,y,a,b)=>{marker.onpointerdown(event(x,y));marker.onpointermove(event(a,b));marker.onpointerup(event(a,b));};
+ const input=(field,n)=>{const f=locate(field);f.valueAsNumber=n;f.value=String(n);f.onchange();};
+ detail.descendants().find(n=>n.id==='map-tab-perspective').onclick();
+ const near=locate('가까운 점 이동'),far=locate('먼 점 이동');
+ assert.equal(near.tag,'button');assert.equal(far.tag,'button');
+ assert.equal(detail.descendants().filter(n=>n.tag==='select').length,1);
+ drag(near,520,850,500,890);assert.equal(locate('가까운 점 X').value,'500');assert.equal(locate('가까운 점 Y').value,'890');
+ input('먼 점 X',500);assert.equal(far.style.left,'50%');
+ drag(far,500,500,501,520);assert.deepEqual(read().regions[0].perspective.far.point,{x:501,y:520});
+ input('먼 점 X',500);input('먼 점 Y',1001);assert.equal(locate('먼 점 Y').value,'520');
+ input('먼 점 Y',890);assert.equal(locate('먼 점 Y').value,'520');
+ far.onpointerdown(event(500,520));far.onpointermove(event(440,470));far.onpointercancel(event(440,470));
+ assert.equal(far.style.left,'50%');assert.equal(locate('먼 점 Y').value,'520');
+ const room=detail.descendants().find(n=>n.tag==='select');room.value='r2';room.onchange();
+ input('가까운 점 Y',905);
+ assert.equal(requests.length,0);assert.equal(locate('가까운 점 이동').style.top,'90.5%');
+ await detail.descendants().find(n=>n.textContent==='원근 적용').onclick();
+ assert.equal(requests.length,1);const {payload,requestType}=requests[0];
+ assert.equal(requestType,'file.update');assert.ok(validFileUpdate(payload));
+ assert.deepEqual(payload.content.regions[0].perspective,{...setup,near:{...setup.near,point:{x:500,y:890}},far:{...setup.far,point:{x:500,y:520}}});
+ assert.deepEqual(payload.content.regions[1].perspective.near.point,{x:520,y:905});
+ assert.deepEqual(payload.content.connections,graph.connections);
+});

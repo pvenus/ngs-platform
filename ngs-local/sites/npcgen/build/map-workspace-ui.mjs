@@ -239,7 +239,6 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
  let startSelected=saved?.startSelected===true;
  let graph=structuredClone(draft.graph),intent=typeof saved?.intent==='string'?saved.intent:'',conflict=draft.conflict,pending=draft.done?null:saved?.pending??null,lastToken=draft.done?null:saved?.requestToken??null,lastBody=saved?.requestBody??null;
  if(published)graph.title=published.graph.title;
- let perspectivePick='near';
  let tab=tabTitle(saved?.tab)?saved.tab:'start',submission=draft.done?null:saved?.submission??null;
  let collisionRegion=graph.startRegionId,collisionId=null,drawingCollider=false,newColliderShape='rect';
  let refreshAction=()=>{};
@@ -363,31 +362,33 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
   }
   function dragControl(control,box,initial,adjust,paint,commit){
    let gesture=null;
+   const readInitial=typeof initial==='function'?initial:()=>initial;
    control.onpointerdown=ev=>{
-    if(ev.button!==0||gesture)return;
+    if(ev.button!==0||gesture||control.disabled)return;
     ev.preventDefault();control.focus({preventScroll:true});
     control.setPointerCapture(ev.pointerId);
-    gesture={id:ev.pointerId,at:locate(ev,box),next:initial};
+    const origin=readInitial();
+    gesture={id:ev.pointerId,at:locate(ev,box),origin,next:origin};
    };
    control.onpointermove=ev=>{
     if(gesture?.id!==ev.pointerId)return;
     const p=locate(ev,box);
-    gesture.next=adjust(initial,p.x-gesture.at.x,p.y-gesture.at.y);
+    gesture.next=adjust(gesture.origin,p.x-gesture.at.x,p.y-gesture.at.y);
     paint(gesture.next);
    };
    control.onpointerup=ev=>{
     if(gesture?.id!==ev.pointerId)return;
     control.onpointermove(ev);
-    const next=gesture.next;gesture=null;
-    if(mapCanonical(next)!==mapCanonical(initial))commit(next);
+    const {next,origin}=gesture;gesture=null;
+    if(mapCanonical(next)!==mapCanonical(origin))commit(next);
    };
    control.onpointercancel=control.onlostpointercapture=ev=>{
-    if(gesture?.id!==ev.pointerId)return;gesture=null;paint(initial);
+    if(gesture?.id!==ev.pointerId)return;const {origin}=gesture;gesture=null;paint(origin);
    };
    control.onkeydown=ev=>{
     const step=ev.shiftKey?10:1,arrow={ArrowLeft:[-step,0],ArrowRight:[step,0],ArrowUp:[0,-step],ArrowDown:[0,step]}[ev.key];
-    if(!arrow)return;
-    ev.preventDefault();commit(adjust(initial,...arrow));
+    if(!arrow||control.disabled)return;
+    ev.preventDefault();commit(adjust(readInitial(),...arrow));
    };
   }
   function paintCollider(mark,rect,shape,rotation){
@@ -807,37 +808,59 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    else{
     const pane=card('구역별 원근','map-perspective-card'),current=region(active);
     const pick=setOptions(regionIds(),active);pick.onchange=()=>{active=pick.value;render();};
-    pane.append(label('편집할 구역',pick),el('p','카메라는 캐릭터를 따라갑니다. 가까운 점과 먼 점을 찍고, 각 지점의 캐릭터 높이와 시야 폭을 조절하세요.','meta'));
+    pane.append(label('편집할 구역',pick),el('p','이미지 위의 가까운 점과 먼 점을 직접 드래그하거나 아래 X/Y에 입력하세요. 좌우에서 같은 크기를 원하면 두 점의 X를 같게 두세요.','meta'));
     if(current){
      const base=publishedRegion(current.id);
      const compatible=base&&sameRegionArt(base,current);
      const profile=current.perspective;
      if(!compatible)pane.append(el('p','새 배경을 이동 연결 탭에서 먼저 적용해 주세요.','meta'));
      else if(!profile)pane.append(button('v6 원근 프리셋 사용',()=>{
+      if(locked)return;
       current.perspective={near:{point:{x:486,y:645},actorHeight:376,viewWidth:872},far:{point:{x:308,y:366},actorHeight:87,viewWidth:543}};
       changed();
      }));
      else{
-      const mode=setOptions(['near','far'],perspectivePick,x=>x==='near'?'가까운 점':'먼 점');
-      mode.onchange=()=>{perspectivePick=mode.value;render();};
-      pane.append(label('이미지에서 찍을 위치',mode));
-      const box=preview(pane,current,{aria:'원근 기준 발점 지정',activate:point=>{
-       const candidate={...profile,[perspectivePick]:{...profile[perspectivePick],point}};
-       if(!validMapPerspective(candidate)){bark.textContent='두 기준점을 조금 더 멀리 잡아 주세요.';return;}
-       current.perspective=candidate;changed();
-      }});
-      if(box)for(const k of ['near','far'])marker(box,profile[k].point,'map-depth-anchor',k==='near'?'가까움':'멀리');
+      const box=preview(pane,current);
       for(const k of ['near','far']){
-       const block=el('fieldset');block.append(el('legend',k==='near'?'가까운 위치':'먼 위치'));
+       const caption=k==='near'?'가까운 점':'먼 점', inputs={};
+       const block=el('fieldset');block.append(el('legend',caption+' · 좌표 (0–1000)'));
+       const readPoint=()=>current.perspective[k].point;
+       const handle=box?button(caption,()=>{},'map-depth-anchor'):null;
+       const paint=point=>{
+        if(handle)paintMarker(handle,point);
+        for(const key of ['x','y'])if(inputs[key])inputs[key].value=String(point[key]);
+       };
+       const setPoint=point=>{
+        const before=readPoint();
+        const candidate={...current.perspective,[k]:{...current.perspective[k],point}};
+        if(!validMapPerspective(candidate)){
+         paint(before);bark.textContent=mapPoint(point)?'두 기준점 사이를 조금 더 벌려 주세요.':'좌표는 0–1000 사이 정수로 입력해 주세요.';return;
+        }
+        paint(point);
+        if(point.x===before.x&&point.y===before.y)return;
+        current.perspective=candidate;changed(false);
+       };
+       if(handle){
+        handle.disabled=locked;handle.setAttribute('aria-label',caption+' 이동');handle.title='드래그 또는 방향키로 '+caption+' 이동';
+        dragControl(handle,box,readPoint,(p,dx,dy)=>({x:clampMap(p.x+dx),y:clampMap(p.y+dy)}),paint,setPoint);
+        box.append(handle);
+       }
+       for(const key of ['x','y']){
+        const n=el('input');n.type='number';n.min='0';n.max='1000';n.step='1';n.disabled=locked;n.value=String(readPoint()[key]);
+        n.setAttribute('aria-label',caption+' '+key.toUpperCase());
+        n.onchange=()=>setPoint({...readPoint(),[key]:n.valueAsNumber});
+        inputs[key]=n;block.append(label(key.toUpperCase(),n));
+       }
+       paint(readPoint());
        for(const [field,caption,lo,hi] of [['actorHeight','캐릭터 높이 (% / 이미지 높이)',10,650],['viewWidth','보이는 폭 (% / 이미지 너비)',200,1000]]){
-        const n=el('input');n.type='number';n.min=String(lo/10);n.max=String(hi/10);n.step='0.1';n.value=String(profile[k][field]/10);
-        n.onchange=()=>{const value=Math.round(n.valueAsNumber*10);if(!Number.isInteger(value)||value<lo||value>hi){n.value=String(profile[k][field]/10);return;}
-         current.perspective={...current.perspective,[k]:{...current.perspective[k],[field]:value}};changed();};
+        const n=el('input');n.type='number';n.min=String(lo/10);n.max=String(hi/10);n.step='0.1';n.disabled=locked;n.value=String(profile[k][field]/10);
+        n.onchange=()=>{const value=Math.round(n.valueAsNumber*10);if(!Number.isInteger(value)||value<lo||value>hi){n.value=String(current.perspective[k][field]/10);return;}
+         current.perspective={...current.perspective,[k]:{...current.perspective[k],[field]:value}};changed(false);};
         block.append(label(caption,n));
        }
        pane.append(block);
       }
-      pane.append(button('이 구역의 원근 끄기',()=>{current.perspective=null;changed();}));
+      pane.append(button('이 구역의 원근 끄기',()=>{if(!locked){current.perspective=null;changed();}}));
      }
     }
     sections.append(pane);
