@@ -1,5 +1,5 @@
 import {mountMapWorkspace} from './map-workspace-ui.mjs';
-import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,mapFolderDeletePayload} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,mapFolderDeletePayload,assemblyFolderDeletePayload} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
@@ -217,8 +217,9 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,...session}=value??{};
- if([npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
+ const {npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,...session}=value??{};
+ if([mapReadEnabled,assemblyReadEnabled].some(v=>v!==undefined&&(v!==true||session.workspaceReady!==true)))return false;
+ if([mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
  if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
  return session?.state==='authenticated'&&session.backend==='space'&&
@@ -447,7 +448,7 @@ async function load(){
 }
 
 const areas=[
- ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',document.documentElement?.dataset.wellPuzzleDemo==='enabled'],
+ ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',true],
  ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',['puzzleWorkspace','wellPuzzleDemo'].some(key=>document.documentElement?.dataset[key]==='enabled')],
  ['cinematic','시네마틱 영상',true],['resources','배경 설계',true],['maps','맵 제작',true],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
 ];
@@ -660,7 +661,8 @@ async function loadWorkspace(search){
   if(!legacySpace)motionSubmit=submit;
   if(hosted){
    if(session.queueEnabled===true)enableQueue(signal);
-   const filter=id=>projectId==='binari'&&!session.readOnly&&(!legacySpace||id==='audio');
+   const filter=id=>projectId==='binari'&&!session.readOnly&&(!legacySpace||id==='audio')&&
+    (id!=='maps'||session.mapReadEnabled===true)&&(id!=='assembly'||session.assemblyReadEnabled===true);
    renderNav(filter);
    if(!filter(tab)){
     note(session.readOnly?'Space에서는 현재 프로젝트 목록만 연결되어 있습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.':
@@ -675,8 +677,8 @@ async function loadWorkspace(search){
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
   if(tab==='maps'){
-   const deleteItem=!hosted&&session.mapDeleteEnabled===true&&submit?row=>submitFolderDelete(submit,mapFolderDeletePayload(row)):undefined;
-   await mountMapWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,deleteItem,enabled:!hosted&&session.mapEnabled===true});
+   const deleteItem=session.mapDeleteEnabled===true&&submit?row=>submitFolderDelete(submit,mapFolderDeletePayload(row)):undefined;
+   await mountMapWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,deleteItem,enabled:session.mapEnabled===true});
    if(!signal.aborted)note('');
    return;
   }
@@ -719,9 +721,9 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='assembly'){
-   if(hosted)return;
    const {mountAssemblyCatalog}=await import('./assembly-catalog-ui.mjs');
-   if(!signal.aborted)await mountAssemblyCatalog({items,detail,tools:listToolbar,request,projectId,item,panel:search.get('assemblyTab'),navigate:next,signal,submit:session.assemblyEnabled?submit:undefined});
+   const deleteItem=session.assemblyDeleteEnabled===true&&submit?row=>submitFolderDelete(submit,assemblyFolderDeletePayload(row)):undefined;
+   if(!signal.aborted)await mountAssemblyCatalog({items,detail,tools:listToolbar,request,projectId,item,panel:search.get('assemblyTab'),navigate:next,signal,deleteItem,submit:session.assemblyEnabled?submit:undefined});
    if(!signal.aborted)note('');
    return;
   }

@@ -10,7 +10,7 @@ export async function submitCatalogSelections(rows,submitOne){
  return {accepted,failed};
 }
 
-export function mountCatalogRosterEdit({items,tools,modalOwner=items.parentElement,deleteItem,signal}){
+export function mountCatalogRosterEdit({items,tools,modalOwner=items.parentElement,deleteItem,signal,deleteMessage}){
  if(typeof deleteItem!=='function'||!tools||!modalOwner||signal.aborted)return null;
  const doc=items.ownerDocument,selected=new Map(),boxes=new Map();
  let active=false,busy=false,opened=null;
@@ -54,7 +54,7 @@ export function mountCatalogRosterEdit({items,tools,modalOwner=items.parentEleme
   const buttons=create('div','prop-actions'),cancel=create('button','prop-control','취소'),
    confirm=create('button','prop-control prop-animation-delete','삭제 요청');
   cancel.type=confirm.type='button';buttons.append(cancel,confirm);
-  dialog.append(h,create('p','meta','원본과 하위 결과가 삭제됩니다. 파일 또는 폴더마다 별도 삭제 요청을 접수합니다.'),names,buttons);
+  dialog.append(h,create('p','meta',deleteMessage??'원본과 하위 결과가 삭제됩니다. 파일 또는 폴더마다 별도 삭제 요청을 접수합니다.'),names,buttons);
   modalOwner.append(dialog);dialog.addEventListener('close',()=>{opened=null;dialog.remove();if(!signal.aborted)(active?remove:toggle).focus();},{once:true});
   dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
   cancel.addEventListener('click',()=>dialog.close(),{signal});

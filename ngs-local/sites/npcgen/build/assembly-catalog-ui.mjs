@@ -1,3 +1,4 @@
+import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {assemblyPath,assemblyPuzzleType,validAssemblyRequest} from './assembly-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {mountWellAssembly} from './well-assembly-ui.mjs';
@@ -5,9 +6,10 @@ const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textCont
 const field=(label,node)=>{const n=el('label',label,'prop-form-field');n.append(node);return n;};
 const keyOf=text=>text.normalize('NFC').trim().toLocaleLowerCase();
 
-export async function mountAssemblyCatalog({items,detail,tools,request,projectId,item,panel,navigate,signal,submit}){
+export async function mountAssemblyCatalog({items,detail,tools,request,projectId,item,panel,navigate,signal,submit,deleteItem}){
  const q=new URLSearchParams({projectId}),api=assemblyPath+'?'+q;
- const [{assemblies},{maps}]=await Promise.all([request(api),request('/api/map-workspace?'+q)]);
+ const [catalog,{maps}]=await Promise.all([request(api),request('/api/map-workspace?'+q)]);
+ let {assemblies}=catalog;
  if(signal.aborted)return;
  if(!Array.isArray(assemblies)||!Array.isArray(maps))throw Error('ASSEMBLY_CATALOG');
  const search=el('input',null,'npc-search');search.id='assembly-search';search.type='search';search.maxLength=120;search.placeholder='조립 이름 검색';
@@ -16,14 +18,17 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
  const storageKey='ngs:assembly-search:'+projectId;
  try{search.value=sessionStorage.getItem(storageKey)??'';}catch{}
  items.before(label,search);
+ let edit;
  function draw(){
   const text=keyOf(search.value);
   const rows=assemblies.filter(row=>keyOf(row.title).includes(text)).map(row=>{
    const li=el('li'),a=el('a',null,'request-item npc-roster-entry');a.href=navigate({item:row.assemblyId});
    if(row.assemblyId===item)a.setAttribute('aria-current','page');
-   a.append(el('strong',row.title),el('span','리비전 '+row.revision,'meta'));li.append(a);return li;
+   a.append(el('strong',row.title),el('span','리비전 '+row.revision,'meta'));li.append(a);
+   edit?.decorate(li,row.assemblyId,row.title,{revision:row.revision,officialRequestId:row.officialRequestId});return li;
   });
-  items.replaceChildren(...(rows.length?rows:[el('li',text?'검색 결과가 없습니다.':'아직 게시된 조립본이 없어요.','meta')]));
+  const top=items.scrollTop;items.replaceChildren(...(rows.length?rows:[el('li',text?'검색 결과가 없습니다.':'아직 게시된 조립본이 없어요.','meta')]));
+  edit?.refresh();items.scrollTop=top;
  }
  search.addEventListener('input',()=>{try{sessionStorage.setItem(storageKey,search.value);}catch{}draw();},{signal});
  signal.addEventListener('abort',()=>{label.remove();search.remove();},{once:true});draw();
@@ -81,6 +86,23 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
     finally{send.disabled=close.disabled=false;}
    },{signal});
   },{signal});
+ }
+ if(deleteItem){
+  const pending=new Set();let polling=false;
+  edit=mountCatalogRosterEdit({items,tools,signal,deleteItem:async row=>{await deleteItem(row);pending.add(row.id);},
+   deleteMessage:'선택한 조립본만 삭제해요. 연결한 맵과 프랍은 남습니다. 조립본마다 정식 삭제 요청 1건을 보내요.'});
+  draw();
+  const timer=setInterval(async()=>{
+   if(!pending.size||polling||signal.aborted||document.hidden)return;
+   polling=true;
+   try{
+    const next=(await request(api)).assemblies;if(signal.aborted||!Array.isArray(next))return;
+    const live=new Set(next.map(row=>row.assemblyId));
+    let changed=false;for(const id of pending)if(!live.has(id)){pending.delete(id);changed=true;}
+    if(changed){assemblies=next;draw();if(item&&!live.has(item))location.assign(navigate({item:'',assemblyTab:''}));}
+   }catch{}finally{polling=false;}
+  },3000);
+  signal.addEventListener('abort',()=>clearInterval(timer),{once:true});
  }
  if(!item){
   detail.replaceChildren(el('h3','조립·플레이'),el('p',submit?'왼쪽 목록에서 게시된 조립본을 열거나 +로 새 조립을 요청하세요.':'정식 조립 요청 기능의 연결을 확인하는 중이에요.','meta'),info);

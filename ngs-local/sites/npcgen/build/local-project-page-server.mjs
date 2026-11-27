@@ -1,7 +1,7 @@
 import {assemblyTypes,assemblyPath,assemblyPds,assemblyCapability,validAssemblyRequest,assemblyReachable} from './assembly-contract.mjs';
 import {assemblyWorkspaceRead} from './assembly-workspace.mjs';
 import {mapTypes,mapPds,mapCapability,validMapRequest} from './map-contract.mjs';
-import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,validNpcFolderDelete,backgroundDeleteRoot,validBackgroundFileDelete,cinematicDeleteRoot,validCinematicFileDelete,cinematicDeletePayloads,mapDeleteRoot,validMapFolderDelete} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,validNpcFolderDelete,backgroundDeleteRoot,validBackgroundFileDelete,cinematicDeleteRoot,validCinematicFileDelete,cinematicDeletePayloads,mapDeleteRoot,validMapFolderDelete,assemblyDeleteRoot,validAssemblyFolderDelete} from './prop-folder-delete-contract.mjs';
 /** NGS browser app: serve the local replica and enqueue validated requests. */
 import {readFileSync,lstatSync,mkdirSync,realpathSync} from 'node:fs';
 import {createServer,get as loopbackGet} from 'node:http';
@@ -166,6 +166,7 @@ async function readLocalFolderDeleteReady(path,root){
 }
 const readLocalCinematicDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target/cinematic',cinematicDeleteRoot);
 const readLocalMapDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target/map',mapDeleteRoot);
+const readLocalAssemblyDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target/assembly',assemblyDeleteRoot);
 const readLocalCinematicDeleteInventory=source=>readLocalDeleteJson('/v1/storage/delete-target/cinematic-inventory?'+new URLSearchParams({sourceSha256:source}),256*1024);
 const readLocalBackgroundDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target/background',backgroundDeleteRoot);
 const readLocalPropFolderDeleteReady=()=>readLocalFolderDeleteReady('/v1/storage/delete-target',propsDeleteRoot);
@@ -180,11 +181,11 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
   readMapReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(mapPds,mapCapability):undefined,
   readAssemblyReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(assemblyPds,assemblyCapability):undefined,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
-  ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readBackgroundPixelReady:readLocalBackgroundPixelReady,readBackgroundAnimationReady:readLocalBackgroundAnimationReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady,readCinematicDeleteReady:readLocalCinematicDeleteReady,readMapDeleteReady:readLocalMapDeleteReady,readCinematicDeleteInventory:readLocalCinematicDeleteInventory}:{}),
+  ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readBackgroundPixelReady:readLocalBackgroundPixelReady,readBackgroundAnimationReady:readLocalBackgroundAnimationReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady,readCinematicDeleteReady:readLocalCinematicDeleteReady,readMapDeleteReady:readLocalMapDeleteReady,readAssemblyDeleteReady:readLocalAssemblyDeleteReady,readCinematicDeleteInventory:readLocalCinematicDeleteInventory}:{}),
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',npcBasicPortraitEnabled:env.NGS_NPC_BASIC_PORTRAIT_ENABLED!=='0',npcScopedPortraitEnabled:env.NGS_NPC_SCOPED_PORTRAIT_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -209,6 +210,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const propFolderDeleteReady=async()=>Boolean(queue&&typeof readPropFolderDeleteReady==='function'&&await readPropFolderDeleteReady());
  const npcFolderDeleteReady=async()=>Boolean(queue&&typeof readNpcFolderDeleteReady==='function'&&await readNpcFolderDeleteReady());
  const backgroundDeleteReady=async()=>Boolean(queue&&typeof readBackgroundDeleteReady==='function'&&await readBackgroundDeleteReady());
+ const assemblyDeleteReady=async()=>Boolean(queue&&typeof readAssemblyDeleteReady==='function'&&await readAssemblyDeleteReady());
  const mapDeleteReady=async()=>Boolean(queue&&typeof readMapDeleteReady==='function'&&await readMapDeleteReady());
  const cinematicDeleteReady=async()=>Boolean(queue&&typeof readCinematicDeleteReady==='function'&&await readCinematicDeleteReady());
  const activePropActions=async()=>{
@@ -343,7 +345,10 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
     if(command.requestType===fileDeleteType){
-     if(command.payload?.target?.root===mapDeleteRoot){
+     if(command.payload?.target?.root===assemblyDeleteRoot){
+      if(!await assemblyDeleteReady())throw failure('ASSEMBLY_DELETE_UNAVAILABLE',404);
+      if(!validAssemblyFolderDelete(command.payload))throw failure('NGS_ASSEMBLY_DELETE_PAYLOAD_INVALID',400);
+     }else if(command.payload?.target?.root===mapDeleteRoot){
       if(!await mapDeleteReady())throw failure('MAP_DELETE_UNAVAILABLE',404);
       if(!validMapFolderDelete(command.payload))throw failure('NGS_MAP_DELETE_PAYLOAD_INVALID',400);
       // The writer checks the exact revision and request ID, including retries after replication changes.
@@ -466,11 +471,11 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
     const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady(),deleteBackground=await backgroundDeleteReady(),deleteCinematic=await cinematicDeleteReady();
-    const [mapReady,deleteMap,assemblyReady]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly()]);
+    const [mapReady,deleteMap,assemblyReady,deleteAssembly]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly(),assemblyDeleteReady()]);
     const [pixelBackground,animateBackground]=await Promise.all([activeCinematic(backgroundPixelType),activeCinematic(backgroundAnimationType)]);
     const [actions,legacyCine,sequenceCine,playbackCine,sourceCine,backgroundReady,removeCine,removeProp]=await Promise.all([activePropActions(),activeCinematic(cinematicType),activeCinematic(cinematicSequenceType),activeCinematic(cinematicPlaybackUpdateType),activeCinematic(cinematicSourceGenerateType),activeCinematic(backgroundSourceType),activeCinematic(cinematicSequencesRemoveType),activePropRemoval()]);
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
-     ...(actions.length?{propActions:actions}:{}),...(mapReady?{mapEnabled:true}:{}),...(assemblyReady?{assemblyEnabled:true}:{}),...(deleteMap?{mapDeleteEnabled:true}:{}),
+     ...(actions.length?{propActions:actions}:{}),...(mapReady?{mapEnabled:true}:{}),...(assemblyReady?{assemblyEnabled:true}:{}),...(deleteMap?{mapDeleteEnabled:true}:{}),...(deleteAssembly?{assemblyDeleteEnabled:true}:{}),
      ...(legacyCine?{cinematicEnabled:true}:{}),
      ...(sequenceCine?{cinematicSequenceEnabled:true}:{}),...(playbackCine?{cinematicPlaybackEnabled:true}:{}),
      ...(sourceCine?{cinematicSourceEnabled:true}:{}),...(backgroundReady?{backgroundSourceEnabled:true}:{}),...(pixelBackground?{backgroundPixelEnabled:true}:{}),...(animateBackground?{backgroundAnimationEnabled:true}:{}),...(removeCine?{cinematicRemoveEnabled:true}:{}),...(removeProp?{propAnimationRemoveEnabled:true}:{}),...(deleteProp?{propFolderDeleteEnabled:true}:{}),...(deleteNpc?{npcFolderDeleteEnabled:true}:{}),...(deleteBackground?{backgroundDeleteEnabled:true}:{}),...(deleteCinematic?{cinematicDeleteEnabled:true}:{}),

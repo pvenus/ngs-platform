@@ -1,6 +1,6 @@
 import {assemblyTypes,validAssemblyRequest} from './assembly-contract.mjs';
 // The versioned local relay binds the optional spirit-v1 prop generation envelope.
-import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete,validCinematicFileDelete,validMapFolderDelete} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete,validCinematicFileDelete,validMapFolderDelete,validAssemblyFolderDelete} from './prop-folder-delete-contract.mjs';
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
 import {createNgsHealthRelay} from './rs-ops-ngs-health.mjs';
 import {startOpsHealthReport} from './local-ops-health-report.mjs';
@@ -101,9 +101,10 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
       (row.requestType===backgroundAnimationType&&(!local||!validBackgroundAnimation(row.payload)||
        row.payload.playback.durationFrames===84&&row.payload.schemaVersion!==backgroundAnimationSchema))||
       (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
-      (assemblyTypes.includes(row.requestType)&&(!local||!validateAssemblyRelay(row.requestType,row.payload)))||
-      (mapTypes.includes(row.requestType)&&(!local||!validMapRequest(row.payload,row.requestType)))||
-      (row.requestType===fileDeleteType&&(!local||!(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload)||validMapFolderDelete(row.payload))))){result.rejected++;continue;}
+      (assemblyTypes.includes(row.requestType)&&!validateAssemblyRelay(row.requestType,row.payload))||
+      (mapTypes.includes(row.requestType)&&!validMapRequest(row.payload,row.requestType))||
+      (row.requestType===fileDeleteType&&!(validMapFolderDelete(row.payload)||validAssemblyFolderDelete(row.payload)||
+       local&&(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload))))){result.rejected++;continue;}
    // Background media v2 has real scheduler stages; relay the contract unchanged,
    // just as for already-queued v1 compatibility rows.
    const stamp=fingerprint(row);

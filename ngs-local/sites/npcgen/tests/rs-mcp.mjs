@@ -288,7 +288,7 @@ test('a slow or unavailable health receiver never delays handing off queue conte
  }finally{release();}
 });
 
-test('only exact Local map creation and update reach RS, with unchanged payload',async()=>{
+test('exact map creation and update use the payload for Local and trusted ticket for Space',async()=>{
  const regions=['entry','yard'].map((id,i)=>({id,name:id,description:'Go through the passage',
   backgroundId:'background.'+String(i).repeat(64),imageSha256:String(i+2).repeat(64)}));
  const edge={id:'entry-to-yard',from:'entry',to:'yard',label:'Enter',hit:null,spawn:null};
@@ -311,9 +311,17 @@ test('only exact Local map creation and update reach RS, with unchanged payload'
  }});
  assert.deepEqual(await local.pollOnce(),{seen:4,acknowledged:2,unresolved:0,rejected:2,deferred:0});
  assert.deepEqual(calls,['map.generate','map.update']);
- const space=createSpaceRSQueueConsumer({callNGS:async name=>{
-  assert.equal(name,'space_requests_pending');
-  return {requests:[generate,update].map(row=>{const queueId=row.queueId.replace('ngs.local.','ngs.space.');return {...row,queueId,idempotencyKey:queueId};})};
- },callRS:async()=>assert.fail('Space must never relay maps')});
- assert.deepEqual(await space.pollOnce(),{seen:2,acknowledged:0,unresolved:0,rejected:2,deferred:0});
+ const toSpace=row=>{const queueId=row.queueId.replace('ngs.local.','ngs.space.');return {...row,queueId,idempotencyKey:queueId};};
+ const tickets=[generate,update].map(toSpace);
+ const proof=id=>'request.official.'+createHash('sha256').update(JSON.stringify(['request.official.v1','space','binari',id])).digest('hex');
+ const space=createSpaceRSQueueConsumer({callNGS:async (name,args)=>{
+  if(name==='space_requests_pending')return {requests:[...tickets,...invalid.map(toSpace)]};
+  assert.equal(name,'space_requests_ack');assert.deepEqual(args.receipt,{officialRequestId:proof(args.queueId),status:'registered',registeredAt:1});
+  return {queueId:args.queueId,status:'acknowledged'};
+ },callRS:async(name,args)=>{
+  assert.equal(name,'request_submit_space');assert.deepEqual(Object.keys(args),['queueId']);
+  assert.ok(tickets.some(row=>row.queueId===args.queueId));
+  return {officialRequestId:proof(args.queueId),status:'registered',registeredAt:1};
+ }});
+ assert.deepEqual(await space.pollOnce(),{seen:4,acknowledged:2,unresolved:0,rejected:2,deferred:0});
 });

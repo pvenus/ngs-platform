@@ -23,6 +23,6 @@ export async function assemblyWorkspaceRead({query,openProject,authorize}){
  if(dirs.length>4096)throw replicaUnavailable();
  const assemblies=[];
  for(let i=0;i<dirs.length;i+=12)assemblies.push(...(await Promise.all(dirs.slice(i,i+12).map(x=>latest(x.name)))).filter(Boolean)
-  .map(({assemblyId,title,revision,updatedAt,map})=>({assemblyId,title,revision,updatedAt,mapId:map.mapId})));
+  .map(({assemblyId,title,revision,updatedAt,map,officialRequestId})=>({assemblyId,title,revision,updatedAt,officialRequestId,mapId:map.mapId})));
  return {json:{assemblies:assemblies.sort((a,b)=>b.updatedAt-a.updatedAt||a.assemblyId.localeCompare(b.assemblyId))}};
 }

@@ -75,3 +75,16 @@ export function mapFolderDeletePayload({id,expected}){
  if(!validMapFolderDelete(payload))throw Error('NGS_MAP_DELETE_PAYLOAD_INVALID');
  return payload;
 }
+
+export const assemblyDeleteRoot='canonical-files/binari/cinematics/assemblies';
+export function validAssemblyFolderDelete(p){
+ const t=p?.target,e=p?.expected;
+ return exact(p,['schemaVersion','projectId','target','expected'])&&p.schemaVersion===fileDeleteSchema&&p.projectId==='binari'&&
+  exact(t,['root','path','kind'])&&t.root===assemblyDeleteRoot&&t.kind==='directory'&&officialId(t.path)&&
+  exact(e,['revision','officialRequestId'])&&Number.isSafeInteger(e.revision)&&e.revision>=1&&officialId(e.officialRequestId);
+}
+export function assemblyFolderDeletePayload({id,expected}){
+ const payload={schemaVersion:fileDeleteSchema,projectId:'binari',target:{root:assemblyDeleteRoot,path:id,kind:'directory'},expected};
+ if(!validAssemblyFolderDelete(payload))throw Error('NGS_ASSEMBLY_DELETE_PAYLOAD_INVALID');
+ return payload;
+}
