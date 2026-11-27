@@ -1,7 +1,7 @@
 import {fileUpdateType,fileUpdateSchema,mapUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {orderedMapChain} from './map-warp.mjs';
-import {mountAssemblyActor} from './assembly-actor.mjs';
+import {mountAssemblyActor,rearAvatar} from './assembly-actor.mjs';
 import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations,decorationZOrder} from './assembly-sprite-layout.mjs';
 import {hashBrowserMap,validMapPerspective} from './map-contract.mjs';
 import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,validPropZOrder,propZMin,propZMax,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
@@ -808,7 +808,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    else{
     const pane=card('구역별 원근','map-perspective-card'),current=region(active);
     const pick=setOptions(regionIds(),active);pick.onchange=()=>{active=pick.value;render();};
-    pane.append(label('편집할 구역',pick),el('p','이미지 위의 가까운 점과 먼 점을 직접 드래그하거나 아래 X/Y에 입력하세요. 좌우에서 같은 크기를 원하면 두 점의 X를 같게 두세요.','meta'));
+    pane.append(label('편집할 구역',pick),el('p','이미지 위의 가까운 점과 먼 점을 직접 드래그하거나 아래 X/Y에 입력하세요. 실루엣은 카메라 줌을 제외한 배경 대비 크기입니다. 좌우에서 같은 크기를 원하면 두 점의 X를 같게 두세요.','meta'));
     if(current){
      const base=publishedRegion(current.id);
      const compatible=base&&sameRegionArt(base,current);
@@ -826,8 +826,18 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
        const block=el('fieldset');block.append(el('legend',caption+' · 좌표 (0–1000)'));
        const readPoint=()=>current.perspective[k].point;
        const handle=box?button(caption,()=>{},'map-depth-anchor'):null;
+       const avatar=box?el('span',undefined,'map-depth-avatar'):null;
+       const paintHeight=value=>{if(avatar)avatar.style.height=value/10+'%';};
+       if(avatar){
+        avatar.dataset.depthAnchor=k;avatar.setAttribute('aria-hidden','true');
+        const silhouette=rearAvatar(document);
+        silhouette.setAttribute('viewBox','0 0 56 143'); // Include the sole in the editor’s measured height.
+        avatar.append(silhouette);box.append(avatar);
+        paintHeight(profile[k].actorHeight);
+       }
        const paint=point=>{
         if(handle)paintMarker(handle,point);
+        if(avatar)paintMarker(avatar,point);
         for(const key of ['x','y'])if(inputs[key])inputs[key].value=String(point[key]);
        };
        const setPoint=point=>{
@@ -841,7 +851,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
         current.perspective=candidate;changed(false);
        };
        if(handle){
-        handle.disabled=locked;handle.setAttribute('aria-label',caption+' 이동');handle.title='드래그 또는 방향키로 '+caption+' 이동';
+        handle.dataset.depthAnchor=k;handle.disabled=locked;handle.setAttribute('aria-label',caption+' 이동');handle.title='드래그 또는 방향키로 '+caption+' 이동';
         dragControl(handle,box,readPoint,(p,dx,dy)=>({x:clampMap(p.x+dx),y:clampMap(p.y+dy)}),paint,setPoint);
         box.append(handle);
        }
@@ -852,11 +862,20 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
         inputs[key]=n;block.append(label(key.toUpperCase(),n));
        }
        paint(readPoint());
-       for(const [field,caption,lo,hi] of [['actorHeight','캐릭터 높이 (% / 이미지 높이)',10,650],['viewWidth','보이는 폭 (% / 이미지 너비)',200,1000]]){
+       for(const [field,fieldCaption,lo,hi] of [['actorHeight','캐릭터 높이 (% / 이미지 높이)',10,650],['viewWidth','보이는 폭 (% / 이미지 너비)',200,1000]]){
         const n=el('input');n.type='number';n.min=String(lo/10);n.max=String(hi/10);n.step='0.1';n.disabled=locked;n.value=String(profile[k][field]/10);
-        n.onchange=()=>{const value=Math.round(n.valueAsNumber*10);if(!Number.isInteger(value)||value<lo||value>hi){n.value=String(current.perspective[k][field]/10);return;}
-         current.perspective={...current.perspective,[k]:{...current.perspective[k],[field]:value}};changed(false);};
-        block.append(label(caption,n));
+        n.setAttribute('aria-label',caption+' '+fieldCaption);
+        const valueOf=()=>Math.round(n.valueAsNumber*10);
+        const validValue=v=>Number.isInteger(v)&&v>=lo&&v<=hi;
+        if(field==='actorHeight')n.oninput=()=>{const v=valueOf();if(validValue(v))paintHeight(v);};
+        n.onchange=()=>{
+         const value=valueOf(),previous=current.perspective[k][field];
+         n.value=String((validValue(value)?value:previous)/10);
+         if(field==='actorHeight')paintHeight(validValue(value)?value:previous);
+         if(!validValue(value)||value===previous)return;
+         current.perspective={...current.perspective,[k]:{...current.perspective[k],[field]:value}};changed(false);
+        };
+        block.append(label(fieldCaption,n));
        }
        pane.append(block);
       }

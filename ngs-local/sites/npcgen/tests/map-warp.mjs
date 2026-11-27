@@ -60,7 +60,7 @@ function fakeDom(t){
   getBoundingClientRect(){return {left:0,top:0,width:1000,height:1000};}
  }
  let focused;const body=new Element('body'),original=globalThis.document;
- Object.defineProperty(globalThis,'document',{configurable:true,value:{body,createElement:tag=>new Element(tag),get activeElement(){return focused;}}});
+ Object.defineProperty(globalThis,'document',{configurable:true,value:{body,createElement:tag=>new Element(tag),createElementNS:(_ns,tag)=>new Element(tag),get activeElement(){return focused;}}});
  t.after(()=>{if(original===undefined)delete globalThis.document;else globalThis.document=original;});
  return {Element,body,get focused(){return focused;}};
 }
@@ -566,9 +566,22 @@ test('perspective handles and numeric inputs edit both anchors directly and appl
  detail.descendants().find(n=>n.id==='map-tab-perspective').onclick();
  const near=locate('가까운 점 이동'),far=locate('먼 점 이동');
  assert.equal(near.tag,'button');assert.equal(far.tag,'button');
+ const [nearAvatar,farAvatar]=detail.descendants().filter(n=>n.className==='map-depth-avatar');
+ assert.equal(nearAvatar.style.height,'35%');assert.equal(farAvatar.style.height,'9.5%');
+ assert.equal(nearAvatar.attrs['aria-hidden'],'true');
+ assert.equal(nearAvatar.children[0].tag,'svg');
+ const height=locate('가까운 점 캐릭터 높이 (% / 이미지 높이)');
+ const draftBeforeHeight=[...saved];
+ height.valueAsNumber=41.2;height.oninput();
+ assert.equal(nearAvatar.style.height,'41.2%');assert.equal(farAvatar.style.height,'9.5%');
+ assert.deepEqual([...saved],draftBeforeHeight);
+ height.valueAsNumber=800;height.onchange();assert.equal(nearAvatar.style.height,'35%');
+ height.valueAsNumber=41.2;height.onchange();
+ assert.equal(read().regions[0].perspective.near.actorHeight,412);
  assert.equal(detail.descendants().filter(n=>n.tag==='select').length,1);
  drag(near,520,850,500,890);assert.equal(locate('가까운 점 X').value,'500');assert.equal(locate('가까운 점 Y').value,'890');
- input('먼 점 X',500);assert.equal(far.style.left,'50%');
+ assert.equal(nearAvatar.style.top,'89%');assert.equal(nearAvatar.style.left,'50%');
+ input('먼 점 X',500);assert.equal(far.style.left,'50%');assert.equal(farAvatar.style.left,'50%');
  drag(far,500,500,501,520);assert.deepEqual(read().regions[0].perspective.far.point,{x:501,y:520});
  input('먼 점 X',500);input('먼 점 Y',1001);assert.equal(locate('먼 점 Y').value,'520');
  input('먼 점 Y',890);assert.equal(locate('먼 점 Y').value,'520');
@@ -580,7 +593,7 @@ test('perspective handles and numeric inputs edit both anchors directly and appl
  await detail.descendants().find(n=>n.textContent==='원근 적용').onclick();
  assert.equal(requests.length,1);const {payload,requestType}=requests[0];
  assert.equal(requestType,'file.update');assert.ok(validFileUpdate(payload));
- assert.deepEqual(payload.content.regions[0].perspective,{...setup,near:{...setup.near,point:{x:500,y:890}},far:{...setup.far,point:{x:500,y:520}}});
+ assert.deepEqual(payload.content.regions[0].perspective,{...setup,near:{...setup.near,actorHeight:412,point:{x:500,y:890}},far:{...setup.far,point:{x:500,y:520}}});
  assert.deepEqual(payload.content.regions[1].perspective.near.point,{x:520,y:905});
  assert.deepEqual(payload.content.connections,graph.connections);
 });

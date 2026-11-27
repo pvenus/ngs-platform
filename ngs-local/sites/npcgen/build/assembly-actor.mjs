@@ -188,7 +188,7 @@ export function assemblyPerspective(profile,position){
   y:offset(50-(position.y/10-actorHeight*50)*zoom)};
 }
 
-function rearAvatar(doc){
+export function rearAvatar(doc){
  // Temporary silhouette used to evaluate depth, not a released Seojin asset.
  const ns='http://www.w3.org/2000/svg',svg=doc.createElementNS(ns,'svg');
  svg.setAttribute('viewBox','0 0 56 135');svg.setAttribute('aria-hidden','true');
