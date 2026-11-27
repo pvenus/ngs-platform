@@ -74,7 +74,7 @@
     "sites/npcgen/build/loopback-auth.mjs": "bd920a871bd7cfd864b9cf3095c4aa7b5e987893ead87422524b4c69279e45f3",
     "sites/npcgen/build/map-contract.mjs": "2557062e5649ffeb05b8f60c20a49066dc4e56d7cc43bb6db484f328c4f1ebe1",
     "sites/npcgen/build/map-warp.mjs": "759264ba2fc0b29c675296eeda374a1433fb7723f2f290bc31e6e905b3e9e25e",
-    "sites/npcgen/build/map-workspace-ui.mjs": "b5a9377e3532513e853b416f44d45a82354f6cb17227da33903b28406adc82be",
+    "sites/npcgen/build/map-workspace-ui.mjs": "c10934c9e5c0ce2122448c8f934a44bec617cb4e788be1b1b4b5f1b74a18f4c1",
     "sites/npcgen/build/map-workspace.mjs": "29dce4773a125119aec8b0d39e92c899fdee6a3a5667d8f955ff8d25c8fbb3bd",
     "sites/npcgen/build/motion-preset-convert-2d.mjs": "1fe6812ffeb0e034daa50b0360373c7b069d75c184c96091a2413a383cc019fe",
     "sites/npcgen/build/npc-motion-selection.mjs": "d6868b47e48b3c5ff2dfde90e2b8b900240d6c9d26fa738478789d5f68494463",

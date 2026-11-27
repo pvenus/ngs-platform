@@ -333,7 +333,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    box.append(surface);
   }
   function renderColliders(){
-   collision.append(el('p','통과할 수 없는 부분을 지정합니다. 충돌 영역은 이동 포털과 별개이며 편집할 때만 표시돼요.','meta'));
+   collision.append(el('p','통과할 수 없는 부분을 지정합니다. 충돌 영역은 이동 포털과 별개예요. 웹에서는 표시만 하고 Unity에서 이동을 막는 데 사용해요.','meta'));
    const rooms=regionIds();
    if(!rooms.includes(collisionRegion)){collisionRegion=graph.startRegionId??rooms[0];collisionId=null;drawingCollider=false;}
    const room=setOptions(rooms,collisionRegion);
