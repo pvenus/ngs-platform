@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 316,
+  "fileCountIncludingManifest": 318,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1261,7 +1261,15 @@
     },
     "ngs-local/source-manifest.json": {
       "bytes": 19265,
-      "sha256": "abf0e60ae2a4d57722e47c697f25b7dc0cbaf0419863383cb2820bd9549427d0"
+      "sha256": "a89329cf69e0b42dfaea77a7dd357e9a59a559241afb33a0ed8786c2c92d7ab3"
+    },
+    "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
+      "bytes": 16820,
+      "sha256": "043925ffe3d8fdcc43fb9e505489e22687f6834033cdea7615bc74740ac9b2d3"
+    },
+    "ngs-local/sites/npcgen/tests/rs-mcp.mjs": {
+      "bytes": 22150,
+      "sha256": "7672fa544c0b50bfa03edb253d6c941ce9e4bb83ea3e4eb014ecbd6df16230d0"
     }
   }
 }

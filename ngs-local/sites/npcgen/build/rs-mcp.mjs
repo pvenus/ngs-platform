@@ -36,7 +36,7 @@ const falseReceipt=()=>Error('NGS_RS_RECEIPT_UNCONFIRMED');
 const localUnavailable=()=>Error('NGS_RS_MCP_UNAVAILABLE');
 const invalid=()=>Error('NGS_REQUEST_QUEUE_RESPONSE_INVALID');
 const definitive=new Map([
- ['NGS_MAP_PAYLOAD_INVALID',400],['NGS_CINEMATIC_PAYLOAD_INVALID',400],['CINEMATIC_PLAYBACK_REVISION_CONFLICT',409],['CINEMATIC_SOURCE_NOT_FOUND',404],
+ ['NGS_FILE_UPDATE_PAYLOAD_INVALID',400],['NGS_MAP_PAYLOAD_INVALID',400],['NGS_CINEMATIC_PAYLOAD_INVALID',400],['CINEMATIC_PLAYBACK_REVISION_CONFLICT',409],['CINEMATIC_SOURCE_NOT_FOUND',404],
  ['REQUEST_SUBMIT_INVALID',400],['NGS_ONE_STOP_PAYLOAD_INVALID',400],['NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID',400],['NGS_NPC_PORTRAIT_REGENERATE_PAYLOAD_INVALID',400],['NPC_PORTRAIT_EDIT_TARGET_NOT_FOUND',404],['NPC_PORTRAIT_EDIT_SOURCE_NOT_FOUND',409],['NGS_CONCEPT_CATEGORY_PAYLOAD_INVALID',400],
  ['NGS_NPC_PLANNING_ADD_PAYLOAD_INVALID',400],['NGS_NPC_PLANNING_UPDATE_PAYLOAD_INVALID',400],
  ['NGS_AUDIO_GENERATE_PAYLOAD_INVALID',400],['NGS_AUDIO_DELETE_PAYLOAD_INVALID',400],
@@ -105,8 +105,8 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
       (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
       (assemblyTypes.includes(row.requestType)&&!validateAssemblyRelay(row.requestType,row.payload))||
       (mapTypes.includes(row.requestType)&&!validMapRequest(row.payload,row.requestType))||
-      // Validate the full graph, including optional prop rotation, flips and depth, before relaying a map edit.
-      // The validator agrees with the file worker and still accepts legacy no-rotation maps.
+      // Includes per-region camera settings on full map file.update payloads.
+      // Relay the validated snapshot unchanged; retry only temporary failures.
       (row.requestType===fileUpdateType&&!validFileUpdate(row.payload))||
       (row.requestType===fileDeleteType&&!(validMapFolderDelete(row.payload)||validAssemblyFolderDelete(row.payload)||validHostedRosterDelete(row.payload)||
        local&&validCinematicFileDelete(row.payload)))){result.rejected++;continue;}

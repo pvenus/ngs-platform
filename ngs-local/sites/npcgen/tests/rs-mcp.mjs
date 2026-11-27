@@ -325,3 +325,24 @@ test('exact map creation and update use the payload for Local and trusted ticket
  }});
  assert.deepEqual(await space.pollOnce(),{seen:4,acknowledged:2,unresolved:0,rejected:2,deferred:0});
 });
+
+test('Local relay hands over the exact saved perspective graph in a formal file update',async()=>{
+ const oid='request.official.'+'e'.repeat(64);
+ const perspective={near:{point:{x:486,y:645},actorHeight:376,viewWidth:872},far:{point:{x:308,y:366},actorHeight:87,viewWidth:543}};
+ const region={id:'yard',name:'Yard',description:'Gate to house',backgroundId:'background.'+'a'.repeat(64),imageSha256:'b'.repeat(64),perspective};
+ const row={...makeQueue(),requestType:'file.update',payload:{
+  schemaVersion:'ngs.file-update.v1',projectId:'binari',
+  target:{root:'canonical-files/binari/cinematics/maps',path:oid,kind:'metadata'},
+  expected:{revision:1,officialRequestId:oid},content:{title:'Yard',startRegionId:'yard',regions:[region],connections:[]},
+ }};
+ const reject={...row,...Object.fromEntries(['queueId','idempotencyKey'].map(k=>[k,'ngs.local.'+'133adb87-6749-4e12-9499-be08e5a8ac22']))};
+ let forwarded=0;
+ const consumer=createRSQueueConsumer({callNGS:async(name,args)=>name===list?{requests:[row,reject]}:
+  {queueId:args.queueId,status:'acknowledged'},callRS:async(name,args)=>{
+  assert.equal(name,submit);assert.deepEqual(args.payload,row.payload);
+  forwarded++;if(args.idempotencyKey===reject.queueId)throw Object.assign(Error(),{rsCode:'NGS_FILE_UPDATE_PAYLOAD_INVALID'});
+  return receipt(row);
+ }});
+ assert.deepEqual(await consumer.pollOnce(),{seen:2,acknowledged:1,unresolved:0,rejected:1,deferred:0});
+ assert.equal(forwarded,2);
+});
