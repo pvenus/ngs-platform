@@ -1,6 +1,6 @@
 import {createMapWarp,orderedMapChain} from './map-warp.mjs';
 import {hashBrowserMap} from './map-contract.mjs';
-import {mapTypes,mapSchemas,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders} from './map-contract.mjs';
+import {mapTypes,mapSchemas,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
@@ -103,9 +103,10 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  const draft=chooseMapDraft(saved,published);
  let routeText=typeof saved?.routeText==='string'?saved.routeText:'';
  let graph=structuredClone(draft.graph),intent=typeof saved?.intent==='string'?saved.intent:'',conflict=draft.conflict,pending=draft.done?null:saved?.pending??null,lastToken=draft.done?null:saved?.requestToken??null,lastBody=saved?.requestBody??null;
- let collisionRegion=graph.startRegionId,collisionId=null,drawingCollider=false;
+ let collisionRegion=graph.startRegionId,collisionId=null,drawingCollider=false,newColliderShape='rect';
  let edgeId=graph.connections[0]?.id??null,active=graph.startRegionId,mode='edit',busy=false,warp=null,returnRegion=null,setupExpanded=false,stopMovement=()=>{};
  if(draft.done){try{storage.removeItem(key);}catch{}}
+ const aspectOf=r=>{const a=r&&assets.get(r.backgroundId);return a?.width>0&&a?.height>0?a.width/a.height:1;};
  const region=id=>graph.regions.find(r=>r.id===id), regionIds=()=>graph.regions.map(r=>r.id), title=id=>region(id)?.name??'구역 미선택';
  const store=()=>{try{storage.setItem(key,JSON.stringify({base:conflict?saved?.base:published?.revision??0,graph,intent,routeText,pending,accepted:pending?.id??null,requestToken:lastToken,requestBody:lastBody}));}catch{}};
  const bark=el('p','','map-status');bark.setAttribute('role','status');
@@ -141,7 +142,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  function startWarp(){
   if(!playable()||signal?.aborted)return;
   if(mode==='edit')returnRegion=active;
-  warp=createMapWarp(graph);active=warp.snapshot().regionId;mode='play';
+  warp=createMapWarp(graph,{aspectForRegion:id=>aspectOf(region(id))});active=warp.snapshot().regionId;mode='play';
   bark.textContent='';render();
  }
  function closeWarp(){
@@ -261,19 +262,32 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     ev.preventDefault();commit(adjust(initial,...arrow));
    };
   }
-  function movableMarker(box,initial,k,commit){
+  function paintCollider(mark,rect,shape,rotation){
+   paintMarker(mark,rect);mark.style.borderRadius=shape==='ellipse'?'50%':'0';
+   mark.style.transform='rotate('+rotation+'deg)';
+  }
+  function movableMarker(box,initial,k,commit,{shape='rect',rotation=0,aspect=1}={}){
    const rectangular=k!=='spawn',collider=k==='collider',objectLabel=collider?'충돌 영역':rectangular?'출입구':'도착점';
    const wrapper=el('div',undefined,rectangular?'map-exit selected map-drag-marker map-portal-marker'+(collider?' map-collider-marker':''):'map-spawn map-drag-marker');
    const legalLabel=objectLabel+' 이동';
    const drag=button(objectLabel,()=>{},'map-drag-body');
    drag.title=legalLabel+' · 드래그 또는 방향키';drag.setAttribute('aria-label',drag.title);wrapper.append(drag);
-   const paint=r=>paintMarker(wrapper,r);
+   const paint=r=>collider?paintCollider(wrapper,r,shape,rotation):paintMarker(wrapper,r);
    const makeCommit=control=>next=>commit(next,control.getAttribute('aria-label'));
    dragControl(drag,box,initial,rectangular?moveMapPortal:(p,dx,dy)=>({x:clampMap(p.x+dx),y:clampMap(p.y+dy)}),paint,makeCommit(drag));
    if(rectangular)for(const [corner,label] of [['nw','왼쪽 위'],['ne','오른쪽 위'],['sw','왼쪽 아래'],['se','오른쪽 아래']]){
     const handle=button('',()=>{},'map-resize-handle map-resize-'+corner);
     handle.title=label+' 모서리로 '+objectLabel+' 크기 조절 · 드래그 또는 방향키';handle.setAttribute('aria-label',handle.title);
-    dragControl(handle,box,initial,(r,dx,dy)=>resizeMapPortal(r,corner,dx,dy),paint,makeCommit(handle));wrapper.append(handle);
+    dragControl(handle,box,initial,(r,dx,dy)=>{
+     if(!collider||rotation===0)return resizeMapPortal(r,corner,dx,dy);
+     const t=rotation*Math.PI/180,cos=Math.cos(t),sin=Math.sin(t);
+     const localX=cos*dx+sin*dy/aspect,localY=-sin*dx*aspect+cos*dy;
+     // Keep the rotation center fixed while scaling a turned shape.
+     const cx=r.x+r.width/2,cy=r.y+r.height/2;
+     const w=Math.max(1,Math.min(2*Math.min(cx,1000-cx),Math.round(r.width+2*localX*(corner.endsWith('e')?1:-1))));
+     const h=Math.max(1,Math.min(2*Math.min(cy,1000-cy),Math.round(r.height+2*localY*(corner.startsWith('s')?1:-1))));
+     return {x:Math.round(cx-w/2),y:Math.round(cy-h/2),width:w,height:h};
+    },paint,makeCommit(handle));wrapper.append(handle);
    }
    paint(initial);box.append(wrapper);
   }
@@ -296,7 +310,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    }
    return row;
   }
-  function dragNewCollider(box,commit){
+  function dragNewCollider(box,shape,commit){
    const surface=el('div',undefined,'map-collider-draw');
    const ghost=el('span',undefined,'map-collider-ghost');ghost.hidden=true;surface.append(ghost);
    let gesture=null;
@@ -307,13 +321,13 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    };
    surface.onpointermove=ev=>{
     if(gesture?.id!==ev.pointerId)return;
-    const next=bounds(gesture.origin,locate(ev,box));ghost.hidden=!mapRect(next);paintMarker(ghost,next);
+    const next=bounds(gesture.origin,locate(ev,box));ghost.hidden=!mapRect(next);paintCollider(ghost,next,shape,0);
    };
    surface.onpointerup=ev=>{
     if(gesture?.id!==ev.pointerId)return;
     const next=bounds(gesture.origin,locate(ev,box));gesture=null;ghost.hidden=true;
     if(mapRect(next))commit(next);
-    else bark.textContent='시작점에서 반대쪽 모서리까지 끌어 사각형을 그려 주세요.';
+    else bark.textContent='시작점에서 반대쪽 모서리까지 끌어 영역을 그려 주세요.';
    };
    surface.onpointercancel=surface.onlostpointercapture=ev=>{if(gesture?.id===ev.pointerId){gesture=null;ghost.hidden=true;}};
    box.append(surface);
@@ -328,11 +342,24 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    const selected=regionsHere.find(c=>c.id===collisionId);
    const controls=el('div',undefined,'map-row');
    const current=region(collisionRegion), atLimit=(graph.colliders??[]).length>=maxMapColliders;
+   const shapeTitle=shape=>shape==='ellipse'?'원 / 타원':'사각형';
+   const shapeChoice=setOptions(['rect','ellipse'],newColliderShape,shapeTitle);
+   shapeChoice.disabled=!!pending||atLimit;
+   shapeChoice.onchange=()=>{newColliderShape=shapeChoice.value;render();};
    const draw=button(drawingCollider?'그리기 취소':'새 충돌 영역 그리기',()=>{drawingCollider=!drawingCollider;render();});
    draw.disabled=!!pending||!imageAligned(current)||atLimit;
-   const addKeyboard=button('좌표로 충돌 영역 추가',()=>addCollider(centerMapPortal({x:500,y:500})));
+   const addKeyboard=button('좌표로 충돌 영역 추가',()=>{
+    const rect=centerMapPortal({x:500,y:500});
+    if(newColliderShape==='ellipse'){
+     const aspect=aspectOf(current);
+     rect.width=Math.max(1,Math.round(120/Math.max(aspect,1)));
+     rect.height=Math.max(1,Math.round(120*Math.min(aspect,1)));
+     rect.x=Math.round(500-rect.width/2);rect.y=Math.round(500-rect.height/2);
+    }
+    addCollider(rect);
+   });
    addKeyboard.disabled=draw.disabled;
-   controls.append(label('충돌을 편집할 구역',room),draw,addKeyboard);collision.append(controls);
+   controls.append(label('충돌을 편집할 구역',room),label('새 영역 모양',shapeChoice),draw,addKeyboard);collision.append(controls);
    if(atLimit)collision.append(el('p','맵마다 충돌 영역을 최대 '+maxMapColliders+'개까지 저장할 수 있어요.','meta'));
    const selectedId=setOptions(['',...regionsHere.map(c=>c.id)],collisionId,
     id=>id?'충돌 영역 '+(regionsHere.findIndex(c=>c.id===id)+1):'충돌 영역 선택');
@@ -342,24 +369,41 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    const addCollider=rect=>{
     if(pending||!imageAligned(current)||!mapRect(rect)||(graph.colliders??[]).length>=maxMapColliders)return;
     const id='c-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
-    graph.colliders=[...(graph.colliders??[]),{id,regionId:collisionRegion,rect}];
+    graph.colliders=[...(graph.colliders??[]),{id,regionId:collisionRegion,rect,shape:newColliderShape,rotation:0}];
     collisionId=id;drawingCollider=false;changed();
    };
    const saveRect=(rect,aria)=>{selected.rect=rect;changed();restoreControl(aria);};
    if(box){
     box.className+=' map-collision-canvas';
     for(const [i,c] of regionsHere.entries()){
-     if(c===selected&&!pending&&!drawingCollider){movableMarker(box,c.rect,'collider',saveRect);continue;}
+     if(c===selected&&!pending&&!drawingCollider){movableMarker(box,c.rect,'collider',saveRect,{shape:mapColliderShape(c),rotation:mapColliderRotation(c),aspect:aspectOf(current)});continue;}
      const caption='충돌 영역 '+(i+1);
      const node=button(caption,()=>{collisionId=c.id;drawingCollider=false;render();},'map-collider-outline');
-     node.title=caption+' 선택';node.disabled=drawingCollider;paintMarker(node,c.rect);box.append(node);
+     node.title=caption+' 선택';node.disabled=drawingCollider;paintCollider(node,c.rect,mapColliderShape(c),mapColliderRotation(c));box.append(node);
     }
     if(drawingCollider&&!draw.disabled){
      collision.append(el('p','이미지에서 한 모서리를 눌러 반대쪽 모서리까지 끌어 주세요.','meta'));
-     dragNewCollider(box,addCollider);
+     dragNewCollider(box,newColliderShape,addCollider);
     }
    }
    if(selected){
+    const shapeEdit=setOptions(['rect','ellipse'],mapColliderShape(selected),shapeTitle);shapeEdit.disabled=!!pending;
+    shapeEdit.onchange=()=>{selected.rotation=mapColliderRotation(selected);selected.shape=shapeEdit.value;changed();};
+    const angle=el('input');angle.type='number';angle.min='0';angle.max='359';angle.step='1';
+    angle.value=mapColliderRotation(selected);angle.disabled=!!pending;
+    angle.onchange=()=>{
+     if(!Number.isInteger(angle.valueAsNumber)||angle.valueAsNumber<0||angle.valueAsNumber>359){
+      angle.value=mapColliderRotation(selected);bark.textContent='회전은 0°에서 359° 사이로 입력해 주세요.';return;
+     }
+     selected.shape=mapColliderShape(selected);selected.rotation=angle.valueAsNumber;changed();
+    };
+    const slider=el('input');slider.type='range';slider.min='0';slider.max='359';slider.step='1';
+    slider.value=angle.value;slider.disabled=!!pending;
+    slider.oninput=()=>{angle.value=slider.value;const mark=box?.querySelector?.('.map-collider-marker');if(mark)mark.style.transform='rotate('+slider.value+'deg)';};
+    slider.onchange=()=>{angle.value=slider.value;angle.onchange();restoreControl('충돌 영역 회전 슬라이더');};
+    slider.setAttribute('aria-label','충돌 영역 회전 슬라이더');
+    const shapeRow=el('div',undefined,'map-row');shapeRow.append(label('선택 영역 모양',shapeEdit),label('회전 (°)',angle),label('회전 미리 보기',slider));
+    collision.append(shapeRow);
     collision.append(coordinates('충돌 영역',['x','y','width','height'],selected.rect,()=>selected.rect,mapRect,saveRect));
     const remove=button('선택한 충돌 영역 삭제',()=>{
      graph.colliders=graph.colliders.filter(c=>c.id!==collisionId);collisionId=null;changed();
