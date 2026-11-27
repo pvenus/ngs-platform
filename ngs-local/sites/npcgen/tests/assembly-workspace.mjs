@@ -33,3 +33,11 @@ test('Formal generation version 2 keeps whole-request and per-puzzle notes separ
  assert.ok(!validAssemblyRequest({...body,puzzles:[body.puzzles[0],body.puzzles[0]]},'assembly.generate'));
  assert.ok(!validAssemblyRequest({...body,puzzles:[]},'assembly.generate'));
 });
+
+test('Explicit scales accept each complete bounded ratio and keep older records readable',()=>{
+ const scale={table:75,bowl:60,well:100,lid:130};
+ assert.ok(validAssemblyState({...state,puzzles:[{...puzzle,scale}]}));
+ assert.ok(!validAssemblyState({...state,puzzles:[{...puzzle,scale:{...scale,table:301}}]}));
+ assert.ok(!validAssemblyState({...state,puzzles:[{...puzzle,scale:{table:75}}]}));
+ assert.ok(validAssemblyState(state));
+});

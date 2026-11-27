@@ -546,3 +546,20 @@ ul{padding:0;list-style:none}
 .assembly-request-puzzles fieldset{min-width:0;border:1px solid #cbd9ca;border-radius:8px;padding:.5rem .7rem}
 .well-assembly-region-heading{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.2rem}
 .well-assembly-region-heading button{font-size:.68rem;padding:.12rem .3rem;margin-bottom:.15rem}
+
+.well-assembly-role{min-width:0;padding:.4rem;border:1px solid #ced8cc;border-radius:6px}
+.well-assembly-scale{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.35rem;align-items:end;margin:.35rem 0}
+.well-assembly-scale button{white-space:nowrap;font-size:.72rem;padding:.25rem .35rem}
+.well-assembly-sprite,.well-world-sprite{position:absolute;transform:translate(-50%,-50%);object-fit:contain;pointer-events:none;image-rendering:pixelated}
+.well-assembly-sprite{z-index:0}
+.well-world-sized .well-demo-station{position:absolute;inset:0;display:block;transform:none;width:auto;pointer-events:none}
+.well-world-sized .well-demo-station[hidden]{display:none}
+.well-world-sized .well-demo-station strong,.well-world-sized .well-demo-target:before{display:none}
+.well-world-sized .well-demo-target{position:absolute;transform:translate(-50%,-50%);display:block;min-height:0;box-shadow:none;border:0;border-radius:3px;background:none;pointer-events:auto;z-index:2}
+.well-world-sized .well-demo-target[hidden]{display:none}
+.well-world-sized .well-demo-target span{position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#243731e8;color:#fff9df;border-radius:4px;padding:2px 5px;white-space:nowrap;font-size:.75rem}
+.well-world-sized[data-complete=true] .well-demo-socket{outline:none}
+.well-play-portals{position:absolute;inset:0;pointer-events:none}
+.well-play-portal{position:absolute;border:1px dashed #ffe0a788;background:#efd09024;box-sizing:border-box}
+.assembly-actor{position:absolute;transform:translate(-50%,-100%);width:18px;height:27px;background:#e5bc66;border:2px solid #1d2b26;border-radius:55% 55% 30% 30%;box-shadow:0 2px 0 1px #241e17aa;z-index:3;pointer-events:none;box-sizing:border-box}
+.assembly-actor::after{content:'';position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:9px;height:9px;border-radius:1px;background:#334a60}

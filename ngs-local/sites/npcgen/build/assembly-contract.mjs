@@ -1,3 +1,4 @@
+import {exactScale} from './assembly-sprite-layout.mjs';
 import {mapFields,officialId,mapText,regionId} from './map-contract.mjs';
 import {propSlug,propSha,propRevision} from './prop-workspace-contract.mjs';
 export const assemblyTypes=['assembly.generate','assembly.update'];
@@ -7,7 +8,8 @@ export const assemblyPuzzleType='binari.ritual-well-water-demo';
 const coordinate=(p,lo,hi)=>['x','y'].every(k=>Number.isInteger(p[k])&&p[k]>=lo&&p[k]<=hi);
 const roleNames=['table','bowl','well','lid'];
 export function validAssemblyPuzzle(p){
- return mapFields(p,['id','type','layout','attachments','bindings'])&&typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&p.type===assemblyPuzzleType&&
+ return mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[])])&&
+  (!Object.hasOwn(p,'scale')||mapFields(p.scale,roleNames)&&roleNames.every(k=>exactScale(p.scale[k])))&&typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&p.type===assemblyPuzzleType&&
   mapFields(p.layout,['altar','well'])&&['altar','well'].every(k=>mapFields(p.layout[k],['regionId','x','y'])&&regionId(p.layout[k].regionId)&&coordinate(p.layout[k],10,90))&&
   mapFields(p.attachments,['bowl','lid'])&&['bowl','lid'].every(k=>mapFields(p.attachments[k],['x','y'])&&coordinate(p.attachments[k],-12,12))&&
   mapFields(p.bindings,roleNames)&&roleNames.every(k=>{const q=p.bindings[k];return mapFields(q,['propId','revision','sha256'])&&propSlug(q.propId)&&propRevision(q.revision)&&propSha(q.sha256);});

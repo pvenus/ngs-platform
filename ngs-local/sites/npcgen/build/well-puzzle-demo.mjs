@@ -1,3 +1,5 @@
+import {assemblySpriteBox,applyAssemblySpriteBox} from './assembly-sprite-layout.mjs';
+import {mountAssemblyActor} from './assembly-actor.mjs';
 import {createPuzzleRuntime,advancePressMeter} from './puzzle-state-runtime.mjs';
 
 export const wellDemoId='binari.ritual-well-water-demo';
@@ -35,8 +37,9 @@ const button=(label,cls)=>{const b=el('button',label,cls);b.type='button';return
 
 export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  if(signal.aborted)return;
- const ids=assembly.bindings,points=rehearsal?.positions??assembly.positions;
- const root=el('section',null,'well-demo'),instructions=el('p','제상이나 우물을 클릭해 대상 선택 · F로 상호작용 시작 · 인벤토리 그릇을 우물이나 제상에 드래그','meta');
+ const ids=assembly.bindings,points=rehearsal?.positions??assembly.positions,worldSized=Boolean(rehearsal?.artSizes),useActor=Boolean(rehearsal?.formal&&rehearsal.graph);
+ let actor=null;
+ const root=el('section',null,'well-demo'),instructions=el('p',useActor?'WASD로 8방향 이동 · 포털에 걸어 들어가기 · 프랍 가까이에서 F 또는 그릇 드롭':'제상이나 우물을 클릭해 대상 선택 · F로 상호작용 시작 · 인벤토리 그릇을 우물이나 제상에 드래그','meta');
  const scene=el('div',null,'well-demo-scene');scene.tabIndex=0;scene.setAttribute('aria-label','앞마당과 뒤뜰이 있는 테스트 배경');
  const altar=el('div',null,'well-demo-station well-demo-altar'),well=el('div',null,'well-demo-station well-demo-well');
  const socket=button('', 'well-demo-target well-demo-socket'),water=button('', 'well-demo-target well-demo-water');
@@ -45,7 +48,12 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  };
  const socketText=el('span'),wellText=el('span'),carriedText=el('span');
  const altarArt=el('div',null,'well-demo-sprite-stack'),rimArt=el('div',null,'well-demo-sprite-stack');
- addArt('table',altarArt);const bowlArt=addArt('bowl',altarArt);addArt('well',rimArt);const lidArt=addArt('lid',rimArt);
+ const tableArt=addArt('table',worldSized?scene:altarArt),bowlArt=addArt('bowl',worldSized?scene:altarArt);
+ const wellArt=addArt('well',worldSized?scene:rimArt),lidArt=addArt('lid',worldSized?scene:rimArt);
+ const worldArt={table:tableArt,bowl:bowlArt,well:wellArt,lid:lidArt};
+ if(worldSized){
+  scene.classList.add('well-world-sized');for(const [role,img] of Object.entries(worldArt))if(img){img.className='well-world-sprite';img.dataset.role=role;}
+ }
  if(altarArt.children.length){socket.classList.add('well-demo-has-art');socket.append(altarArt);}
  if(rimArt.children.length){water.classList.add('well-demo-has-art');water.append(rimArt);}
  socket.append(socketText);water.append(wellText);
@@ -61,9 +69,9 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  const push=button('힘주기','prop-control'),cancel=button('취소','prop-control');
  meterView.append(title,meterHelp,gauge,push,cancel);(rehearsal?scene:well).append(meterView);status.textContent='제상 위의 빈 물그릇을 챙기세요.';
  let currentRegion=rehearsal?.initialRegion;
- const bg=el('img',null,'well-demo-map-bg'),route=el('nav',null,'well-demo-route'),jump=el('select');
+ const bg=el('img',null,'well-demo-map-bg'),route=el('nav',null,'well-demo-route'),jump=el('select'),portals=el('div',null,'well-play-portals');
  if(rehearsal){
-  scene.classList.add('well-demo-map');bg.alt='';bg.draggable=false;scene.prepend(bg);
+  scene.classList.add('well-demo-map');bg.alt='';bg.draggable=false;scene.prepend(bg);if(useActor)scene.append(portals);
   const label=el('label','테스트 구역 바로가기');jump.setAttribute('aria-label','테스트 구역 바로가기');
   for(const region of rehearsal.regions){const option=el('option',region.name);option.value=region.id;jump.append(option);}
   label.append(jump);if(!rehearsal.formal)root.append(label);root.append(route);
@@ -74,6 +82,9 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  function placeNode(node,p){node.style.left=p.x+'%';node.style.top=p.y+'%';}
  placeNode(altar,points.altar);placeNode(well,points.well);
  if(rehearsal)meterView.style.setProperty('--well-meter-x',points.well.x+'%');
+ function box(role,region){
+  return assemblySpriteBox({role,layout:points,attachments:rehearsal.attachments,asset:rehearsal.artSizes?.[role],scale:rehearsal.scale,region});
+ }
  function showRegion(id){
   if(!rehearsal)return;
   const region=rehearsal.regions.find(r=>r.id===id);if(!region)return;
@@ -82,17 +93,38 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   scene.style.aspectRatio=String(region.width/region.height);
   pressing=false;selected=null;
   altar.hidden=points.altar.regionId!==id;well.hidden=points.well.regionId!==id;
-  route.replaceChildren(...rehearsal.connections.filter(c=>c.from===id).map(c=>{
+  if(worldSized){
+   for(const [role,img] of Object.entries(worldArt))if(img)applyAssemblySpriteBox(img,box(role,region));
+   applyAssemblySpriteBox(socket,box('table',region));applyAssemblySpriteBox(water,box('well',region));
+  }
+  if(useActor)portals.replaceChildren(...rehearsal.connections.filter(c=>c.from===id).map(c=>{
+   const marker=el('div',null,'well-play-portal'),to=rehearsal.regions.find(r=>r.id===c.to);
+   Object.assign(marker.style,{left:c.hit.x/10+'%',top:c.hit.y/10+'%',width:c.hit.width/10+'%',height:c.hit.height/10+'%'});
+   marker.title='포털: '+to.name;marker.setAttribute('aria-label',marker.title);return marker;
+  }));
+  route.replaceChildren(...rehearsal.connections.filter(c=>!useActor&&c.from===id).map(c=>{
    const to=rehearsal.regions.find(r=>r.id===c.to),link=button('이동: '+to.name,'prop-control');
    link.addEventListener('click',()=>{showRegion(c.to);scene.focus();},{once:true});return link;
   }));
   render();
  }
  jump.addEventListener('change',()=>showRegion(jump.value),{signal});
+ function stationNear(role){
+  if(!useActor)return true;
+  const point=role==='bowl'||role==='table'?points.altar:points.well,delta=rehearsal.attachments?.[role];
+  return Boolean(actor?.isNear(point.regionId,point.x+(delta?.x??0),point.y+(delta?.y??0)));
+ }
  function selectedAction(){
   const bowl=runtime.get(ids.bowl),lid=runtime.get(ids.lid);
-  if(selected===ids.socket&&bowl.location==='socket'&&bowl.state==='empty')return 'pickup';
-  if(selected===ids.well&&lid.state==='closed')return 'open';
+  const canPickup=bowl.location==='socket'&&bowl.state==='empty',canOpen=lid.state==='closed';
+  if(useActor){
+   if(selected===ids.well&&canOpen&&stationNear('well'))return 'open';
+   if(canPickup&&stationNear('bowl'))return 'pickup';
+   if(canOpen&&stationNear('well'))return 'open';
+   return '';
+  }
+  if(selected===ids.socket&&canPickup)return 'pickup';
+  if(selected===ids.well&&canOpen)return 'open';
   return '';
  }
  function render(){
@@ -102,8 +134,8 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   socketText.textContent=bowl.location!=='socket'?'빈 그릇 자리':bowl.state==='filled'?'물 담긴 그릇':'빈 물그릇';
   water.dataset.state=lid.state;wellText.textContent=lid.state==='open'?'열린 우물':'닫힌 뚜껑';
   carried.hidden=bowl.location!=='inventory';carriedText.textContent=bowl.state==='filled'?'물 담긴 그릇':'빈 물그릇';
-  if(bowlArt)bowlArt.hidden=bowl.location!=='socket';
-  if(lidArt)lidArt.hidden=lid.state==='open';
+  if(bowlArt)bowlArt.hidden=bowl.location!=='socket'||(worldSized&&points.altar.regionId!==currentRegion);
+  if(lidArt)lidArt.hidden=lid.state==='open'||(worldSized&&points.well.regionId!==currentRegion);
   carried.dataset.state=bowl.state;carried.setAttribute('aria-pressed',String(held));
   meterView.hidden=!pressing;
   socket.setAttribute('aria-pressed',String(selected===ids.socket));water.setAttribute('aria-pressed',String(selected===ids.well));
@@ -127,38 +159,39 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  function interact(){
   if(pressing)return;
   if(selectedAction()==='pickup')command({type:'pickup',target:ids.bowl});
-  else if(selectedAction()==='open'){progress=0;gauge.value=0;pressing=true;tell('스페이스를 연타하세요. 멈추면 게이지가 줄어요.');wake();}
-  else tell('제상 위의 그릇이나 닫힌 우물을 선택한 뒤 F를 누르세요.');
-  render();if(pressing)scene.focus();
+  else if(selectedAction()==='open'){progress=0;gauge.value=0;pressing=true;actor?.setEnabled(false);tell('스페이스를 연타하세요. 멈추면 게이지가 줄어요.');wake();}
+  else tell(useActor?'그릇이나 닫힌 우물 가까이에서 F를 누르세요.':'제상 위의 그릇이나 닫힌 우물을 선택한 뒤 F를 누르세요.');
+  render();if(pressing||useActor)scene.focus();
  }
  function force(){
   if(!pressing)return;
   progress=advancePressMeter(progress,{presses:1},meter);gauge.value=progress;
   if(progress<meter.target)return;
-  command({type:'meter-success',target:ids.lid});pressing=false;render();scene.focus();
+  command({type:'meter-success',target:ids.lid});pressing=false;actor?.setEnabled(true);render();scene.focus();
  }
  function drop(target){
   if(rehearsal&&(target===ids.socket?altar.hidden:well.hidden))return;
+  if(useActor&&!stationNear(target===ids.socket?'bowl':'well')){tell('액터를 대상 가까이 이동한 뒤 그릇을 놓아 주세요.');scene.focus();return;}
   if(pressing){tell('뚜껑 열기를 먼저 끝내거나 취소하세요.');return;}
   if(command({type:'drop',target,item:ids.bowl}).ok)held=false;
-  render();
+  render();if(useActor)scene.focus();
  }
  for(const [node,id] of [[socket,ids.socket],[water,ids.well]]){
   node.addEventListener('dragover',e=>{if(dragged){e.preventDefault();e.dataTransfer.dropEffect='move';}},{signal});
   node.addEventListener('drop',e=>{e.preventDefault();if(dragged&&e.dataTransfer.getData('text/plain')===ids.bowl)drop(id);dragged=false;},{signal});
-  node.addEventListener('click',()=>{if(pressing)return;if(held){drop(id);return;}selected=id;render();},{signal});
+  node.addEventListener('click',()=>{if(pressing)return;if(held){drop(id);return;}selected=id;render();if(useActor)scene.focus();},{signal});
  }
  carried.addEventListener('dragstart',e=>{dragged=true;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',ids.bowl);},{signal});
  carried.addEventListener('dragend',()=>{dragged=false;},{signal});
- carried.addEventListener('click',()=>{held=!held;tell(held?'그릇을 선택했어요. 우물이나 그릇 자리를 누르세요.':'그릇 선택을 해제했어요.');render();},{signal});
+ carried.addEventListener('click',()=>{held=!held;tell(held?'그릇을 선택했어요. 우물이나 그릇 자리를 누르세요.':'그릇 선택을 해제했어요.');render();if(useActor)scene.focus();},{signal});
  startButton.addEventListener('click',interact,{signal});
  push.addEventListener('click',force,{signal});
- function cancelMeter(){pressing=false;tell('뚜껑을 열지 않았어요. F로 다시 시도할 수 있어요.');render();scene.focus();}
+ function cancelMeter(){pressing=false;actor?.setEnabled(true);tell('뚜껑을 열지 않았어요. F로 다시 시도할 수 있어요.');render();scene.focus();}
  cancel.addEventListener('click',cancelMeter,{signal});
  resetButton.addEventListener('click',()=>{
   pressing=false;
   runtime=makeWellPuzzle();selected=null;held=dragged=false;
-  tell('제상 위의 빈 물그릇을 챙기세요.');if(rehearsal)showRegion(rehearsal.initialRegion);else render();scene.focus();
+  tell('제상 위의 빈 물그릇을 챙기세요.');if(actor){actor.setEnabled(true);actor.reset();}else if(rehearsal)showRegion(rehearsal.initialRegion);else render();scene.focus();
  },{signal});
  root.addEventListener('keydown',e=>{
   if(pressing){
@@ -176,16 +209,9 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   if(pressing){progress=advancePressMeter(progress,{seconds},meter);gauge.value=progress;raf=requestAnimationFrame(frame);}
  }
  function wake(){if(raf===null){lastTick=undefined;raf=requestAnimationFrame(frame);}}
- const adjustAttachments=()=>{
-  if(!rehearsal?.attachments)return;
-  const {width,height}=scene.getBoundingClientRect();
-  for(const [role,img] of [['bowl',bowlArt],['lid',lidArt]]){
-   const offset=rehearsal.attachments[role];
-   if(img&&offset)img.style.translate=(offset.x*width/100)+'px '+(offset.y*height/100)+'px';
-  }
- };
- const sizeObserver=rehearsal?.attachments?new ResizeObserver(adjustAttachments):null;
- sizeObserver?.observe(scene);
- signal.addEventListener('abort',()=>{cancelAnimationFrame(raf);sizeObserver?.disconnect();root.remove();},{once:true});
- if(rehearsal)showRegion(currentRegion);else render();
+ signal.addEventListener('abort',()=>{cancelAnimationFrame(raf);root.remove();},{once:true});
+ if(useActor){
+  actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:showRegion,onMove:render});
+  showRegion(actor.snapshot().regionId);
+ }else if(rehearsal)showRegion(currentRegion);else render();
 }

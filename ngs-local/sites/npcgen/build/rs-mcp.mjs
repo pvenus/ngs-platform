@@ -21,6 +21,7 @@ import {propTypes} from './prop-workspace-contract.mjs';
 import {mapTypes,validMapRequest} from './map-contract.mjs';
 // Bind the assembly v2 multi-puzzle intake to this relay release as well as the shared contract.
 function validateAssemblyRelay(type,payload){
+ // Preserve per-role scale metadata; never normalize or discard draft coordinates on relay.
  if(type==='assembly.generate'&&!['ngs.assembly-generate.v1','ngs.assembly-generate.v2'].includes(payload?.schemaVersion))return false;
  return validAssemblyRequest(payload,type);
 }

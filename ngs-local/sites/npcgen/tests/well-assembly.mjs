@@ -12,7 +12,7 @@ function fixture(){
  const bindings=Object.fromEntries(Object.keys(wellAssemblySlots).map(k=>[k,k+'-v1']));
  const props=Object.values(bindings).map(propId=>({propId,revision:1,sha256:sha('d')}));
  const media=Object.fromEntries(Object.entries(bindings).map(([role,propId])=>[role,{propId,source:{revision:1,sha256:sha('d')},
-  media:{pixel:{mediaType:'image/png',url:'/api/prop-workspace?asset='+propId}}}]));
+  media:{pixel:{mediaType:'image/png',width:307,height:205,url:'/api/prop-workspace?asset='+propId}}}]));
  return {map,backgrounds,bindings,props,media,layout:{altar:{regionId:'zone-1',x:40,y:60},well:{regionId:'zone-2',x:50,y:60}}};
 }
 
