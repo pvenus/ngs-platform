@@ -166,6 +166,16 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   if(pressing){progress=advancePressMeter(progress,{seconds},meter);gauge.value=progress;raf=requestAnimationFrame(frame);}
  }
  function wake(){if(raf===null){lastTick=undefined;raf=requestAnimationFrame(frame);}}
- signal.addEventListener('abort',()=>{cancelAnimationFrame(raf);root.remove();},{once:true});
+ const adjustAttachments=()=>{
+  if(!rehearsal?.attachments)return;
+  const {width,height}=scene.getBoundingClientRect();
+  for(const [role,img] of [['bowl',bowlArt],['lid',lidArt]]){
+   const offset=rehearsal.attachments[role];
+   if(img&&offset)img.style.translate=(offset.x*width/100)+'px '+(offset.y*height/100)+'px';
+  }
+ };
+ const sizeObserver=rehearsal?.attachments?new ResizeObserver(adjustAttachments):null;
+ sizeObserver?.observe(scene);
+ signal.addEventListener('abort',()=>{cancelAnimationFrame(raf);sizeObserver?.disconnect();root.remove();},{once:true});
  if(rehearsal)showRegion(currentRegion);else render();
 }

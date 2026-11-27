@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildWellRehearsal} from '../build/well-assembly-ui.mjs';
+import {buildWellRehearsal,dragWellPlacement} from '../build/well-assembly-ui.mjs';
 import {wellAssemblySlots} from '../build/well-puzzle-demo.mjs';
 
 const sha=s=>s.repeat(64),id='request.official.'+sha('c');
@@ -28,4 +28,14 @@ test('Assembly refuses stale prop revisions, unpinned backgrounds and nonexisten
  assert.throws(()=>buildWellRehearsal({...f,media:{...f.media,lid:{...f.media.lid,source:{revision:2,sha256:sha('d')}}}}),/PROP_ART/);
  assert.throws(()=>buildWellRehearsal({...f,backgrounds:f.backgrounds.slice(1)}),/MAP_ART/);
  assert.throws(()=>buildWellRehearsal({...f,layout:{...f.layout,well:{...f.layout.well,regionId:'zone-9'}}}),/PLACEMENT/);
+});
+
+test('Dragging a base can change zones but a child retains its owner and adjusts only by an offset',()=>{
+ const f=fixture(),attachments={bowl:{x:5,y:-10},lid:{x:5,y:-10}};
+ const args={regionId:'zone-2',clientX:170,clientY:230,rect:{left:100,top:100,width:200,height:200},layout:f.layout,attachments};
+ assert.deepEqual(dragWellPlacement({...args,role:'table'}).layout.altar,{regionId:'zone-2',x:35,y:65});
+ assert.equal(dragWellPlacement({...args,role:'bowl'}),null);
+ assert.deepEqual(dragWellPlacement({...args,role:'lid'}).attachments.lid,{x:-12,y:5});
+ assert.equal(dragWellPlacement({...args,role:'well',clientY:50}),null);
+ assert.deepEqual(f.layout.altar,{regionId:'zone-1',x:40,y:60});
 });
