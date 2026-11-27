@@ -458,7 +458,7 @@ test('decoration roster and map share selection, including hidden props, and del
   {id:'d-cinema',regionId:'r1',prop:pin,anchor:{x:550,y:650},scale:120,visibility:'cinematic'},
   {id:'d-other',regionId:'r2',prop:pin,anchor:{x:550,y:650},scale:100,visibility:'both'},
  ];
- const state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph:{...graph,decorations}};
+ const state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph:{...graph,decorations:[decorations[0],decorations[2],decorations[1]]}};
  const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
  const art={propId:pin.propId,source:{revision:pin.revision,sha256:pin.sha256},media:{
   pixel:{mediaType:'image/png',url:'/api/prop-workspace?pixel',width:200,height:100},
@@ -499,23 +499,23 @@ test('decoration roster and map share selection, including hidden props, and del
  for(const invalid of [-181,181]){rotation.valueAsNumber=invalid;rotation.onchange();assert.equal(rotation.value,0);}
  assert.equal(scale.parent.parent.className,'map-decoration-size');
  scale.valueAsNumber=185;scale.onchange();await settle();
- assert.equal(draft()[1].scale,185);
+ assert.equal(draft().find(r=>r.id==="d-cinema").scale,185);
  const setRotation=async angle=>{
   const rotate=byAria('꾸미기 프랍 회전');rotate.valueAsNumber=angle;rotate.onchange();await settle();
  };
- await setRotation(-180);assert.equal(draft()[1].rotation,180);
- await setRotation(180);assert.equal(draft()[1].rotation,180);
- await setRotation(-75);assert.equal(draft()[1].rotation,285);
+ await setRotation(-180);assert.equal(draft().find(r=>r.id==="d-cinema").rotation,180);
+ await setRotation(180);assert.equal(draft().find(r=>r.id==="d-cinema").rotation,180);
+ await setRotation(-75);assert.equal(draft().find(r=>r.id==="d-cinema").rotation,285);
  assert.equal(byAria('꾸미기 프랍 회전').value,-75);
  assert.equal(sprites()[0].style.transformOrigin,'50% 100%');
  assert.match(sprites()[0].style.transform,/rotate\(285deg\)/);
  const flip=async (label,checked)=>{const el=byAria(label);el.checked=checked;el.onchange();await settle();};
  await flip('좌우 반전',true);
- assert.equal(draft()[1].flipX,true);assert.match(sprites()[0].style.transform,/scale\(-1,1\)/);
+ assert.equal(draft().find(r=>r.id==="d-cinema").flipX,true);assert.match(sprites()[0].style.transform,/scale\(-1,1\)/);
  await flip('상하 반전',true);
- assert.equal(draft()[1].flipY,true);assert.match(sprites()[0].style.transform,/translateY\(-100%\) scale\(-1,-1\)/);
+ assert.equal(draft().find(r=>r.id==="d-cinema").flipY,true);assert.match(sprites()[0].style.transform,/translateY\(-100%\) scale\(-1,-1\)/);
  await flip('좌우 반전',false);
- assert.equal(draft()[1].flipX,undefined);assert.match(sprites()[0].style.transform,/scale\(1,-1\)/);
+ assert.equal(draft().find(r=>r.id==="d-cinema").flipX,undefined);assert.match(sprites()[0].style.transform,/scale\(1,-1\)/);
  await flip('좌우 반전',true);
  find('선택한 프랍 복제').onclick();await settle();
  const copy=draft().at(-1);
@@ -527,10 +527,21 @@ test('decoration roster and map share selection, including hidden props, and del
  assert.equal(byAria('배치 3 · 등불').attrs['aria-pressed'],'true');
  find('선택한 프랍 배치 삭제').onclick();await settle();
  assert.equal(byAria('배치 3 · 등불'),undefined);
- assert.deepEqual(state.graph.decorations,decorations);
- const expected=[decorations[0],{...decorations[1],scale:185,rotation:285,flipX:true,flipY:true},decorations[2]];
- assert.deepEqual(draft(),expected);
+ assert.deepEqual(state.graph.decorations,[decorations[0],decorations[2],decorations[1]]);
+ const second={...decorations[1],scale:185,rotation:285,flipX:true,flipY:true};
+ assert.deepEqual(draft(),[decorations[0],decorations[2],second]);
+ const behind='선택한 프랍 한 단계 뒤로',ahead='선택한 프랍 한 단계 앞으로';
+ byAria('배치 2 · 등불').onclick();await settle();
+ assert.equal(byAria(ahead).disabled,true);
+ byAria(behind).onclick();await settle();
+ assert.equal(byAria('배치 1 · 등불').attrs['aria-pressed'],'true');
+ assert.equal(byAria(behind).disabled,true);
+ assert.deepEqual(draft(),[second,decorations[2],decorations[0]]);
+ assert.deepEqual(parts().filter(n=>n.className?.includes('map-decoration-selectable')).map(n=>n.dataset.decorationId),['d-cinema','d-pixel']);
+ byAria(ahead).onclick();await settle();
+ assert.deepEqual(draft(),[decorations[0],decorations[2],second]);
+ byAria(behind).onclick();await settle();
  assert.equal(posts.length,0);await find('꾸미기 적용').onclick();
  assert.equal(posts.length,1);assert.equal(posts[0].requestType,'file.update');
- assert.deepEqual(posts[0].payload.content.decorations,expected);
+ assert.deepEqual(posts[0].payload.content.decorations,[second,decorations[2],decorations[0]]);
 });

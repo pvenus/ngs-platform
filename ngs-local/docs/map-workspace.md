@@ -55,7 +55,10 @@ Optional boolean `flipX` and `flipY` mirror the image in its original bounds bef
 Editing, warp preview, and assembled play use the same transformation. `both` swaps pixel and cinematic variants with
 the ability switch; `pixel` (OFF) and `cinematic` (ON) are absent in the other
 mode. Decorations never register a puzzle interaction, collision, or portal.
-Warp and assembled puzzle playback read these map-level placements.
+The order of placements within each region paints back to front. The roster
+can move a placement earlier (behind) or later (in front); no separate z value
+is stored. Editor, warp and assembled play use this same array order.
+The reorder remains a draft until the existing Apply action.
 
 New-map `ngs.map-generate.v3` adds a separate `decorationDesign` choice.
 `none` keeps the three existing document steps. `suggest` adds a fourth that

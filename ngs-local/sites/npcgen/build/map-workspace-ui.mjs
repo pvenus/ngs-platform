@@ -629,6 +629,24 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    if(here.length){roster.append(list);queueMicrotask(()=>{if(list.isConnected!==false)list.scrollTop=decorListScroll;});}
    else roster.append(el('p','이 구역에는 배치한 꾸미기 프랍이 없어요.','meta'));
    if(here.length){
+    roster.append(el('p','목록 위쪽은 뒤, 아래쪽은 앞에 그려져요.','meta'));
+    const at=here.indexOf(chosen);
+    const order=el('div',undefined,'map-decoration-order');
+    for(const [step,caption] of [[-1,'↑ 뒤로'],[1,'↓ 앞으로']]){
+     const neighbor=at>=0?here[at+step]:null;
+     const accessible=step<0?'선택한 프랍 한 단계 뒤로':'선택한 프랍 한 단계 앞으로';
+     const move=button(caption,()=>{
+      if(locked||decorAdding||!neighbor)return;
+      const next=[...rows],a=next.indexOf(chosen),b=next.indexOf(neighbor);
+      [next[a],next[b]]=[next[b],next[a]];
+      graph.decorations=next;changed();
+      const nextIndex=at+step;
+      restoreControl(here[nextIndex+step]?accessible:'배치 '+(nextIndex+1)+' · '+namedProp(chosen.prop));
+     });
+     move.disabled=locked||decorAdding||!neighbor;
+     move.setAttribute('aria-label',accessible);move.title=accessible;order.append(move);
+    }
+    roster.append(order);
     const remove=button('선택한 프랍 배치 삭제',()=>{
      if(!chosen||locked)return;
      graph.decorations=(graph.decorations??[]).filter(r=>r.id!==chosen.id);
@@ -660,7 +678,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
      for(const [index,row] of here.entries()){
       const art=decorArt.cache.get(mapDecorPinKey(row.prop)),visual=decorationBox(row,art,size,decorPreview);
       const selected=row===chosen, caption='배치 '+(index+1)+' · '+namedProp(row.prop)+' 위치';
-      const icon=el('img',undefined,'map-decor-sprite map-decoration-selectable');icon.alt='';icon.draggable=false;
+      const icon=el('img',undefined,'map-decor-sprite map-decoration-selectable');icon.alt='';icon.draggable=false;icon.dataset.decorationId=row.id;
       icon.onclick=()=>select(row,caption);
       paintDecoration(icon,visual);markers.append(icon);
       if(!visual&&!selected)continue;
