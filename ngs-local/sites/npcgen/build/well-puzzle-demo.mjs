@@ -80,7 +80,9 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  let runtime=makeWellPuzzle(),selected=null,held=false,dragged=false,progress=0,lastTick,raf=null,pressing=false;
  const tell=msg=>{status.textContent=msg;};
  function placeNode(node,p){node.style.left=p.x+'%';node.style.top=p.y+'%';}
- placeNode(altar,points.altar);placeNode(well,points.well);
+ // World-sized art and targets share scene-relative coordinates. Their
+ // station wrappers cover the whole scene, not a second offset origin.
+ if(!worldSized){placeNode(altar,points.altar);placeNode(well,points.well);}
  if(rehearsal)meterView.style.setProperty('--well-meter-x',points.well.x+'%');
  function box(role,region){
   return assemblySpriteBox({role,layout:points,attachments:rehearsal.attachments,asset:rehearsal.artSizes?.[role],scale:rehearsal.scale,region});
