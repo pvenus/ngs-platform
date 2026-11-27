@@ -5,6 +5,7 @@ import { replicaSyncProgressPath,readReplicaSyncProgress } from "../ngs-local/si
 import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catalog.mjs";
 import { appProject, siteAppMaster } from "../lib/app-master";
 import { masterPrincipal } from "../lib/master-concept-transport";
+import workspaceRoster from "../lib/master-concept-participants.json";
 import { objectAudioSeparationSource } from "../ngs-local/sites/npcgen/build/object-replica-view.mjs";
 import { spaceReplicaView } from "./space-replica-view.mjs";
 import { dispatchWorkspaceRead } from "../ngs-local/sites/npcgen/build/workspace-read-registry.mjs";
@@ -15,7 +16,7 @@ import { openSpaceWorkspaceProject } from "./space-workspace-read-storage.mjs";
 import { spaceWorkspaceReadResponse } from "./space-workspace-read-response.mjs";
 import { PromptService } from "../lib/prompt-service";
 import { createSpaceFileReplica, spaceFileSyncTools } from "./space-file-replica.mjs";
-import { authorizeSpaceQueueWrite, spaceQueueParticipant, browserQueueResponse, machineResponse, machineTokenConfigured } from "./space-machine-routes.mjs";
+import { authorizeSpaceQueueWrite, spaceQueueParticipant, spaceWorkspacePrincipal, browserQueueResponse, machineResponse, machineTokenConfigured } from "./space-machine-routes.mjs";
 import { ngsCommitSha } from "./ngs-release-provenance.mjs";
 import { rejectCleanSpaceRequest } from "./clean-space-guard.mjs";
 import { runWithConnectorBinding } from "../lib/connector-context";
@@ -57,11 +58,12 @@ export default {
     }
     const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools,commitSha:ngsCommitSha});
     if (machine) return machine;
-    // This is the native Binari participant grant, not the generic queue
-    // capability (which can separately grant one configured email).
+    const editorHashes=(workspaceRoster as {workspaceEditorHashes?: string[]}).workspaceEditorHashes;
+    const workspacePrincipal = (user:{userId:string,email:string})=>spaceWorkspacePrincipal(user,editorHashes,masterPrincipal);
+    // This is the project workspace grant, not the generic queue-only exception.
     const mapAssemblyGrant = async (user:{userId:string,email:string}) => {
       try {
-        const grant=await masterPrincipal(user);
+        const grant=await workspacePrincipal(user);
         return spaceQueueParticipant(grant)?grant:null;
       } catch { return null; }
     };
@@ -140,7 +142,7 @@ export default {
         ?payload=>objectAudioSeparationSource(fileReplica!,payload):undefined,
       // A trusted roster entry or the single configured exception is required in
       // addition to Sites authentication/admission and the active Binari grant.
-      authorizeWrite:user=>authorizeSpaceQueueWrite(user,masterPrincipal,env.NPCGEN_SPACE_QUEUE_EXTRA_EMAIL_SHA256),
+      authorizeWrite:user=>authorizeSpaceQueueWrite(user,workspacePrincipal,env.NPCGEN_SPACE_QUEUE_EXTRA_EMAIL_SHA256),
     });
     if (browserQueue) return browserQueue;
     if (replicaReads) {

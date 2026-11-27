@@ -27,9 +27,10 @@ export function validSpaceMapAssemblyCommand(type,payload){
 
 export function spaceMapAssemblyCapabilities(grant,writable){
  if(grant?.projectId!=='binari'||!['owner','editor','viewer'].includes(grant.role))return {};
+ const editable=writable&&['owner','editor'].includes(grant.role);
  return {mapReadEnabled:true,assemblyReadEnabled:true,
-  ...(writable&&['owner','editor'].includes(grant.role)?{mapEnabled:true,assemblyEnabled:true,fileUpdateEnabled:true}:{}),
-  ...(writable&&grant.role==='owner'?{mapDeleteEnabled:true,assemblyDeleteEnabled:true,npcFolderDeleteEnabled:true,propFolderDeleteEnabled:true,backgroundDeleteEnabled:true}:{})};
+  ...(editable?{mapEnabled:true,assemblyEnabled:true,fileUpdateEnabled:true,mapDeleteEnabled:true,assemblyDeleteEnabled:true,
+   npcFolderDeleteEnabled:true,propFolderDeleteEnabled:true,backgroundDeleteEnabled:true}:{})};
 }
 
 const need=(okay,status,code)=>{if(!okay)throw Object.assign(Error(code),{status});};

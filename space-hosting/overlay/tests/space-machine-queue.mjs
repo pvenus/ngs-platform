@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {machineResponse,browserQueueResponse,spaceQueueParticipant,authorizeSpaceQueueWrite} from '../build/space-machine-routes.mjs';
+import {machineResponse,browserQueueResponse,spaceQueueParticipant,spaceWorkspacePrincipal,authorizeSpaceQueueWrite} from '../build/space-machine-routes.mjs';
 import {SpaceRequestQueue,officialIdForSpace} from '../build/space-request-queue.mjs';
 
 const origin='https://site.example';
@@ -430,6 +430,18 @@ test('Space Basic NPC uses the same browser payload contract and relays it uncha
  assert.equal((await queue.pending({})).requests.length,2);
 });
 
+test('verified workspace team editor role is independent of legacy read and queue-only roles',async()=>{
+ const email='approved.team@example.com';
+ const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(email))),x=>x.toString(16).padStart(2,'0')).join('');
+ const legacy=async user=>{if(user.email==='old-reader@example.com')return {projectId:'binari',role:'viewer'};
+  throw Object.assign(Error('MASTER_CONCEPT_PARTICIPANT_DENIED'),{status:403});};
+ const resolve=user=>spaceWorkspacePrincipal(user,[digest],legacy);
+ assert.deepEqual(await resolve({email:' Approved.Team@example.com '}),{projectId:'binari',role:'editor'});
+ assert.deepEqual(await resolve({email:'old-reader@example.com'}),{projectId:'binari',role:'viewer'});
+ await assert.rejects(resolve({email:'unknown@example.com',role:'editor'}),/MASTER_CONCEPT_PARTICIPANT_DENIED/);
+ assert.equal(await authorizeSpaceQueueWrite({email},resolve),true);
+});
+
 test('file deletes and map/assembly rights use the native Binari roster, never queue-only write',async t=>{
  const grants=Object.fromEntries(['owner','editor','viewer'].map(role=>[role,{role,projectId:'binari'}]));
  const options={db:store(t),secret:token,replicaReads:true,workspaceReady:true,
@@ -476,15 +488,18 @@ test('file deletes and map/assembly rights use the native Binari roster, never q
   assert.equal(s.mapEnabled,['owner','editor'].includes(who)?true:undefined);
   assert.equal(s.fileUpdateEnabled,['owner','editor'].includes(who)?true:undefined);
   assert.equal(s.assemblyEnabled,['owner','editor'].includes(who)?true:undefined);
-  assert.equal(s.mapDeleteEnabled,who==='owner'?true:undefined);
-  assert.equal(s.assemblyDeleteEnabled,who==='owner'?true:undefined);
+  assert.equal(s.mapDeleteEnabled,['owner','editor'].includes(who)?true:undefined);
+  assert.equal(s.assemblyDeleteEnabled,['owner','editor'].includes(who)?true:undefined);
   for(const cap of ['npcFolderDeleteEnabled','propFolderDeleteEnabled','backgroundDeleteEnabled'])
-   assert.equal(s[cap],who==='owner'?true:undefined);
+   assert.equal(s[cap],['owner','editor'].includes(who)?true:undefined);
   for(const cmd of [map,mapUpdate,fileUpdate,assembly,assemblyUpdate]){
    const out=await post(who,s,cmd);
    assert.equal(out.status,['owner','editor'].includes(who)?202:403,JSON.stringify(await out.json()));
   }
-  for(const cmd of deletes)assert.equal((await post(who,s,cmd)).status,who==='owner'?202:403);
+  for(const cmd of deletes){
+   const permitted=['owner','editor'].includes(who);
+   assert.equal((await post(who,s,cmd)).status,permitted?202:403);
+  }
  }
  const owner=await session('owner');
  assert.equal((await post('owner',owner,deletes[0],{'X-NPCGen-Csrf':'wrong'})).status,403);
