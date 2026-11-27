@@ -340,3 +340,36 @@ test('new map form requires explicit start and collision policy and sends groupe
  assert.ok(validMapRequest(payload,requestType));
  assert.ok(!validMapRequest({...payload,graph:{...payload.graph,startPoint:{x:300,y:400}}},requestType));
 });
+
+test('several portal edits survive blur, rebase over newly published reverse links and submit once',async t=>{
+ const {mountMapWorkspace,chooseMapDraft}=await import('../build/map-workspace-ui.mjs');
+ const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div');
+ const mapId='request.official.'+'c'.repeat(64),publishId='request.official.'+'d'.repeat(64);
+ const reverse={id:'return-1',from:'r2',to:'r1',label:'돌아오기',hit:{x:20,y:80,width:50,height:50},spawn:{x:55,y:85}};
+ const state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',mapId,revision:2,updatedAt:2,officialRequestId:publishId,
+  graph:{...graph,connections:[...graph.connections,reverse]}};
+ const local=structuredClone(graph);local.connections[0].hit.x=760;
+ const stale={base:1,baseline:graph,graph:local,tab:'links'};
+ assert.equal(chooseMapDraft(stale,state).conflict,false);
+ const disputed=structuredClone(state);disputed.graph.connections[0].hit.x=740;
+ assert.equal(chooseMapDraft(stale,disputed).conflict,true);
+ const store=new Map([['ngs-map-draft:v1:binari:'+mapId,JSON.stringify(stale)]]),calls=[];
+ const backgrounds=graph.regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',
+  storage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},
+  request:async path=>path.includes('background')?{backgrounds}:path.includes('item=')?{map:state}:{maps:[]},
+  submit:async cmd=>{calls.push(cmd);return Response.json({status:'queued',queueId:'ngs.local.15d60410-3f24-480d-9072-cd51f3d2a005'},{status:202});}});
+ const find=text=>detail.descendants().find(n=>n.textContent===text);
+ const select=find('편집할 이동 연결').children[0];select.value='order-2';select.onchange();
+ const input=detail.descendants().find(n=>n.tag==='label'&&n.textContent==='X').children[0];
+ const apply=find('이동 연결 적용');
+ input.valueAsNumber=765;input.oninput();input.onchange();
+ assert.equal(find('이동 연결 적용'),apply,'blur does not replace the button about to be clicked');
+ assert.equal(apply.disabled,false);assert.equal(calls.length,0);
+ await apply.onclick();
+ assert.equal(calls.length,1);assert.equal(calls[0].requestType,'map.update');
+ assert.equal(calls[0].payload.expectedRevision,2);
+ assert.deepEqual(calls[0].payload.graph.connections.map(e=>[e.id,e.hit.x]),[
+  ['order-1',760],['order-2',765],['order-3',800],['order-4',800],['return-1',20],
+ ]);
+});

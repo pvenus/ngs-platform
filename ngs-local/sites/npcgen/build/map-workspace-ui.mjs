@@ -19,6 +19,23 @@ export function projectMapTab(base,draft,tab){
 }
 const tabChanged=(base,draft,tab)=>mapCanonical(base)!==mapCanonical(projectMapTab(base,draft,tab));
 export const mapDraftKey=(project,id)=>'ngs-map-draft:v1:'+project+':'+(id??'new');
+// Rebase only independent portal edits. A real collision on the same
+// connection still requires an explicit decision; never replace newer routes.
+function rebasePortalDraft(base,draft,current){
+ if(!base||!draft||!current||!['regions','connections'].every(k=>Array.isArray(base[k])&&Array.isArray(draft[k])&&Array.isArray(current[k])))return null;
+ if(mapCanonical(base.regions)!==mapCanonical(draft.regions)||mapCanonical(base.regions)!==mapCanonical(current.regions)||
+    ['start','colliders'].some(k=>tabChanged(base,draft,k)))return null;
+ const index=g=>new Map(g.connections.map(row=>[row.id,row]));
+ const before=index(base),local=index(draft),merged=index(current);
+ const eq=(a,b)=>a===undefined||b===undefined?a===b:mapCanonical(a)===mapCanonical(b);
+ for(const id of new Set([...before.keys(),...local.keys()])){
+  const old=before.get(id),mine=local.get(id),remote=merged.get(id);
+  if(eq(old,mine))continue;
+  if(!eq(old,remote)&&!eq(mine,remote))return null;
+  if(mine)merged.set(id,mine);else merged.delete(id);
+ }
+ return {...current,connections:[...merged.values()]};
+}
 export function chooseMapDraft(saved,published){
  if(!saved?.graph||typeof saved.graph!=='object')return {graph:published?.graph??empty(),conflict:false};
  if(!published||saved.base===published.revision)return {graph:saved.graph,conflict:false};
@@ -33,6 +50,10 @@ export function chooseMapDraft(saved,published){
  if(published.officialRequestId===saved.accepted||mapCanonical(published.graph)===mapCanonical(saved.graph)||
     (saved.baseline&&mapCanonical(saved.baseline)===mapCanonical(saved.graph)))
   return {graph:published.graph,conflict:false,done:true};
+ if(!saved.pending&&!submission){
+  const rebased=rebasePortalDraft(saved.baseline,saved.graph,published.graph);
+  if(rebased)return {graph:rebased,conflict:false,done:true};
+ }
  return {graph:saved.graph,conflict:true};
 }
 export function followMapEdge(graph,active,edgeId){
@@ -364,16 +385,20 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     if(b.getAttribute('aria-label')===aria){b.focus({preventScroll:true});break;}
    }
   }
-  function coordinates(caption,keys,initial,makeDefault,validate,commit){
+  function coordinates(caption,keys,initial,makeDefault,validate,commit,live){
    const row=el('fieldset');row.append(el('legend',caption+' 좌표 (0–1000)'));
    for(const key of keys){
     const n=el('input');n.type='number';n.min=['width','height'].includes(key)?'1':'0';n.max='1000';n.step='1';
     n.value=initial?.[key]??'';n.disabled=locked;
-    n.onchange=()=>{
-     const proposed={...(initial??makeDefault()),[key]:n.valueAsNumber};
-     if(validate(proposed))commit(proposed);
-     else{n.value=initial?.[key]??'';bark.textContent='그림 밖이거나 유효하지 않은 좌표예요.';}
+    const update=onBlur=>{
+     const before=live?.read()??initial;
+     const proposed={...(before??makeDefault()),[key]:n.valueAsNumber};
+     if(validate(proposed)){
+      if(mapCanonical(before??null)!==mapCanonical(proposed))(live?live.commit:commit)(proposed);
+     }else if(onBlur){n.value=before?.[key]??'';bark.textContent='그림 밖이거나 유효하지 않은 좌표예요.';}
     };
+    if(live)n.oninput=()=>update(false);
+    n.onchange=()=>update(true);
     row.append(label({x:'X',y:'Y',width:'너비',height:'높이'}[key],n));
    }
    return row;
@@ -646,7 +671,16 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
        (valid?'출입구 안을 끌어 이동하고, 모서리를 끌어 크기를 조절하세요.':'이미지를 눌러 출입구를 처음 놓으세요.'):
        (valid?'도착 마커를 끌어 옮기세요.':'이미지를 눌러 도착점을 처음 놓으세요.'),'meta'));
       panel.append(coordinates(caption.split(' · ')[1],fields,edge[k],
-       ()=>k==='hit'?centerMapPortal({x:500,y:500}):{x:500,y:500},k==='hit'?mapRect:mapPoint,savePosition));pair.append(panel);
+       ()=>k==='hit'?centerMapPortal({x:500,y:500}):{x:500,y:500},k==='hit'?mapRect:mapPoint,savePosition,{
+        read:()=>edge[k],
+        // Keep the selected coordinate field and the Apply button mounted
+        // through blur; replacing the button here can swallow the click.
+        commit:next=>{
+         if(edge[k])Object.assign(edge[k],next);else edge[k]=next;
+         const mark=box?.querySelector?.('.map-drag-marker');if(mark)paintMarker(mark,next);
+         changed(false);
+        },
+       }));pair.append(panel);
      }
      movement.append(pair);
     }
@@ -720,7 +754,14 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   if(onClose){const close=button('닫기',onClose);close.disabled=busy;foot.append(close);}
   if(mode==='edit'){
    const action=button(busy?'접수 중…':published?tabTitle(tab)+' 적용':'요청 보내기',apply,'prop-control prop-primary-control');
-   refreshAction=()=>{action.disabled=!enabled||!submit||locked||conflict||Boolean(published&&!dirty(tab));};
+   refreshAction=()=>{
+    action.disabled=!enabled||!submit||locked||conflict||Boolean(published&&!dirty(tab));
+    for(const [i,[key,caption]] of mapTabs.entries()){
+     const link=tabs.children[i];if(!link)continue;
+     const changed=dirty(key);link.textContent=caption+(changed?' •':'');
+     link.setAttribute('aria-label',caption+(changed?' (수정 중)':''));
+    }
+   };
    refreshAction();foot.append(action);
   }
   if(pending&&!published&&maps.some(x=>x.mapId===pending.id))foot.append(button('생성된 맵 열기',()=>{storage.removeItem(key);location.href=navigate({item:pending.id});}));
