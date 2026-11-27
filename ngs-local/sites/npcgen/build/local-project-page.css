@@ -587,3 +587,18 @@ ul{padding:0;list-style:none}
 .well-spirit-toggle[aria-pressed=true]{color:var(--card);background:var(--primary);border-color:var(--primary)}
 .well-demo-status{color:var(--muted-foreground);font-size:.85rem}
 .well-assembly-inspector h4,.well-assembly-sidebar h4{color:var(--foreground);font:inherit;font-weight:650}
+
+.map-decoration-editor{display:grid;grid-template-columns:minmax(0,1fr) minmax(12rem,17rem);gap:.75rem;align-items:start}
+.map-decoration-map{display:grid;gap:.5rem}
+.map-decoration-view{display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
+.map-decoration-view button[aria-pressed=true]{color:var(--card);background:var(--primary);border-color:var(--primary)}
+.map-decoration-roster{min-width:0;display:grid;gap:.5rem;padding:.65rem;border:1px solid var(--border);border-radius:8px}
+.map-decoration-actions{display:grid;gap:.35rem}
+.map-decoration-roster>.map-row{display:grid;align-items:start;margin:0}
+.map-decoration-list{display:grid;gap:.35rem;list-style:none;margin:0;padding:0;max-height:22rem;overflow:auto;overscroll-behavior:contain}
+.map-decoration-list-item{width:100%;display:grid;gap:.15rem;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.map-decoration-list-item small{font-size:.78rem;color:var(--muted-foreground)}
+.map-decoration-list-item[aria-pressed=true]{border-color:var(--primary);box-shadow:inset 3px 0 var(--primary)}
+.map-decoration-canvas .map-decoration-selectable{pointer-events:auto;cursor:pointer}
+.map-decoration-canvas .map-decoration-selectable[hidden]{display:none}
+@media(max-width:1050px){.map-decoration-editor{grid-template-columns:minmax(0,1fr)}}

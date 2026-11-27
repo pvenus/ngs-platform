@@ -209,6 +209,8 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
  const decorArt=decorationsLoader(request,projectId);
  let decorRegion=null,decorId=null,decorPreview=false,warpSight=false,propRows=null,propLoading=false,propLoadFailed=false,decorAdding=false;
  const decorSelection={propId:'',visibility:'both'};
+ let decorListScroll=0;
+ const newDecorationId=()=> 'd-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
  const showDecorationMode=visibility=>{if(visibility!=='both')decorPreview=visibility==='cinematic';};
  const visibilityLabels={both:'능력 OFF / ON 모두','pixel':'능력 OFF · 픽셀만','cinematic':'능력 ON · 시네마틱만'};
  const pinProp=p=>({propId:p.propId,revision:p.revision,sha256:p.sha256});
@@ -560,16 +562,16 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    decoration.append(el('p','퍼즐과 상호작용이 없는 프랍을 지도에 배치해요. 그림 아래쪽 가운데가 위치 기준이며, 100%는 배치용 이미지 원래 크기예요.','meta'));
    const rooms=publishedIds();if(!rooms.includes(decorRegion))decorRegion=published.graph.startRegionId??rooms[0];
    const room=setOptions(rooms,decorRegion,id=>publishedRegion(id)?.name??id);
-   room.onchange=()=>{decorRegion=room.value;decorId=null;render();};
-   const toggle=button(decorPreview?'서진 능력 · ON':'서진 능력 · OFF',()=>{decorPreview=!decorPreview;render();});
+   room.onchange=()=>{decorRegion=room.value;decorId=null;decorListScroll=0;render();};
+   const toggle=button(decorPreview?'서진 능력 · ON':'서진 능력 · OFF',()=>{decorPreview=!decorPreview;render();restoreControl('꾸미기 서진 능력 미리보기');});
    toggle.setAttribute('aria-label','꾸미기 서진 능력 미리보기');toggle.setAttribute('aria-pressed',String(decorPreview));
-   const controls=el('div',undefined,'map-row');controls.append(label('꾸밀 구역',room),toggle);decoration.append(controls);
+   const controls=el('div',undefined,'map-row');controls.append(label('꾸밀 구역',room));decoration.append(controls);
    const rows=graph.decorations??[], here=rows.filter(p=>p.regionId===decorRegion),chosen=here.find(p=>p.id===decorId);
    if(rows.length<maxMapDecorations)availableProps(decoration,new Set(),async(prop,visibility)=>{
     if(decorAdding||locked)return;
     const regionId=decorRegion;
     decorAdding=true;render();
-    const id='d-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
+    const id=newDecorationId();
     const row={id,regionId,prop,anchor:{x:500,y:650},scale:100,visibility};
     const art=(await decorArt.load([row])).get(mapDecorPinKey(prop));decorAdding=false;
     if(signal?.aborted)return;
@@ -577,9 +579,52 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
      bark.textContent='선택한 프랍에 표시 모드에 필요한 이미지가 없어요.';render();return;
     }
     graph.decorations=[...(graph.decorations??[]),row];decorRegion=regionId;decorId=id;
-    decorSelection.propId='';showDecorationMode(visibility);changed();
+    decorSelection.propId='';decorListScroll=Number.MAX_SAFE_INTEGER;showDecorationMode(visibility);changed();
    },decorSelection);else decoration.append(el('p','맵 하나에 꾸미기 프랍을 최대 '+maxMapDecorations+'개까지 배치할 수 있어요.','meta'));
-   const current=publishedRegion(decorRegion),box=preview(decoration,current);
+   const workspace=el('div',undefined,'map-decoration-editor');
+   const mapPane=el('div',undefined,'map-preview map-decoration-map');
+   const view=el('div',undefined,'map-decoration-view');
+   view.append(el('h5','배치 화면'),toggle);mapPane.append(view);
+   const roster=el('section',undefined,'map-decoration-roster');
+   roster.setAttribute('aria-label','배치한 프랍');
+   roster.append(el('h5','배치한 프랍 ('+here.length+')'));
+   const list=el('ul',undefined,'map-decoration-list');
+   list.onscroll=()=>{decorListScroll=list.scrollTop;};
+   const select=(row,focus)=>{
+    decorListScroll=list.scrollTop??decorListScroll;
+    if(decorId!==row.id){decorId=row.id;render();}
+    if(focus)queueMicrotask(()=>restoreControl(focus));
+   };
+   const matchesView=row=>row.visibility==='both'||row.visibility===(decorPreview?'cinematic':'pixel');
+   for(const [index,row] of here.entries()){
+    const entry=el('li'),caption='배치 '+(index+1)+' · '+namedProp(row.prop);
+    const pick=button('',()=>select(row,caption),'map-decoration-list-item');
+    pick.setAttribute('aria-label',caption);pick.setAttribute('aria-pressed',String(row===chosen));
+    pick.append(el('span',caption),el('small',visibilityLabels[row.visibility]+(matchesView(row)?'':' · 현재 숨김')));
+    entry.append(pick);list.append(entry);
+   }
+   if(here.length){roster.append(list);queueMicrotask(()=>{if(list.isConnected!==false)list.scrollTop=decorListScroll;});}
+   else roster.append(el('p','이 구역에는 배치한 꾸미기 프랍이 없어요.','meta'));
+   if(here.length){
+    const remove=button('선택한 프랍 배치 삭제',()=>{
+     if(!chosen||locked)return;
+     graph.decorations=(graph.decorations??[]).filter(r=>r.id!==chosen.id);
+     decorId=null;changed();
+    });
+    const duplicate=button('선택한 프랍 복제',()=>{
+     if(!chosen||locked||decorAdding||rows.length>=maxMapDecorations)return;
+     const {x,y}=chosen.anchor,offset=value=>value<=960?value+40:value-40;
+     const copy={...chosen,id:newDecorationId(),anchor:{x:offset(x),y:offset(y)}};
+     graph.decorations=[...(graph.decorations??[]),copy];decorId=copy.id;
+     decorListScroll=Number.MAX_SAFE_INTEGER;showDecorationMode(copy.visibility);changed();
+    });
+    duplicate.disabled=locked||decorAdding||!chosen||rows.length>=maxMapDecorations;
+    remove.disabled=locked||!chosen;
+    const actions=el('div',undefined,'map-decoration-actions');
+    actions.append(duplicate,remove);roster.append(actions);
+   }
+   workspace.append(mapPane,roster);decoration.append(workspace);
+   const current=publishedRegion(decorRegion),box=preview(mapPane,current);
    if(box){
     box.className+=' map-decoration-canvas';
     const img=box.querySelector('img'),back=assets.get(current.backgroundId);
@@ -589,13 +634,16 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     const paint=()=>{
      if(box.isConnected===false||signal?.aborted)return;
      markers.replaceChildren();
-     for(const row of here){
+     for(const [index,row] of here.entries()){
       const art=decorArt.cache.get(mapDecorPinKey(row.prop)),visual=decorationBox(row,art,size,decorPreview);
-      const icon=el('img',undefined,'map-decor-sprite');icon.alt='';icon.draggable=false;paintDecoration(icon,visual);markers.append(icon);
-      if(!visual&&row!==chosen)continue;
-      const selected=row===chosen, caption=namedProp(row.prop)+' 위치';
-      const pick=button(selected?'●':'○',()=>{decorId=row.id;render();},'map-decoration-anchor');
-      pick.title=caption;pick.setAttribute('aria-label',caption);paintMarker(pick,row.anchor);markers.append(pick);
+      const selected=row===chosen, caption='배치 '+(index+1)+' · '+namedProp(row.prop)+' 위치';
+      const icon=el('img',undefined,'map-decor-sprite map-decoration-selectable');icon.alt='';icon.draggable=false;
+      icon.onclick=()=>select(row,caption);
+      paintDecoration(icon,visual);markers.append(icon);
+      if(!visual&&!selected)continue;
+      const pick=button(selected?'●':'○',()=>select(row,caption),'map-decoration-anchor');
+      pick.title=caption;pick.setAttribute('aria-label',caption);pick.setAttribute('aria-pressed',String(selected));
+      paintMarker(pick,row.anchor);markers.append(pick);
       if(!locked&&selected)dragControl(pick,box,row.anchor,(point,dx,dy)=>({x:Math.min(1000,Math.max(0,point.x+dx)),y:Math.min(1000,Math.max(0,point.y+dy))}),
        anchor=>{paintMarker(pick,anchor);paintDecoration(icon,decorationBox({...row,anchor},art,size,decorPreview));},
        anchor=>{row.anchor=anchor;changed();restoreControl(caption);});
@@ -610,11 +658,8 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
      queueMicrotask(paint);void decorArt.load(here).then(()=>{paint();report();});
     }
    }
-   const list=setOptions(['',...here.map(p=>p.id)],decorId,id=>id?namedProp(here.find(p=>p.id===id).prop):'배치한 프랍 선택');
-   list.onchange=()=>{decorId=list.value||null;render();};
-   if(here.length)decoration.append(label('배치한 프랍',list));else decoration.append(el('p','이 구역에는 배치한 꾸미기 프랍이 없어요.','meta'));
    if(!chosen)return;
-   if(chosen.visibility!=='both'&&chosen.visibility!==(decorPreview?'cinematic':'pixel')){
+   if(!matchesView(chosen)){
     decoration.append(el('p','선택한 프랍은 현재 미리보기에서 숨겨져요. 서진 능력 '+(chosen.visibility==='pixel'?'OFF':'ON')+'에서 보여요.','meta'));
    }
    const visibility=setOptions(Object.keys(visibilityLabels),chosen.visibility,value=>visibilityLabels[value]);visibility.disabled=locked;
@@ -632,9 +677,9 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     if(!Number.isInteger(scale.valueAsNumber)||scale.valueAsNumber<10||scale.valueAsNumber>300){scale.value=chosen.scale;return;}
     chosen.scale=scale.valueAsNumber;changed();
    };
-   const remove=button('선택 프랍 배치 삭제',()=>{graph.decorations=rows.filter(r=>r.id!==chosen.id);decorId=null;changed();});remove.disabled=locked;
-   const form=el('div',undefined,'map-row');form.append(label('표시 모드',visibility),label('크기 (%)',scale),remove);
-   decoration.append(form,coordinates('꾸미기 프랍 위치',['x','y'],chosen.anchor,()=>chosen.anchor,mapPoint,anchor=>{chosen.anchor=anchor;changed();}));
+   const form=el('div',undefined,'map-row');form.append(label('표시 모드',visibility),label('크기 (%)',scale));
+   roster.append(form);
+   decoration.append(coordinates('꾸미기 프랍 위치',['x','y'],chosen.anchor,()=>chosen.anchor,mapPoint,anchor=>{chosen.anchor=anchor;changed();}));
   }
   function createDecorationPrompt(){
    const prompt=card('4. 꾸미기','map-decoration-card');

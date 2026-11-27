@@ -422,7 +422,7 @@ for(const visibility of ['cinematic','pixel'])test('map decoration tab reveals '
  if(!on){find(modeLabel(false)).onclick();await settle();}
  field('표시 모드').value=visibility;find('프랍 추가').onclick();await settle();
  const current=()=>JSON.parse(memory.get(mapDraftKey('binari',mapId))).graph;
- const sprite=()=>parts().find(n=>n.tag==='img'&&n.className==='map-decor-sprite'&&!n.hidden);
+ const sprite=()=>parts().find(n=>n.tag==='img'&&n.className?.split(' ').includes('map-decor-sprite')&&!n.hidden);
  assert.equal(current().decorations.length,1);
  assert.deepEqual(current().decorations[0].prop,pin);assert.equal(current().decorations[0].visibility,visibility);
  assert.equal(sprite()?.src,'/api/prop-workspace?'+(on?'spirit':'pixel'));
@@ -435,9 +435,69 @@ for(const visibility of ['cinematic','pixel'])test('map decoration tab reveals '
  currentEdit.value=next;await currentEdit.onchange();await settle();
  assert.equal(current().decorations[0].visibility,next);
  assert.equal(sprite()?.src,'/api/prop-workspace?'+(on?'pixel':'spirit'));
- const mark=parts().find(n=>n.attrs['aria-label']==='등불 위치');
+ const mark=parts().find(n=>n.attrs['aria-label']==='배치 1 · 등불 위치');
  mark.onkeydown({key:'ArrowRight',shiftKey:true,preventDefault(){}});await settle();
  assert.equal(current().decorations[0].anchor.x,510);
  assert.equal(posts.length,0);await find('꾸미기 적용').onclick();assert.equal(posts.length,1);
  assert.equal(posts[0].requestType,'file.update');assert.deepEqual(posts[0].payload.content,current());
+});
+
+test('decoration roster and map share selection, including hidden props, and deletion only updates the draft before Apply',async t=>{
+ const {mountMapWorkspace,mapDraftKey}=await import('../build/map-workspace-ui.mjs');
+ const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div'),memory=new Map(),posts=[];
+ const mapId='request.official.'+'e'.repeat(64),pin={propId:'shared-prop',revision:1,sha256:'a'.repeat(64)},row={...pin,title:'등불'};
+ const decorations=[
+  {id:'d-pixel',regionId:'r1',prop:pin,anchor:{x:450,y:650},scale:100,visibility:'pixel'},
+  {id:'d-cinema',regionId:'r1',prop:pin,anchor:{x:550,y:650},scale:120,visibility:'cinematic'},
+  {id:'d-other',regionId:'r2',prop:pin,anchor:{x:550,y:650},scale:100,visibility:'both'},
+ ];
+ const state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph:{...graph,decorations}};
+ const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
+ const art={propId:pin.propId,source:{revision:pin.revision,sha256:pin.sha256},media:{
+  pixel:{mediaType:'image/png',url:'/api/prop-workspace?pixel',width:200,height:100},
+  spirit:{mediaType:'image/png',url:'/api/prop-workspace?spirit',width:200,height:100}}};
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',
+  storage:{getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v)},
+  request:async url=>url.includes('background')?{backgrounds}:url.includes('propId=')?{prop:art}:url.includes('prop-workspace')?{props:[row]}:
+  url.includes('item=')?{map:state}:{maps:[]},
+  submit:async p=>{posts.push(p);return Response.json({status:'queued',queueId:'ngs.local.99fb3aa4-b8c6-4d64-91ae-70908d6ee614'},{status:202});}});
+ const parts=()=>detail.descendants(),find=text=>parts().find(x=>x.textContent===text);
+ const byAria=text=>parts().find(x=>x.attrs['aria-label']===text);
+ const sprites=()=>parts().filter(n=>n.className?.includes('map-decoration-selectable')&&!n.hidden);
+ const settle=()=>new Promise(r=>setImmediate(r));
+ parts().find(e=>e.id==='map-tab-decorations').onclick();await settle();
+ assert.equal(byAria('꾸미기 서진 능력 미리보기').parent.className,'map-decoration-view');
+ assert.equal(byAria('꾸미기 서진 능력 미리보기').attrs['aria-pressed'],'false');
+ assert.ok(find('배치한 프랍 (2)'));assert.ok(find('능력 ON · 시네마틱만 · 현재 숨김'));
+ assert.equal(find('선택한 프랍 배치 삭제').disabled,true);
+ assert.equal(find('선택한 프랍 복제').disabled,true);
+ byAria('배치 2 · 등불').onclick();await settle();
+ assert.equal(byAria('배치 2 · 등불 위치').attrs['aria-pressed'],'true');
+ assert.equal(byAria('배치 2 · 등불').attrs['aria-pressed'],'true');
+ sprites()[0].onclick();await settle();
+ assert.equal(byAria('배치 1 · 등불').attrs['aria-pressed'],'true');
+ byAria('배치 2 · 등불').onclick();await settle();
+ byAria('꾸미기 서진 능력 미리보기').onclick();await settle();
+ assert.equal(sprites()[0].src,'/api/prop-workspace?spirit');
+ assert.equal(byAria('배치 2 · 등불').attrs['aria-pressed'],'true');
+ const draft=()=>JSON.parse(memory.get(mapDraftKey('binari',mapId))).graph.decorations;
+ const scale=parts().find(n=>n.tag==='label'&&n.textContent==='크기 (%)').children[0];
+ scale.valueAsNumber=185;scale.onchange();await settle();
+ assert.equal(draft()[1].scale,185);
+ find('선택한 프랍 복제').onclick();await settle();
+ const copy=draft().at(-1);
+ assert.ok(!decorations.some(r=>r.id===copy.id));
+ assert.deepEqual(copy,{...decorations[1],id:copy.id,scale:185,anchor:{x:590,y:690}});
+ assert.equal(byAria('배치 3 · 등불').attrs['aria-pressed'],'true');
+ assert.equal(sprites().length,2);
+ byAria('꾸미기 서진 능력 미리보기').onclick();await settle();
+ assert.equal(byAria('배치 3 · 등불').attrs['aria-pressed'],'true');
+ find('선택한 프랍 배치 삭제').onclick();await settle();
+ assert.equal(byAria('배치 3 · 등불'),undefined);
+ assert.deepEqual(state.graph.decorations,decorations);
+ const expected=[decorations[0],{...decorations[1],scale:185},decorations[2]];
+ assert.deepEqual(draft(),expected);
+ assert.equal(posts.length,0);await find('꾸미기 적용').onclick();
+ assert.equal(posts.length,1);assert.equal(posts[0].requestType,'file.update');
+ assert.deepEqual(posts[0].payload.content.decorations,expected);
 });
