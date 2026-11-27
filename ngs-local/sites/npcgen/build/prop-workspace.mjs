@@ -25,7 +25,7 @@ async function packageFrom(project,p){
  let row;
  try{row=parsePropPackage(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)));}
  catch{throw unavailable();}
- if(row.propId!==p.propId||row.revision!==p.revision||p.title!==undefined&&row.title!==p.title)throw unavailable();
+ if(row.propId!==p.propId||row.revision!==p.revision||row.title!==p.title)throw unavailable();
  return row;
 }
 async function selected(project,propId){
@@ -136,25 +136,4 @@ export async function propWorkspaceRead({query,openProject,authorize}){
  return {json:{prop:{propId,title:p.title,source:{revision:p.revision,sha256:p.sha256},
   media:publicPair(p,row.media),interaction:row.interaction,
   animations:row.animations.map(a=>({id:a.id,title:a.title,media:publicPair(p,a.media)}))}}};
-}
-
-// Local assembly renderer resolves only an immutable manifest explicitly pinned by a published assembly.
-export async function assemblyPinnedPropRead({query,openProject,authorize,allowPin}){
- const keys=[...query.keys()],projectId=query.get('projectId'),propId=query.get('propId'),revision=Number(query.get('revision')),sha256=query.get('sha256'),asset=query.get('asset');
- const expected=['projectId','propId','revision','sha256','assemblyId',...(asset?['asset']:[])];
- if(projectId!=='binari'||keys.length!==expected.length||!expected.every(k=>keys.includes(k))||!propSlug(propId)||!propRevision(revision)||
-    String(revision)!==query.get('revision')||!propSha(sha256)||asset&&!propSha(asset))throw invalid();
- await authorize(projectId,'props');
- if(!await allowPin({assemblyId:query.get('assemblyId'),propId,revision,sha256}))throw missing();
- const project=await openProject(projectId);
- if(!project||!await pointer(project,propId))throw missing();
- const row=await packageFrom(project,{propId,revision,sha256});
- const media=row.media.pixel;
- const bound=new URLSearchParams(query);bound.set('asset',media.sha256);
- if(!asset)return {json:{prop:{propId,title:row.title,source:{revision,sha256},
-  media:{pixel:{...publicMedia({propId,revision,sha256},media),url:'/api/assembly-prop?'+bound}}}}};
- if(asset!==media.sha256||media.mediaType!=='image/png')throw missing();
- const bytes=await project.readBytes(relative(propAssetPath(propId,media.assetId)),Math.min(media.bytes,propPackageMediaLimit));
- if(!(bytes instanceof Uint8Array)||bytes.length!==media.bytes||!png.every((n,i)=>bytes[i]===n)||await hashReplicaBytes(bytes)!==asset)throw unavailable();
- return {bytes,mime:media.mediaType};
 }

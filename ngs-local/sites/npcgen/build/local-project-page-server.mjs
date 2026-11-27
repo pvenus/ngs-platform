@@ -1,4 +1,3 @@
-import {assemblyPinnedPropRead} from './prop-workspace.mjs';
 import {assemblyTypes,assemblyPath,assemblyPds,assemblyCapability,validAssemblyRequest,assemblyReachable} from './assembly-contract.mjs';
 import {assemblyWorkspaceRead} from './assembly-workspace.mjs';
 import {mapTypes,mapPds,mapCapability,validMapRequest} from './map-contract.mjs';
@@ -525,20 +524,6 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     res.setHeader('Content-Length',String(end-start+1));
     res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'");
     return res.end(result.bytes.subarray(start,end+1));
-   }
-   if(url.pathname==='/api/assembly-prop'){
-    const session=auth.read(req);if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
-    if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
-    const authorize=(id,resource)=>projectPermission(session.principal,id,resource,false);
-    const result=await assemblyPinnedPropRead({query:url.searchParams,openProject,authorize,allowPin:async pin=>{
-     const query=new URLSearchParams({projectId:'binari',item:pin.assemblyId??''});
-     const {json:{assembly}}=await assemblyWorkspaceRead({query,openProject,authorize});
-     return assembly.puzzles.some(p=>Object.values(p.bindings).some(b=>b.propId===pin.propId&&b.revision===pin.revision&&b.sha256===pin.sha256));
-    }});
-    if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
-    if(result.json)return json(200,result.json);
-    res.setHeader('Content-Type',result.mime);res.setHeader('Content-Length',String(result.bytes.length));
-    res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'");return res.end(result.bytes);
    }
    if(url.pathname===assemblyPath){
     const session=auth.read(req);

@@ -10,7 +10,7 @@ const field=(title,input)=>{const row=el('label',title,'prop-form-field');row.ap
 const option=(id,title)=>{const n=el('option',title);n.value=id;return n;};
 const control=title=>{const n=el('button',title,'prop-control');n.type='button';return n;};
 const sha=value=>typeof value==='string'&&/^[0-9a-f]{64}$/.test(value);
-const safeMedia=url=>typeof url==='string'&&['/api/prop-workspace?','/api/assembly-prop?'].some(p=>url.startsWith(p));
+const safeMedia=url=>typeof url==='string'&&url.startsWith('/api/prop-workspace?');
 const viewPoint=p=>['x','y'].every(axis=>Number.isInteger(p?.[axis])&&p[axis]>=10&&p[axis]<=90);
 const stateKey='ngs:map-rehearsal:v2:';
 
@@ -237,7 +237,11 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(pin.parentNode!==layer)layer.append(pin);
   pin.style.left=(point.x+delta.x)+'%';pin.style.top=(point.y+delta.y)+'%';
  }
- function pinnedRead(pin){return request('/api/assembly-prop?'+new URLSearchParams({projectId,assemblyId:published.assemblyId,propId:pin.propId,revision:pin.revision,sha256:pin.sha256}));}
+ async function pinnedRead(pin){
+  const out=await request(api('prop',{propId:pin.propId}));
+  if(out.prop?.source?.revision!==pin.revision||out.prop?.source?.sha256!==pin.sha256)throw Error('ASSEMBLY_PROP_PIN_INACTIVE');
+  return out;
+ }
  function loadProp(preset,role,id){const pin=preset?.pinned?.[role];return published&&pin?.propId===id?pinnedRead(pin):request(api('prop',{propId:id}));}
  async function paintArt(preset,role){
   const key=preset.id+':'+role,pin=pins.get(key),id=preset.bindings[role];
@@ -423,7 +427,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal:config});stop.hidden=false;
    setStatus('게시 리비전 '+published.revision+'로 플레이 중이에요.');
    stage.querySelector('.well-demo-scene')?.focus();
-  }catch{if(!signal.aborted)setStatus('게시본의 맵과 프랍을 읽지 못했어요.');}
+  }catch(e){if(!signal.aborted)setStatus(e.message==='ASSEMBLY_PROP_PIN_INACTIVE'?'연결된 프랍의 게시 버전이 바뀌었어요. 현재 버전을 다시 연결하고 적용해 주세요.':'게시본의 맵과 프랍을 읽지 못했어요.');}
   finally{if(!signal.aborted){busy=false;refresh();}}
  },{signal});
  signal.addEventListener('abort',()=>{if(removeDialog.open)removeDialog.close();cancelDrag();stopPlay();},{once:true});
