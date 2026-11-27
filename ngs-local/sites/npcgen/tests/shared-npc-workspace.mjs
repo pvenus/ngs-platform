@@ -233,3 +233,26 @@ test('same replica generation does not reuse a fixed-walk/run viewer cache',asyn
  assert.deepEqual(await npcWorkspaceRead(args),current);
  assert.equal(coverage.reads,reads);
 });
+
+test('same replica generation rebuilds pre-delete-pin roster and detail caches',async()=>{
+ const data=new Map(initial),cachedRow={id:npc,name:'stale'},cache=new Map([
+  [null,{projectId:'binari',npcs:[cachedRow]}],
+  [npc,{view:'npc-workspace.native-dynamic.v1',data:{projectId:'binari',npcs:[cachedRow],npc:cachedRow}}]
+ ]);
+ const metadataPath=prefix+'metadata.json';
+ data.set(metadataPath,json({id:npc,name:'Fixture',creationBasis:{requestId:creationTaskId},planningCategoryOrder:[]}));
+ for(const key of ['animation-sequences/idle/walk/s.json','animation-alpha/idle/walk/s.json'])data.delete(prefix+key);
+ let reads=0;
+ const project={npcCache:{version:async()=>100,read:async id=>cache.get(id),
+  store:async(id,_version,value)=>{cache.set(id,value);}},
+  readBytes:async path=>{reads++;return data.get(path)??null;},
+  listFiles:async root=>[...data.keys()].filter(path=>path.startsWith(root+'/')).map(path=>({path}))};
+ for(const npcId of [null,npc]){
+  const args={openProject:async()=>project,query:path(npcId?{npcId}:{}),authorize:()=>{}};
+  const fresh=await npcWorkspaceRead(args);
+  assert.equal(fresh.json.npcs.find(row=>row.id===npc).creationTaskId,creationTaskId);
+  const prior=reads;
+  assert.deepEqual(await npcWorkspaceRead(args),fresh);
+  assert.equal(reads,prior);
+ }
+});

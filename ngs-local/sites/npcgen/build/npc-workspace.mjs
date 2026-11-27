@@ -111,7 +111,9 @@ async function mediaInventory(project,npcId){
 }
 const nativePoses=['idle','combat'];
 const nativeMetadataLimit=2*1024*1024,nativeTrackLimit=256;
-const detailCacheView='npc-workspace.native-dynamic.v1';
+// Cached projections made before the delete pin was exposed are not current.
+const rosterCacheView='npc-workspace.roster-delete-pin.v1';
+const detailCacheView='npc-workspace.native-dynamic.v2';
 const nativeFiles={
  raw:['animation-sequences','ngs.animation-native-png-sequence.v1','assetId'],
  alpha:['animation-alpha','ngs.animation-alpha-output.v1','alphaAssetId'],
@@ -334,7 +336,7 @@ export async function npcWorkspaceRead({openProject,query,authorize,mediaCache=f
    generation=await cache.version();
    if(generation!==null){
     const cached=await cache.read(npcId,generation);
-    const hit=npcId===null?cached:cached?.view===detailCacheView?cached.data:null;
+    const hit=cached?.view===(npcId===null?rosterCacheView:detailCacheView)?cached.data:null;
     if(hit?.projectId===projectId&&Array.isArray(hit.npcs)&&
        (npcId===null?!Object.hasOwn(hit,'npc'):hit.npc?.id===npcId)&&
        await cache.version()===generation)return {json:hit};
@@ -368,7 +370,7 @@ export async function npcWorkspaceRead({openProject,query,authorize,mediaCache=f
   json={...base,...await detail(project,npc,markPartial),mediaScopes:mediaScopes(projectId,npcId)};
  }
  if(cache&&generation!=null&&full){
-  try{await cache.store(npcId,generation,npcId===null?json:{view:detailCacheView,data:json});}catch{/* A cache write must not fail the authorized read. */}
+  try{await cache.store(npcId,generation,{view:npcId===null?rosterCacheView:detailCacheView,data:json});}catch{/* A cache write must not fail the authorized read. */}
  }
  return {json};
 }
