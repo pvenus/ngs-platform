@@ -135,7 +135,7 @@ test('Warp preview reaches the last room, starts over twice, then closes and cle
 
 test('published map edits keep a separate start image and show both ends of each connection at once',async t=>{
  const {mountMapWorkspace,mapDraftKey,centerMapPortal}=await import('../build/map-workspace-ui.mjs');
- const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div');
+ const dom=fakeDom(t),{Element}=dom,detail=new Element('div'),items=new Element('div'),tools=new Element('div');
  const mapId='request.official.'+'c'.repeat(64),state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',
   mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph};
  const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
@@ -145,7 +145,7 @@ test('published map edits keep a separate start image and show both ends of each
   request:async path=>path.includes('background')?{backgrounds}:path.includes('item=')?{map:state}:{maps:[]},
   submit:async()=>assert.fail('editing start or coordinates may only update the session draft')});
  const pick=cls=>detail.descendants().find(n=>n.className===cls);
- const startImages=()=>pick('map-start-thumbnail').descendants().filter(n=>n.tag==='img');
+ const startImages=()=>pick('map-start-thumbnail')?.descendants().filter(n=>n.tag==='img')??[];
  const endpoints=()=>pick('map-connection-pair').descendants().filter(n=>n.tag==='img');
  const parts=()=>pick('map-connection-pair').descendants();
  const pickers=()=>parts().filter(n=>n.className==='map-coordinate-picker');
@@ -155,10 +155,17 @@ test('published map edits keep a separate start image and show both ends of each
  };
  const field=text=>detail.descendants().find(n=>n.tag==='label'&&n.textContent===text).children[0];
  const current=()=>JSON.parse(draft.get(mapDraftKey('binari',mapId))).graph;
+ const tab=key=>detail.descendants().find(n=>n.id==='map-tab-'+key);
+ assert.equal(tab('start').attrs['aria-selected'],'true');
  assert.deepEqual(startImages().map(n=>n.alt),['구역 1']);
- assert.deepEqual(endpoints().map(n=>n.alt),['구역 1','구역 2']);
+ assert.equal(pick('map-connection-pair'),undefined);
+ assert.ok(!detail.descendants().some(n=>n.tag==='label'&&n.textContent==='맵 이름'));
  const start=field('워프 플레이를 시작할 구역');start.value='r4';start.onchange();
  assert.deepEqual(startImages().map(n=>n.alt),['구역 4']);
+ tab('links').onclick();
+ assert.equal(tab('links').attrs['aria-selected'],'true');
+ assert.equal(dom.focused,tab('links'));
+ assert.ok(!detail.descendants().some(n=>n.attrs['aria-label']==='시작 맵'&&n.tag==='section'));
  assert.equal(current().startRegionId,'r4');assert.deepEqual(endpoints().map(n=>n.alt),['구역 1','구역 2']);
  const select=field('편집할 이동 연결');select.value='order-2';select.onchange();
  assert.deepEqual(endpoints().map(n=>n.alt),['구역 2','구역 3']);
@@ -197,7 +204,14 @@ test('colliders draw, move, resize and delete by region and only Apply queues th
   storage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},
   request:async path=>path.includes('background')?{backgrounds}:path.includes('item=')?{map:state}:{maps:[]},
   submit:async packet=>{requests.push(packet);return Response.json({status:'queued',queueId:'ngs.local.15d60410-3f24-480d-9072-cd51f3d2a006'},{status:202});}});
- const card=()=>detail.descendants().find(n=>n.attrs['aria-label']==='충돌 영역');
+ const currentTab=key=>detail.descendants().find(n=>n.id==='map-tab-'+key);
+ const startField=detail.descendants().find(n=>n.tag==='label'&&n.textContent==='워프 플레이를 시작할 구역').children[0];
+ startField.value='r3';startField.onchange();
+ currentTab('links').onclick();
+ const edgeName=detail.descendants().find(n=>n.tag==='label'&&n.textContent==='이동 이름').children[0];
+ edgeName.value='게시하지 않을 연결 초안';edgeName.oninput();
+ currentTab('colliders').onclick();
+ const card=()=>detail.descendants().find(n=>n.attrs['aria-label']==='충돌 영역'&&n.tag==='section');
  const find=text=>card().descendants().find(n=>n.textContent===text);
  const field=label=>card().descendants().find(n=>n.tag==='label'&&n.textContent===label).children[0];
  const gesture=(node,x1,y1,x2,y2,mid)=>{
@@ -207,7 +221,7 @@ test('colliders draw, move, resize and delete by region and only Apply queues th
  const local=()=>JSON.parse(saved.get(mapDraftKey('binari',mapId))??'null')?.graph;
  const startDraw=()=>{find('새 충돌 영역 그리기').onclick();return card().descendants().find(n=>n.className==='map-collider-draw');};
  assert.deepEqual(card().descendants().filter(n=>n.tag==='img').map(n=>n.alt),['구역 1']);
- gesture(startDraw(),800,600,650,350,()=>assert.equal(local(),undefined));
+ gesture(startDraw(),800,600,650,350,()=>assert.equal(local().colliders,undefined));
  const first=local().colliders[0];assert.equal(first.regionId,'r1');assert.equal(first.shape,'rect');assert.deepEqual(first.rect,{x:650,y:350,width:150,height:250});
  const control=label=>card().descendants().find(n=>n.attrs['aria-label']?.startsWith(label));
  gesture(control('충돌 영역 이동'),650,350,670,370);
@@ -232,9 +246,22 @@ test('colliders draw, move, resize and delete by region and only Apply queues th
  gesture(startDraw(),400,400,600,500);
  assert.equal(local().colliders[1].shape,'ellipse');
  const turn=field('회전 (°)');turn.valueAsNumber=90;turn.onchange();
- await detail.descendants().find(n=>n.textContent==='적용 · 정식 수정 요청').onclick();
+ await detail.descendants().find(n=>n.textContent==='충돌 영역 적용').onclick();
  assert.equal(requests.length,1);const {payload,requestType}=requests[0];
  assert.equal(requestType,'map.update');assert.ok(validMapRequest(payload,requestType));
  assert.equal(payload.expectedRevision,1);assert.deepEqual(payload.graph.colliders,local().colliders);
  assert.deepEqual(payload.graph.connections,graph.connections);
+ assert.equal(payload.graph.startRegionId,graph.startRegionId);
+ assert.equal(local().startRegionId,'r3');assert.equal(local().connections[0].label,'게시하지 않을 연결 초안');
+ const {chooseMapDraft,projectMapTab}=await import('../build/map-workspace-ui.mjs');
+ const packed=JSON.parse(saved.get(mapDraftKey('binari',mapId)));
+ const next={...state,revision:2,officialRequestId:packed.submission.id,graph:payload.graph};
+ const rebased=chooseMapDraft(packed,next);
+ assert.equal(rebased.conflict,false);assert.equal(rebased.done,true);
+ assert.deepEqual(rebased.graph.colliders,payload.graph.colliders);
+ assert.equal(rebased.graph.startRegionId,'r3');
+ assert.equal(rebased.graph.connections[0].label,'게시하지 않을 연결 초안');
+ assert.equal(projectMapTab(next.graph,rebased.graph,'links').startRegionId,'r1');
+ assert.equal(projectMapTab(next.graph,rebased.graph,'start').connections[0].label,graph.connections[0].label);
+ assert.equal(chooseMapDraft(packed,{...next,officialRequestId:'request.official.'+'8'.repeat(64),graph:{...graph,startRegionId:'r5'}}).conflict,true);
 });

@@ -1,3 +1,4 @@
+import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {createMapWarp,orderedMapChain} from './map-warp.mjs';
 import {hashBrowserMap} from './map-contract.mjs';
 import {mapTypes,mapSchemas,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation} from './map-contract.mjs';
@@ -5,11 +6,31 @@ import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
 const empty=()=>({title:'',regions:[],startRegionId:null,connections:[]});
+const mapTabs=[['start','시작 맵'],['links','이동 연결'],['colliders','충돌 영역']];
+const tabFields={start:['startRegionId'],links:['regions','connections'],colliders:['colliders']};
+const tabTitle=tab=>mapTabs.find(([key])=>key===tab)?.[1];
+export function projectMapTab(base,draft,tab){
+ const graph={...base};
+ for(const name of tabFields[tab]??[]){
+  if(Object.hasOwn(draft,name))graph[name]=draft[name];else delete graph[name];
+ }
+ return graph;
+}
+const tabChanged=(base,draft,tab)=>mapCanonical(base)!==mapCanonical(projectMapTab(base,draft,tab));
 export const mapDraftKey=(project,id)=>'ngs-map-draft:v1:'+project+':'+(id??'new');
 export function chooseMapDraft(saved,published){
  if(!saved?.graph||typeof saved.graph!=='object')return {graph:published?.graph??empty(),conflict:false};
  if(!published||saved.base===published.revision)return {graph:saved.graph,conflict:false};
- if(published.officialRequestId===saved.accepted||mapCanonical(published.graph)===mapCanonical(saved.graph))
+ const submission=saved.submission;
+ if(tabTitle(submission?.tab)&&submission?.graph&&
+    (published.officialRequestId===submission.id||mapCanonical(published.graph)===mapCanonical(submission.graph))){
+  let graph=published.graph;
+  for(const [tab] of mapTabs)if(tab!==submission.tab||tabChanged(submission.graph,saved.graph,tab))
+   graph=projectMapTab(graph,saved.graph,tab);
+  return {graph,conflict:false,done:true};
+ }
+ if(published.officialRequestId===saved.accepted||mapCanonical(published.graph)===mapCanonical(saved.graph)||
+    (saved.baseline&&mapCanonical(saved.baseline)===mapCanonical(saved.graph)))
   return {graph:published.graph,conflict:false,done:true};
  return {graph:saved.graph,conflict:true};
 }
@@ -40,21 +61,79 @@ export function parseMapRoutes(text,regions){
  return result;
 }
 
-export async function mountMapWorkspace({items,detail,tools,request,submit,projectId,item,enabled,navigate,signal,storage=globalThis.sessionStorage}){
+export async function mountMapWorkspace({items,detail,tools,request,submit,projectId,item,enabled,navigate,signal,deleteItem,storage=globalThis.sessionStorage}){
  const q=new URLSearchParams({projectId}), mapUrl='/api/map-workspace?'+q;
- const [{maps},{backgrounds},record]=await Promise.all([request(mapUrl),request('/api/background-workspace?'+q),item&&item!=='new'?request(mapUrl+'&item='+encodeURIComponent(item)):null]);
+ const itemUrl=item&&item!=='new'?mapUrl+'&item='+encodeURIComponent(item):null;
+ const [{maps:listed},{backgrounds},record]=await Promise.all([request(mapUrl),request('/api/background-workspace?'+q),itemUrl?
+  request(itemUrl).catch(error=>({error})):null]);
  if(signal?.aborted)return;
- const published=record?.map;
- if(record&&!validMapState(published))throw Error('MAP_READ_INVALID');
+ if(record?.error&&listed.some(row=>row.mapId===item))throw record.error;
+ let published=record?.map;
+ if(published&&!validMapState(published))throw Error('MAP_READ_INVALID');
+ const maps=[...listed],listOwners=items.parentElement;
+ listOwners?.classList.add('npc-roster-list','prop-roster');detail.classList?.add('npc-detail','prop-detail');
  const assets=new Map(backgrounds.filter(b=>backgroundId(b.backgroundId)&&!b.title.endsWith(' · 시네마틱 원본')).map(b=>[b.backgroundId,b]));
- const list=el('div',undefined,'cinematic-list');
- for(const m of maps){const a=el('a',m.title+' · r'+m.revision,'prop-control');a.href=navigate({item:m.mapId});if(m.mapId===item)a.setAttribute('aria-current','page');list.append(a);}
  const opener=button('+',openNew,'npc-one-stop-trigger');
  opener.setAttribute('aria-label','새 맵');opener.title='새 맵';opener.disabled=!enabled||!submit;
- let modal=null;
- items.replaceChildren(list);tools.replaceChildren(opener,button('새로고침',()=>location.reload()));tools.hidden=false;
- if(published)mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,published,submit,enabled});
- else detail.replaceChildren(el('h3','맵 제작'),el('p','배경을 먼저 제작하고, + 버튼으로 새 맵을 만들어 구역과 포털을 연결하세요.'));
+ let modal=null,editor=null,editorAbort=null;
+ tools.replaceChildren(opener);tools.hidden=false;
+ const edit=signal&&mountCatalogRosterEdit({items,tools,deleteItem,signal});
+ const roKey='ngs:map-roster:v1:'+projectId,search=el('input',undefined,'npc-search cinematic-search');
+ let rosterState={};
+ try{rosterState=JSON.parse(storage.getItem(roKey))??{};}catch{}
+ search.type='search';search.id='map-search';search.maxLength=120;search.placeholder='맵 이름 검색';
+ search.value=typeof rosterState.query==='string'?rosterState.query.slice(0,120):'';
+ const searchLabel=el('label','맵 검색','npc-search-label');searchLabel.htmlFor=search.id;
+ items.before?.(searchLabel,search);
+ const remember=()=>{try{storage.setItem(roKey,JSON.stringify({query:search.value,top:Number(items.scrollTop)||0}));}catch{}};
+ const normalize=v=>v.normalize('NFC').trim().toLocaleLowerCase();
+ function renderRoster(top){
+  const terms=normalize(search.value).split(/\s+/u).filter(Boolean);
+  const rows=maps.filter(m=>terms.every(term=>normalize(m.title).includes(term))).map(m=>{
+   const li=el('li'),a=el('a',undefined,'request-item npc-roster-entry');
+   a.href=navigate({item:m.mapId});if(m.mapId===item&&published)a.setAttribute('aria-current','page');
+   a.append(el('strong',m.title),el('span','버전 '+m.revision,'meta'));
+   li.append(a);edit?.decorate(li,m.mapId,m.title,{revision:m.revision,officialRequestId:m.officialRequestId});return li;
+  });
+  items.replaceChildren(...(rows.length?rows:[el('li',terms.length?'검색 결과가 없습니다.':'게시된 맵이 없습니다.','meta')]));
+  edit?.refresh();items.scrollTop=Math.max(0,Number(top)||0);
+ }
+ search.oninput=()=>{renderRoster(0);remember();};
+ items.addEventListener('scroll',remember,{passive:true,...(signal?{signal}:{})});
+ renderRoster(rosterState.top);
+ function showDetail(){
+  editorAbort?.abort();editorAbort=new AbortController();
+  if(published)editor=mountMapEditor({detail,maps,assets,projectId,navigate,signal:editorAbort.signal,storage,published,submit,enabled});
+  else detail.replaceChildren(el('h3','맵 제작'),el('p','배경을 먼저 제작하고, + 버튼으로 새 맵을 만들어 구역과 포털을 연결하세요.','meta'));
+ }
+ showDetail();
+ let refreshing=false,timer=null;
+ if(signal){
+  signal.addEventListener('abort',()=>{clearInterval(timer);editorAbort?.abort();remember();searchLabel.remove();search.remove();
+   detail.classList?.remove('npc-detail','prop-detail');listOwners?.classList.remove('npc-roster-list','prop-roster');},{once:true});
+  timer=setInterval(async()=>{
+   if(refreshing||signal.aborted||globalThis.document?.hidden)return;
+   refreshing=true;
+   try{
+    const {maps:next}=await request(mapUrl);
+    if(signal.aborted)return;
+    const row=next.find(x=>x.mapId===item);
+    if(published&&(!row||row.revision!==published.revision)&&editor?.canRefresh()){
+     const current=row?await request(itemUrl):{map:null};
+     if(signal.aborted)return;
+     // Do not replace an editor that started submitting while the list request ran.
+     if(editor?.canRefresh()&&(current.map===null||validMapState(current.map))){
+      published=current.map;showDetail();
+     }
+    }
+    if(mapCanonical(maps)!==mapCanonical(next)){
+     const top=items.scrollTop;maps.splice(0,maps.length,...next);renderRoster(top);modal?.refreshMap?.();
+    }
+   }catch{/* keep the current list and draft during a temporary replica outage */}
+   finally{refreshing=false;}
+  },5000);
+  timer.unref?.();
+ }
  if(item==='new'&&enabled&&submit)openNew();
  function openNew(){
   if(modal||!enabled||!submit||signal?.aborted)return;
@@ -64,8 +143,9 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
   dialog.append(heading,el('p','완성된 배경을 고르고 이동 순서를 정하세요. 문서 워커는 지정한 연결의 출입구와 도착점만 찾습니다.','meta'),content);
   const abort=()=>dialog.close();
   const close=()=>dialog.close();
-  const canClose=mountMapEditor({detail:content,maps,assets,projectId,navigate,signal,storage,submit,enabled,onClose:close});
-  dialog.addEventListener('cancel',ev=>{if(!canClose())ev.preventDefault();});
+  const createEditor=mountMapEditor({detail:content,maps,assets,projectId,navigate,signal,storage,submit,enabled,onClose:close});
+  dialog.refreshMap=createEditor.refreshMap;
+  dialog.addEventListener('cancel',ev=>{if(!createEditor.canRefresh())ev.preventDefault();});
   dialog.addEventListener('close',()=>{
    signal?.removeEventListener('abort',abort);dialog.remove();modal=null;
    if(!signal?.aborted)opener.focus({preventScroll:true});
@@ -103,15 +183,26 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  const draft=chooseMapDraft(saved,published);
  let routeText=typeof saved?.routeText==='string'?saved.routeText:'';
  let graph=structuredClone(draft.graph),intent=typeof saved?.intent==='string'?saved.intent:'',conflict=draft.conflict,pending=draft.done?null:saved?.pending??null,lastToken=draft.done?null:saved?.requestToken??null,lastBody=saved?.requestBody??null;
+ if(published)graph.title=published.graph.title;
+ let tab=tabTitle(saved?.tab)?saved.tab:'start',submission=draft.done?null:saved?.submission??null;
  let collisionRegion=graph.startRegionId,collisionId=null,drawingCollider=false,newColliderShape='rect';
+ let refreshAction=()=>{};
  let edgeId=graph.connections[0]?.id??null,active=graph.startRegionId,mode='edit',busy=false,warp=null,returnRegion=null,setupExpanded=false,stopMovement=()=>{};
  if(draft.done){try{storage.removeItem(key);}catch{}}
  const aspectOf=r=>{const a=r&&assets.get(r.backgroundId);return a?.width>0&&a?.height>0?a.width/a.height:1;};
  const region=id=>graph.regions.find(r=>r.id===id), regionIds=()=>graph.regions.map(r=>r.id), title=id=>region(id)?.name??'구역 미선택';
- const store=()=>{try{storage.setItem(key,JSON.stringify({base:conflict?saved?.base:published?.revision??0,graph,intent,routeText,pending,accepted:pending?.id??null,requestToken:lastToken,requestBody:lastBody}));}catch{}};
+ const dirty=key=>published&&tabChanged(published.graph,graph,key);
+ const colliderRegionDirty=id=>published&&mapCanonical((graph.colliders??[]).filter(c=>c.regionId===id))!==
+  mapCanonical((published.graph.colliders??[]).filter(c=>c.regionId===id));
+ const store=()=>{try{storage.setItem(key,JSON.stringify({base:conflict?saved?.base:published?.revision??0,
+  baseline:conflict?saved?.baseline:published?.graph,graph,intent,routeText,tab,pending,submission,
+  accepted:pending?.id??null,requestToken:lastToken,requestBody:lastBody}));}catch{}};
+ if(draft.done&&published)store();
+ const publishedRegion=id=>published?.graph.regions.find(r=>r.id===id);
+ const publishedIds=()=>published?.graph.regions.map(r=>r.id)??regionIds();
  const bark=el('p','','map-status');bark.setAttribute('role','status');
  const persist=()=>{store();bark.textContent='세션에만 저장됨. 적용 전에는 원본이 바뀌지 않습니다.';};
- const changed=(paint=true)=>{persist();if(paint)render();};
+ const changed=(paint=true)=>{persist();if(paint)render();else refreshAction();};
  const setOptions=(values,selected,optionsTitle=title)=>{const s=el('select');for(const v of values){const o=el('option',optionsTitle(v));o.value=v;s.append(o);}s.value=selected??'';return s;};
  const label=(text,input)=>{const l=el('label',text,'map-field');l.append(input);return l;};
  const imageUrl=b=>'/api/background-workspace?'+q+'&image='+b.sha256;
@@ -119,12 +210,21 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  async function apply(){
   if(!enabled||!submit||busy||conflict||pending)return;
   const i=published?1:0;
-  const payload={schemaVersion:mapSchemas[i],projectId,graph:structuredClone(graph),
+  const currentTab=tab;
+  if(published&&!dirty(currentTab))return;
+  const scoped=published?projectMapTab(published.graph,graph,currentTab):graph;
+  if(published&&currentTab==='links'&&scoped.regions.some(r=>{
+   const base=publishedRegion(r.id);
+   return base&&(base.backgroundId!==r.backgroundId||base.imageSha256!==r.imageSha256)&&colliderRegionDirty(r.id);
+  })){
+   bark.textContent='바꿀 배경에 충돌 영역 초안이 있어요. 충돌 영역을 먼저 적용한 뒤 다시 시도해 주세요.';return;
+  }
+  const payload={schemaVersion:mapSchemas[i],projectId,graph:structuredClone(scoped),
    ...(published?{mapId:published.mapId,expectedRevision:published.revision}:{intent:intent.trim()})};
   if(!validMapRequest(payload,mapTypes[i])){
-   bark.textContent='맵 이름, 배경 2개 이상, 시작 구역과 확정된 방향 연결을 확인하세요. 수정할 때는 포털 좌표도 필요해요.';return;
+   bark.textContent=published?(currentTab==='links'?'모든 연결의 출입구와 도착점을 지정하고, 시작 구역과 충돌 영역이 있는 구역은 남겨 주세요.':'선택한 구역과 영역 좌표를 확인해 주세요. 새 구역은 이동 연결에서 먼저 적용해야 해요.'):'맵 이름, 배경 2개 이상, 시작 구역과 방향 연결을 확인하세요.';return;
   }
-  if(graph.regions.some(r=>!imageAligned(r))){bark.textContent='누락된 배경을 제거하거나 교체해 주세요.';return;}
+  if(scoped.regions.some(r=>!imageAligned(r))){bark.textContent='누락된 배경을 제거하거나 교체해 주세요.';return;}
   const body=mapCanonical(payload);
   if(!lastToken||lastBody!==body){lastToken='map:'+crypto.randomUUID();lastBody=body;store();}
   busy=true;render();
@@ -132,8 +232,10 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    const response=await submit({requestType:mapTypes[i],idempotencyKey:lastToken,payload});
    const value=await response.json().catch(()=>null);
    if(!isQueuedRequest(response,value))throw Error(value?.error??'MAP_REQUEST_NOT_ACCEPTED');
-   pending={id:await hashBrowserMap(projectId,value.queueId)};store();
-   bark.textContent='정식 요청이 접수됐습니다. 완료 후 새로고침해 결과를 확인하세요.';
+   pending={id:await hashBrowserMap(projectId,value.queueId)};
+   if(published)submission={id:pending.id,tab:currentTab,graph:payload.graph};
+   store();
+   bark.textContent=published?tabTitle(currentTab)+' 적용 요청을 접수했어요. 완료하면 다른 탭은 초안으로 남아요.':'정식 요청이 접수됐습니다. 완료 후 결과를 확인하세요.';
   }catch(e){bark.textContent=e.message==='MAP_REVISION_CONFLICT'?'다른 변경이 먼저 적용됐습니다. 새로고침해 확인해 주세요.':'정식 요청 접수를 확인하지 못했어요. 세션 초안은 그대로입니다.';}
   finally{busy=false;render();}
  }
@@ -194,19 +296,20 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  }
  function render({focusPlay=false}={}){
   stopMovement();stopMovement=()=>{};let mountPlay;
+  const locked=busy||!!pending;refreshAction=()=>{};
 
   const head=el('div',undefined,'map-row');
-  const name=el('input');name.value=graph.title;name.maxLength=100;name.disabled=!!pending;
+  const name=el('input');name.value=graph.title;name.maxLength=100;name.disabled=locked;
   name.oninput=()=>{graph.title=name.value;changed(false);};
   const play=button(mode==='edit'?'워프 플레이':'처음부터 다시',startWarp);
   play.disabled=!playable();
-  head.append(label('맵 이름',name));
+  if(!published)head.append(label('맵 이름',name));
   if(published)head.append(play);
   if(mode==='play')head.append(button('플레이 닫기',closeWarp));
   const side=el('div',undefined,'map-panel');
-  const sections=el('div',undefined,'map-edit-sections');
+  const sections=el('section',undefined,'npc-tab-panel map-tab-panel');
   const card=(caption,cls='')=>{
-   const node=el('section',undefined,'map-edit-card '+cls), heading=el('h4',caption);
+   const node=el('section',undefined,'prop-surface map-edit-card '+cls), heading=el('h4',caption,'npc-media-heading');
    node.setAttribute('aria-label',caption);node.append(heading);return node;
   };
   const setup=published?card('구역 구성','map-region-card'):side;
@@ -300,7 +403,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    const row=el('fieldset');row.append(el('legend',caption+' 좌표 (0–1000)'));
    for(const key of keys){
     const n=el('input');n.type='number';n.min=['width','height'].includes(key)?'1':'0';n.max='1000';n.step='1';
-    n.value=initial?.[key]??'';n.disabled=!!pending;
+    n.value=initial?.[key]??'';n.disabled=locked;
     n.onchange=()=>{
      const proposed={...(initial??makeDefault()),[key]:n.valueAsNumber};
      if(validate(proposed))commit(proposed);
@@ -334,20 +437,20 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   }
   function renderColliders(){
    collision.append(el('p','통과할 수 없는 부분을 지정합니다. 충돌 영역은 이동 포털과 별개예요. 웹에서는 표시만 하고 Unity에서 이동을 막는 데 사용해요.','meta'));
-   const rooms=regionIds();
-   if(!rooms.includes(collisionRegion)){collisionRegion=graph.startRegionId??rooms[0];collisionId=null;drawingCollider=false;}
-   const room=setOptions(rooms,collisionRegion);
+   const rooms=publishedIds();
+   if(!rooms.includes(collisionRegion)){collisionRegion=published.graph.startRegionId??rooms[0];collisionId=null;drawingCollider=false;}
+   const room=setOptions(rooms,collisionRegion,id=>publishedRegion(id)?.name??id);
    room.onchange=()=>{collisionRegion=room.value;collisionId=null;drawingCollider=false;render();};
    const regionsHere=(graph.colliders??[]).filter(c=>c.regionId===collisionRegion);
    const selected=regionsHere.find(c=>c.id===collisionId);
    const controls=el('div',undefined,'map-row');
-   const current=region(collisionRegion), atLimit=(graph.colliders??[]).length>=maxMapColliders;
+   const current=publishedRegion(collisionRegion), atLimit=(graph.colliders??[]).length>=maxMapColliders;
    const shapeTitle=shape=>shape==='ellipse'?'원 / 타원':'사각형';
    const shapeChoice=setOptions(['rect','ellipse'],newColliderShape,shapeTitle);
-   shapeChoice.disabled=!!pending||atLimit;
+   shapeChoice.disabled=locked||atLimit;
    shapeChoice.onchange=()=>{newColliderShape=shapeChoice.value;render();};
    const draw=button(drawingCollider?'그리기 취소':'새 충돌 영역 그리기',()=>{drawingCollider=!drawingCollider;render();});
-   draw.disabled=!!pending||!imageAligned(current)||atLimit;
+   draw.disabled=locked||!imageAligned(current)||atLimit;
    const addKeyboard=button('좌표로 충돌 영역 추가',()=>{
     const rect=centerMapPortal({x:500,y:500});
     if(newColliderShape==='ellipse'){
@@ -367,7 +470,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    collision.append(label('선택한 충돌 영역',selectedId));
    const box=preview(collision,current);
    const addCollider=rect=>{
-    if(pending||!imageAligned(current)||!mapRect(rect)||(graph.colliders??[]).length>=maxMapColliders)return;
+    if(locked||!imageAligned(current)||!mapRect(rect)||(graph.colliders??[]).length>=maxMapColliders)return;
     const id='c-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
     graph.colliders=[...(graph.colliders??[]),{id,regionId:collisionRegion,rect,shape:newColliderShape,rotation:0}];
     collisionId=id;drawingCollider=false;changed();
@@ -376,7 +479,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    if(box){
     box.className+=' map-collision-canvas';
     for(const [i,c] of regionsHere.entries()){
-     if(c===selected&&!pending&&!drawingCollider){movableMarker(box,c.rect,'collider',saveRect,{shape:mapColliderShape(c),rotation:mapColliderRotation(c),aspect:aspectOf(current)});continue;}
+     if(c===selected&&!locked&&!drawingCollider){movableMarker(box,c.rect,'collider',saveRect,{shape:mapColliderShape(c),rotation:mapColliderRotation(c),aspect:aspectOf(current)});continue;}
      const caption='충돌 영역 '+(i+1);
      const node=button(caption,()=>{collisionId=c.id;drawingCollider=false;render();},'map-collider-outline');
      node.title=caption+' 선택';node.disabled=drawingCollider;paintCollider(node,c.rect,mapColliderShape(c),mapColliderRotation(c));box.append(node);
@@ -387,10 +490,10 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     }
    }
    if(selected){
-    const shapeEdit=setOptions(['rect','ellipse'],mapColliderShape(selected),shapeTitle);shapeEdit.disabled=!!pending;
+    const shapeEdit=setOptions(['rect','ellipse'],mapColliderShape(selected),shapeTitle);shapeEdit.disabled=locked;
     shapeEdit.onchange=()=>{selected.rotation=mapColliderRotation(selected);selected.shape=shapeEdit.value;changed();};
     const angle=el('input');angle.type='number';angle.min='0';angle.max='359';angle.step='1';
-    angle.value=mapColliderRotation(selected);angle.disabled=!!pending;
+    angle.value=mapColliderRotation(selected);angle.disabled=locked;
     angle.onchange=()=>{
      if(!Number.isInteger(angle.valueAsNumber)||angle.valueAsNumber<0||angle.valueAsNumber>359){
       angle.value=mapColliderRotation(selected);bark.textContent='회전은 0°에서 359° 사이로 입력해 주세요.';return;
@@ -398,7 +501,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
      selected.shape=mapColliderShape(selected);selected.rotation=angle.valueAsNumber;changed();
     };
     const slider=el('input');slider.type='range';slider.min='0';slider.max='359';slider.step='1';
-    slider.value=angle.value;slider.disabled=!!pending;
+    slider.value=angle.value;slider.disabled=locked;
     slider.oninput=()=>{angle.value=slider.value;const mark=box?.querySelector?.('.map-collider-marker');if(mark)mark.style.transform='rotate('+slider.value+'deg)';};
     slider.onchange=()=>{angle.value=slider.value;angle.onchange();restoreControl('충돌 영역 회전 슬라이더');};
     slider.setAttribute('aria-label','충돌 영역 회전 슬라이더');
@@ -408,14 +511,36 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     const remove=button('선택한 충돌 영역 삭제',()=>{
      graph.colliders=graph.colliders.filter(c=>c.id!==collisionId);collisionId=null;changed();
     });
-    remove.disabled=!!pending;collision.append(remove);
+    remove.disabled=locked;collision.append(remove);
    }
   }
-  if(published){
-   const regionDetails=el('details',undefined,'map-region-details');regionDetails.open=setupExpanded;
+  const tabs=el('nav',undefined,'npc-detail-tabs');
+  if(published&&mode==='edit'){
+   tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','맵 상세 영역');
+   const switchTab=next=>{
+    tab=next;drawingCollider=false;store();render();
+    for(const link of detail.querySelectorAll?.('[role="tab"]')??[])
+     if(link.id==='map-tab-'+next)link.focus({preventScroll:true});
+   };
+   for(const [index,[key,caption]] of mapTabs.entries()){
+    const link=el('a',caption+(dirty(key)?' •':''));link.href='#map-tab-panel';link.id='map-tab-'+key;
+    link.setAttribute('role','tab');link.setAttribute('aria-label',caption+(dirty(key)?' (수정 중)':''));
+    link.setAttribute('aria-controls','map-tab-panel');link.setAttribute('aria-selected',String(key===tab));
+    link.tabIndex=key===tab?0:-1;
+    link.onclick=ev=>{ev?.preventDefault();if(key!==tab)switchTab(key);};
+    link.onkeydown=ev=>{
+     const next=ev.key==='Home'?0:ev.key==='End'?mapTabs.length-1:ev.key==='ArrowLeft'?
+      (index+mapTabs.length-1)%mapTabs.length:ev.key==='ArrowRight'?(index+1)%mapTabs.length:null;
+     if(next!==null){ev.preventDefault();switchTab(mapTabs[next][0]);}
+    };
+    tabs.append(link);
+   }
+   sections.id='map-tab-panel';sections.tabIndex=0;sections.setAttribute('role','tabpanel');
+   sections.setAttribute('aria-labelledby','map-tab-'+tab);
+   const regionDetails=el('details',undefined,'prop-surface map-region-details');regionDetails.open=setupExpanded;
    regionDetails.append(el('summary','구역 구성 · '+graph.regions.length+'개'),setup);
    regionDetails.ontoggle=()=>{setupExpanded=regionDetails.open;};
-   sections.append(start,regionDetails,movement,collision);
+   if(tab==='start')sections.append(start);else if(tab==='links')sections.append(movement,regionDetails);else sections.append(collision);
   }
   if(conflict){side.append(el('p','현재 버전이 바뀌었습니다. 세션 초안은 유지되지만 이전 버전으로 적용할 수 없습니다.'),button('초안 버리고 최신 버전 열기',()=>{
    if(!globalThis.confirm('세션에만 저장된 초안을 버리고 최신 버전을 열까요?'))return;
@@ -430,8 +555,8 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     graph.regions.push({id,name:assetTitle(bgPick.value).slice(0,100),description:'이 배경을 사용해 이동하는 구역',backgroundId:bgPick.value,imageSha256:bg.sha256});
     graph.startRegionId??=id;active=id;changed();
    });plus.disabled=true;
-   bgPick.onchange=()=>{plus.disabled=!bgPick.value||graph.regions.length>=(published?24:12)||!!pending;};
-   bgPick.disabled=!!pending;
+   bgPick.onchange=()=>{plus.disabled=!bgPick.value||graph.regions.length>=(published?24:12)||locked;};
+   bgPick.disabled=locked;
    const open=el('a','배경 설계에서 먼저 제작하기','prop-control');open.href='/?'+new URLSearchParams({projectId,catalogArea:'resources'});
    setup.append(open,label('완성된 배경',bgPick),plus);
    const order=el('ol',undefined,'map-order');
@@ -440,50 +565,60 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     const swap=j=>{[graph.regions[i],graph.regions[j]]=[graph.regions[j],graph.regions[i]];changed();};
     const up=button('↑',()=>swap(i-1)),down=button('↓',()=>swap(i+1));
     up.setAttribute('aria-label',r.name+' 앞으로');down.setAttribute('aria-label',r.name+' 뒤로');
-    up.disabled=!!pending||i===0;down.disabled=!!pending||i===graph.regions.length-1;item.append(up,down);order.append(item);
+    up.disabled=locked||i===0;down.disabled=locked||i===graph.regions.length-1;item.append(up,down);order.append(item);
    }
    const chain=button('배치 순서대로 단방향 연결',()=>{
     if(graph.connections.length&&!globalThis.confirm('현재 연결을 배치 순서대로 다시 만들까요? 기존 포털 좌표도 초기화됩니다.'))return;
     graph.connections=orderedMapChain(graph.regions);graph.startRegionId=graph.regions[0].id;
     active=graph.startRegionId;edgeId=graph.connections[0].id;changed();
-   });chain.disabled=graph.regions.length<2||!!pending;
+   });chain.disabled=graph.regions.length<2||locked;
    setup.append(el('h4','맵 배치 순서'),order);
    // On a published map topology creation remains an explicit edit; the
    // initial ordered chain uses the formal coordinate-authoring request.
    if(!published)side.append(chain);
-   const cs=setOptions(regionIds(),graph.startRegionId);cs.disabled=!!pending;
+   const cs=setOptions(published?publishedIds():regionIds(),graph.startRegionId,id=>published?publishedRegion(id)?.name:title(id));cs.disabled=locked;
    cs.onchange=()=>{graph.startRegionId=cs.value;changed();};start.append(label('워프 플레이를 시작할 구역',cs));
-   if(published){const thumb=el('div',undefined,'map-start-thumbnail');preview(thumb,region(graph.startRegionId));start.append(thumb);}
+   if(published){const thumb=el('div',undefined,'map-start-thumbnail');preview(thumb,publishedRegion(graph.startRegionId));start.append(thumb);}
    const room=setOptions(regionIds(),active);room.onchange=()=>{active=room.value;render();};
    setup.append(label('편집할 구역',room));
    const current=region(active);
    if(current){
-    const name=el('input');name.value=current.name;name.maxLength=100;name.disabled=!!pending;
+    const name=el('input');name.value=current.name;name.maxLength=100;name.disabled=locked;
     name.oninput=()=>{current.name=name.value;changed(false);};name.onchange=()=>render();
-    const memo=el('textarea');memo.value=current.description;memo.maxLength=1000;memo.disabled=!!pending;
+    const memo=el('textarea');memo.value=current.description;memo.maxLength=1000;memo.disabled=locked;
     memo.oninput=()=>{current.description=memo.value;changed(false);};
     const linked=setOptions([...new Set([current.backgroundId,...assets.keys()])],current.backgroundId,assetTitle);
-    linked.disabled=!!pending;
+    linked.disabled=locked;
     const rebind=()=>{
      const bg=assets.get(linked.value);
      if(!bg||current.backgroundId===linked.value&&current.imageSha256===bg.sha256)return;
+     if(published&&colliderRegionDirty(current.id)){
+      linked.value=current.backgroundId;bark.textContent='이 구역의 충돌 영역 초안을 먼저 적용하거나 지운 뒤 배경을 바꿔 주세요.';return;
+     }
      current.backgroundId=linked.value;current.imageSha256=bg.sha256;
      for(const e of graph.connections){if(e.from===current.id)e.hit=null;if(e.to===current.id)e.spawn=null;}
-     changed();bark.textContent='이미지가 바뀌어 이 구역의 출입구와 도착점을 비웠어요. 새 배경에 다시 찍어주세요.';
+     changed();bark.textContent='새 배경에서 출입구와 도착점을 다시 지정해 주세요.'+
+      (published&&(published.graph.colliders??[]).some(c=>c.regionId===current.id)?' 적용한 뒤 기존 충돌 영역도 새 배경에 맞는지 확인해 주세요.':'');
     };
     linked.onchange=rebind;
     setup.append(label('구역 이름',name),label('구역 설명',memo),label('연결한 배경',linked),el('small','구역 ID: '+current.id));
-    if(!pending&&!imageAligned(current)&&assets.has(current.backgroundId))setup.append(button('최신 이미지 연결',rebind));
+    if(!locked&&!imageAligned(current)&&assets.has(current.backgroundId))setup.append(button('최신 이미지 연결',rebind));
     if(current.backgroundId)setup.append(el('small','배경 ID: '+current.backgroundId));
     if(published){const thumb=el('div',undefined,'map-start-thumbnail');preview(thumb,current);setup.append(thumb);}
    }
    const remove=button('이 구역 빼기',()=>{
     if(!active)return;
     if(graph.connections.some(e=>e.from===active||e.to===active)){bark.textContent='이 구역의 연결을 먼저 삭제하세요.';return;}
-    if(graph.colliders)graph.colliders=graph.colliders.filter(c=>c.regionId!==active);
+    if(published&&(active===published.graph.startRegionId||active===graph.startRegionId)){
+     bark.textContent='시작 맵 탭에서 다른 구역을 먼저 적용해 주세요.';return;
+    }
+    if(published&&(graph.colliders??[]).concat(published.graph.colliders??[]).some(c=>c.regionId===active)){
+     bark.textContent='충돌 영역 탭에서 이 구역의 영역을 먼저 삭제하고 적용해 주세요.';return;
+    }
+    if(!published&&graph.colliders)graph.colliders=graph.colliders.filter(c=>c.regionId!==active);
     graph.regions=graph.regions.filter(x=>x.id!==active);if(graph.startRegionId===active)graph.startRegionId=graph.regions[0]?.id??null;
     active=graph.startRegionId;changed();
-   });remove.disabled=!active||!!pending;setup.append(remove);
+   });remove.disabled=!active||locked;setup.append(remove);
    const displayEdge=id=>{const e=graph.connections.find(x=>x.id===id);return title(e.from)+' → '+title(e.to)+' · '+e.label;};
    const selected=graph.connections.find(e=>e.id===edgeId);
    const from=setOptions(regionIds().filter(x=>imageAligned(region(x))),selected?.from??active);
@@ -494,7 +629,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     to.replaceChildren();
     for(const id of ids){const option=el('option',title(id));option.value=id;to.append(option);}
     to.value=ids.includes(prior)?prior:ids[0]??'';
-    newEdge.disabled=!from.value||!to.value||graph.connections.length>=96||!!pending;
+    newEdge.disabled=!from.value||!to.value||graph.connections.length>=96||locked;
    };
    const newEdge=button('이동 연결 추가',()=>{
     if(!imageAligned(region(from.value))||!imageAligned(region(to.value))||from.value===to.value||graph.connections.length>=96)return;
@@ -502,14 +637,14 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     graph.connections.push({id,from:from.value,to:to.value,label:title(to.value).slice(0,100),hit:null,spawn:null});
     edgeId=id;changed();
    });
-   from.disabled=to.disabled=!!pending;from.onchange=refreshTargets;refreshTargets();
+   from.disabled=to.disabled=locked;from.onchange=refreshTargets;refreshTargets();
    addControls.append(label('출발 구역',from),label('도착 구역',to),newEdge);movement.append(addControls);
    const edges=setOptions(graph.connections.map(e=>e.id),edgeId,displayEdge);
    edges.onchange=()=>{edgeId=edges.value;render();};
    movement.append(label('편집할 이동 연결',edges));
    const edge=graph.connections.find(e=>e.id===edgeId);
    if(edge){
-    const edgeLabel=el('input');edgeLabel.value=edge.label;edgeLabel.maxLength=100;edgeLabel.disabled=!!pending;edgeLabel.oninput=()=>{edge.label=edgeLabel.value;changed(false);};
+    const edgeLabel=el('input');edgeLabel.value=edge.label;edgeLabel.maxLength=100;edgeLabel.disabled=locked;edgeLabel.oninput=()=>{edge.label=edgeLabel.value;changed(false);};
     movement.append(label('이동 이름',edgeLabel));
     if(published){
      const pair=el('div',undefined,'map-connection-pair');
@@ -522,10 +657,10 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
        edge[k]=next;changed();
        restoreControl(restoreFocus);
       };
-      const box=preview(panel,region(id),{aria:pickLabel,activate:pending||valid?null:p=>savePosition(k==='hit'?centerMapPortal(p):p,
+      const box=preview(panel,region(id),{aria:pickLabel,activate:locked||valid?null:p=>savePosition(k==='hit'?centerMapPortal(p):p,
        k==='hit'?'출입구 이동 · 드래그 또는 방향키':'도착점 이동 · 드래그 또는 방향키')});
       if(box&&valid){
-       if(!pending)movableMarker(box,edge[k],k,savePosition);
+       if(!locked)movableMarker(box,edge[k],k,savePosition);
        else marker(box,edge[k],k==='hit'?'map-exit selected':'map-spawn',k==='hit'?'출입구':'도착');
       }
       panel.append(el('p',k==='hit'?
@@ -537,19 +672,19 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
      movement.append(pair);
     }
     const del=button('이 연결 삭제',()=>{graph.connections=graph.connections.filter(e=>e.id!==edgeId);edgeId=graph.connections[0]?.id??null;changed();});
-    del.disabled=!!pending;movement.append(del);
+    del.disabled=locked;movement.append(del);
    }else if(published)movement.append(el('p','이동 연결을 추가하면 출발과 도착 이미지를 나란히 편집할 수 있어요.','meta'));
    if(published)renderColliders();
    if(!published){
-    const routes=el('textarea');routes.value=routeText;routes.maxLength=4000;routes.disabled=!!pending;
+    const routes=el('textarea');routes.value=routeText;routes.maxLength=4000;routes.disabled=locked;
     routes.placeholder='대문 → 앞마당 → 돌담길 → 뒤뜰 → 처마길 → 앞마당';
     routes.oninput=()=>{routeText=routes.value;changed(false);};
     const use=button('이 동선으로 연결 목록 만들기',()=>{
      try{graph.connections=parseMapRoutes(routeText,graph.regions);edgeId=graph.connections[0].id;changed();}
      catch{bark.textContent='구역 이름을 목록과 정확히 맞추고 방향은 → 또는 ->로 구분해 주세요.';}
-    });use.disabled=!!pending;
+    });use.disabled=locked;
     side.append(label('동선 붙여넣기 (한 줄에 한 경로)',routes),use);
-    const memo=el('textarea');memo.value=intent;memo.maxLength=2000;memo.disabled=!!pending;memo.oninput=()=>{intent=memo.value;changed(false);};
+    const memo=el('textarea');memo.value=intent;memo.maxLength=2000;memo.disabled=locked;memo.oninput=()=>{intent=memo.value;changed(false);};
     side.append(label('배경 제작 의도와 좌표 힌트 (예: 대문에서 마당으로, 문턱 바로 안쪽에 도착)',memo));}
   }
   const view=el('div',undefined,'map-preview');
@@ -574,23 +709,30 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   const foot=el('div',undefined,onClose?'prop-actions map-modal-footer':'map-row');
   if(onClose){const close=button('닫기',onClose);close.disabled=busy;foot.append(close);}
   if(mode==='edit'){
-   const action=button(busy?'접수 중…':published?'적용 · 정식 수정 요청':'요청 보내기',apply,onClose?'prop-control prop-primary-control':'prop-control');
-   action.disabled=!enabled||!submit||busy||conflict||!!pending;foot.append(action);
+   const action=button(busy?'접수 중…':published?tabTitle(tab)+' 적용':'요청 보내기',apply,'prop-control prop-primary-control');
+   refreshAction=()=>{action.disabled=!enabled||!submit||locked||conflict||Boolean(published&&!dirty(tab));};
+   refreshAction();foot.append(action);
   }
   if(pending&&!published&&maps.some(x=>x.mapId===pending.id))foot.append(button('생성된 맵 열기',()=>{storage.removeItem(key);location.href=navigate({item:pending.id});}));
-  if(pending)foot.append(button('결과 새로고침',()=>location.reload()),button('접수 상태 확인 후 편집 계속',()=>{
+  if(pending)foot.append(button('접수 상태 확인 후 편집 계속',()=>{
    if(!globalThis.confirm('처리 중인 정식 요청은 취소되지 않습니다. 그래도 이 세션의 대기 표시만 지울까요?'))return;pending=null;store();render();
   }));
   if(pending&&!bark.textContent)bark.textContent='정식 요청 접수됨. OPS에서 진행 상태를 확인할 수 있어요.';
-  if(!enabled&&!pending&&!bark.textContent)bark.textContent='정식 맵 요청을 접수할 수 없는 상태입니다.';
+  if(!enabled&&!locked&&!bark.textContent)bark.textContent='정식 맵 요청을 접수할 수 없는 상태입니다.';
   const main=el('div',undefined,mode==='play'?'map-play-layout':published?'map-edit-layout':'map-editor');
   if(mode==='edit'&&(!published||conflict))main.append(side);
   main.append(mode==='edit'&&published?sections:view);
   if(mode==='play')for(const controls of [head,main])controls.onkeydown=ev=>{if(ev.key==='Escape'){ev.preventDefault();closeWarp();}};
   if(onClose)detail.replaceChildren(head,main,bark,foot);
-  else detail.replaceChildren(el('h3','맵 제작 · r'+published.revision),head,main,foot,bark);
+  else{
+   const header=el('header',undefined,'npc-detail-heading prop-detail-heading');
+   const identity=el('div',undefined,'prop-identity'),badge=el('div',undefined,'npc-character-badges');
+   badge.append(el('span','버전 '+published.revision));identity.append(el('h3',published.graph.title),badge);header.append(identity,head);
+   if(mode==='edit'){sections.append(bark,foot);detail.replaceChildren(header,tabs,main);}
+   else detail.replaceChildren(header,main,bark,foot);
+  }
   mountPlay?.();if(focusPlay)play.focus({preventScroll:true});
  }
  render();
- return ()=>!busy;
+ return {canRefresh:()=>!busy,refreshMap:()=>{if(!busy&&pending)render();}};
 }

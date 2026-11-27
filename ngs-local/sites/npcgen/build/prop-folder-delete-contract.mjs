@@ -62,3 +62,16 @@ export function cinematicDeletePayloads(sourceSha256,inventory){
   rows.at(-1).target.path!=='sources/'+sourceSha256+'.png')throw Error('NGS_CINEMATIC_DELETE_INVENTORY_INVALID');
  return rows;
 }
+
+export const mapDeleteRoot='canonical-files/binari/cinematics/maps';
+export function validMapFolderDelete(p){
+ const t=p?.target,e=p?.expected;
+ return exact(p,['schemaVersion','projectId','target','expected'])&&p.schemaVersion===fileDeleteSchema&&p.projectId==='binari'&&
+  exact(t,['root','path','kind'])&&t.root===mapDeleteRoot&&t.kind==='directory'&&officialId(t.path)&&
+  exact(e,['revision','officialRequestId'])&&Number.isSafeInteger(e.revision)&&e.revision>=1&&officialId(e.officialRequestId);
+}
+export function mapFolderDeletePayload({id,expected}){
+ const payload={schemaVersion:fileDeleteSchema,projectId:'binari',target:{root:mapDeleteRoot,path:id,kind:'directory'},expected};
+ if(!validMapFolderDelete(payload))throw Error('NGS_MAP_DELETE_PAYLOAD_INVALID');
+ return payload;
+}

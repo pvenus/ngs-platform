@@ -27,6 +27,6 @@ export async function mapWorkspaceRead({query,openProject,authorize}){
  if(listing.length>4096)throw replicaUnavailable();
  const maps=[];
  for(let i=0;i<listing.length;i+=12)maps.push(...(await Promise.all(listing.slice(i,i+12).filter(x=>x.kind==='directory'&&officialId(x.name))
-  .map(x=>latest(x.name)))).filter(Boolean).map(({mapId,revision,updatedAt,graph})=>({mapId,revision,updatedAt,title:graph.title})));
+  .map(x=>latest(x.name)))).filter(Boolean).map(({mapId,revision,updatedAt,officialRequestId,graph})=>({mapId,revision,updatedAt,officialRequestId,title:graph.title})));
  return {json:{maps:maps.sort((a,b)=>b.updatedAt-a.updatedAt||a.mapId.localeCompare(b.mapId))}};
 }

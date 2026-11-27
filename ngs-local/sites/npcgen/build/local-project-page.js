@@ -1,5 +1,5 @@
 import {mountMapWorkspace} from './map-workspace-ui.mjs';
-import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,mapFolderDeletePayload} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
@@ -496,9 +496,9 @@ async function loadWorkspace(search){
  let conceptActions=null,motionSubmit;
  const supported=(area,enabled)=>enabled&&(!['audio','production','props','cinematic'].includes(area)||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
- document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':tab==='cinematic'?'장면':tab==='resources'?'배경':'항목';
+ document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':tab==='cinematic'?'장면':tab==='resources'?'배경':tab==='maps'?'맵':'항목';
  document.querySelector('#app').classList.remove('project-home');
- workspace.classList.toggle('npc-folder-workspace',['npcs','props','cinematic','resources'].includes(tab));
+ workspace.classList.toggle('npc-folder-workspace',['npcs','props','cinematic','resources','maps'].includes(tab));
  document.querySelector('#project-home').hidden=true;
  for(const id of ['#project-workspace','#workspace-identity','#workspace-tools'])document.querySelector(id).hidden=false;
  document.querySelector('#workspace-title').textContent=projectId;
@@ -675,7 +675,8 @@ async function loadWorkspace(search){
   // transfer differs. Hosted receives already-published versions from Mac.
   void request('/api/project-folders').then(data=>showHeader(data.projects?.find(row=>row.projectId===projectId))).catch(()=>{});
   if(tab==='maps'){
-   await mountMapWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,enabled:!hosted&&session.mapEnabled===true});
+   const deleteItem=!hosted&&session.mapDeleteEnabled===true&&submit?row=>submitFolderDelete(submit,mapFolderDeletePayload(row)):undefined;
+   await mountMapWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,deleteItem,enabled:!hosted&&session.mapEnabled===true});
    if(!signal.aborted)note('');
    return;
   }

@@ -413,12 +413,16 @@ ul{padding:0;list-style:none}
 @media(max-width:540px){.map-create-dialog{width:calc(100vw - 16px)}}
 
 .map-edit-layout{min-width:0}
-.map-edit-sections{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem;align-items:start}
+.map-tab-panel{display:grid;gap:.75rem;align-items:start;min-width:0}
+.map-tab-panel .map-status:empty{display:none}
+.map-tab-panel .map-row:last-child{margin:0}
+.map-tab-panel .map-field{font-size:.86rem;color:var(--foreground)}
+.map-tab-panel .map-field :is(input:not([type=range]),select,textarea){border:1px solid var(--border);border-radius:7px;padding:7px 9px;background:var(--card);font:inherit}
+.map-tab-panel .map-connection-side>h5{font-family:inherit;font-size:.86rem}
 .map-edit-card,.map-connection-side{min-width:0;padding:.9rem;border:1px solid var(--border);border-radius:10px;display:grid;gap:.65rem}
 .map-edit-card :is(h4,h5,p),.map-connection-side :is(h4,h5,p){margin:0}
 .map-edit-card>button{justify-self:start}.map-edit-card>small{overflow-wrap:anywhere}
 .map-start-thumbnail{width:min(100%,21rem)}
-.map-connection-card{grid-column:1/-1}
 .map-connection-card>.map-row{margin:0;align-items:end}.map-connection-card>.map-row .map-field{flex:1;min-width:min(12rem,100%)}
 .map-connection-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.75rem;align-items:start}
 .map-connection-side fieldset{padding:.5rem;margin:0;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;border:1px solid var(--border);border-radius:8px}
@@ -437,7 +441,7 @@ ul{padding:0;list-style:none}
 .map-resize-sw{left:0;bottom:0;transform:translate(-50%,50%);cursor:nesw-resize}
 .map-resize-se{right:0;bottom:0;transform:translate(50%,50%);cursor:nwse-resize}
 .map-drag-body:focus-visible,.map-resize-handle:focus-visible{outline:2px solid #edaa28;outline-offset:2px}
-@media(max-width:780px){.map-edit-sections,.map-connection-pair{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:780px){.map-connection-pair{grid-template-columns:minmax(0,1fr)}}
 
 .catalog-detail :is(.map-edit-card,.map-connection-side){margin-top:0}
 .map-region-details{min-width:0;padding:.9rem;border:1px solid var(--border);border-radius:10px}
@@ -445,7 +449,6 @@ ul{padding:0;list-style:none}
 .map-region-details>.map-region-card{margin-top:.7rem;border:0;padding:0}
 .map-region-card>h4:first-child{display:none}
 
-.map-collision-card{grid-column:1/-1}
 .map-collision-card>.map-row{margin:0}
 .map-collision-canvas{max-width:58rem;overflow:visible}
 .map-collision-card fieldset{padding:.5rem;margin:0;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;border:1px solid var(--border);border-radius:8px}
