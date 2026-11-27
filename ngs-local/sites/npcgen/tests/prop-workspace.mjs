@@ -152,12 +152,14 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
  const {mountPropWorkspace}=await import('../build/prop-workspace-ui.mjs');
  class Element{
   constructor(tag){
-   this.tag=tag;this.tagName=tag.toUpperCase();this.children=[];this.attributes={};this.events={};this.dataset={};
+   this.tag=tag;this.tagName=tag.toUpperCase();this.children=[];this.attributes={};this.events={};this.dataset={};this.scrollTop=0;
    this.styles={};this.style={setProperty:(key,value)=>{this.styles[key]=value;}};
    this.classList={add:(...names)=>{this.className=[this.className,...names].filter(Boolean).join(' ');}};
   }
   append(...children){for(const child of children)child.parentElement=this;this.children.push(...children);}
   replaceChildren(...children){this.children=[];this.append(...children);}
+  before(...nodes){const parent=this.parentElement;for(const n of nodes)n.parentElement=parent;parent.children.splice(parent.children.indexOf(this),0,...nodes);}
+  getBoundingClientRect(){return {top:0,height:24};}
   setAttribute(key,value){this.attributes[key]=value;}
   addEventListener(key,value){this.events[key]=value;}
   click(){if(!this.disabled)return this.events.click?.({});}
@@ -167,7 +169,8 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   close(){this.open=false;this.events.close?.({});}
  }
  const document={createElement:tag=>new Element(tag),body:new Element('body')};
- const own=Object.getOwnPropertyDescriptor(globalThis,'document');
+ const own=Object.getOwnPropertyDescriptor(globalThis,'document'),stored=Object.getOwnPropertyDescriptor(globalThis,'sessionStorage'),memory=new Map();
+ Object.defineProperty(globalThis,'sessionStorage',{value:{getItem:key=>memory.get(key),setItem:(key,value)=>memory.set(key,value)},configurable:true});
  Object.defineProperty(globalThis,'document',{value:document,configurable:true});
  try{
   const body=await propWorkspaceRead({query:new URLSearchParams({projectId:'binari',propId}),authorize:()=>{},
@@ -176,13 +179,13 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   const walk=(el,keep)=>[...(keep(el)?[el]:[]),...el.children.flatMap(child=>walk(child,keep))];
   async function mount(props={},published=[first,second]){
    const pane=new Element('aside'),items=new Element('ul'),detail=new Element('article'),tools=new Element('span');
-   pane.append(items);
+   const controller=new AbortController();pane.append(items);
    await mountPropWorkspace({items,detail,tools,item:propId,navigate:values=>'/?'+new URLSearchParams(
     {projectId:'binari',catalogArea:'props',...values}),submit:()=>assert.fail('visual navigation must not submit'),
-    actions:['generate','regenerate'],
+    actions:['generate','regenerate'],signal:controller.signal,
     request:async path=>new URL(path,'https://fixture').searchParams.has('propId')
      ?{prop:{...body.json.prop,animations:published}}:{props:[pointer]},...props});
-   return {items,detail,tools};
+   return {items,detail,tools,pane,controller};
   }
   const basic=await mount();
   const row=basic.items.children[0].children[0];
@@ -204,6 +207,23 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   const newMedia={detail:{...body.json.prop.media.detail,width:1536,height:1024},
    pixel:{...body.json.prop.media.pixel,width:307,height:205},
    spirit:{...body.json.prop.media.pixel,width:307,height:205,url:'/api/prop-workspace?asset=spirit'}};
+  const search=walk(basic.pane,x=>x.id==='prop-search')[0];
+  assert.equal(search.type,'search');
+  search.value=pointer.title.normalize('NFD')+' '+propId.toUpperCase();
+  search.events.input();
+  assert.equal(basic.items.children[0].children[0].attributes['aria-current'],'page');
+  search.value='없는프랍';
+  search.events.input();
+  assert.equal(basic.items.children[0].textContent,'검색 결과가 없습니다.');
+  const restored=await mount();
+  const restoredSearch=walk(restored.pane,x=>x.id==='prop-search')[0];
+  assert.equal(restoredSearch.value,'없는프랍');
+  restoredSearch.value='';
+  restoredSearch.events.input();
+  assert.equal(restored.items.children[0].children[0].attributes['aria-current'],'page');
+  basic.controller.abort(); // Removed inputs cannot survive a workspace change.
+  assert.equal(walk(basic.pane,x=>x.id==='prop-search').length,0);
+  memory.clear();
   const vision=await mount({request:async path=>path.includes('propId=')?
    {prop:{...body.json.prop,media:newMedia}}:{props:[pointer]}});
   const visionImages=walk(vision.detail,n=>n.tag==='img');
@@ -320,6 +340,8 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
  }finally{
   if(own)Object.defineProperty(globalThis,'document',own);
   else delete globalThis.document;
+  if(stored)Object.defineProperty(globalThis,'sessionStorage',stored);
+  else delete globalThis.sessionStorage;
  }
 });
 

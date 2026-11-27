@@ -99,6 +99,51 @@ function animationPreview(clip,lane,signal){
  return frame;
 }
 
+function mountPropRoster({items,rows,item,sectionUrl,edit,signal}){
+ const storageKey='ngs:prop-roster:v1:binari',search=node('input',null,'npc-search');
+ search.type='search';search.id='prop-search';search.placeholder='프랍 이름 또는 ID 검색';search.maxLength=120;
+ const label=node('label','프랍 검색','npc-search-label');label.htmlFor=search.id;
+ let saved;
+ try{saved=globalThis.sessionStorage.getItem(storageKey);saved=saved?JSON.parse(saved):null;}catch{}
+ search.value=typeof saved?.query==='string'?saved.query.slice(0,120):'';
+ items.before(label,search);
+ const visible=new Map();
+ const normalize=text=>String(text??'').normalize('NFC').toLocaleLowerCase();
+ const rowTop=row=>row.getBoundingClientRect().top-items.getBoundingClientRect().top+items.scrollTop;
+ function remember(){
+  const top=items.scrollTop;
+  let anchor='',offset=0;
+  for(const [id,row] of visible){
+   const y=rowTop(row);
+   if(y+row.getBoundingClientRect().height>top){anchor=id;offset=top-y;break;}
+  }
+  try{globalThis.sessionStorage.setItem(storageKey,JSON.stringify({query:search.value,top,anchor,offset}));}catch{}
+ }
+ function render(restore){
+  const terms=normalize(search.value).trim().split(/\s+/u).filter(Boolean);
+  visible.clear();
+  const entries=rows.flatMap(row=>{
+   const parts=[normalize(row.title),normalize(row.propId)];
+   if(!terms.every(term=>parts.some(part=>part.includes(term))))return [];
+   const entry=node('li'),link=node('a',null,'request-item npc-roster-entry');
+   link.href=sectionUrl(row.propId);
+   if(item===row.propId)link.setAttribute('aria-current','page');
+   link.append(node('strong',row.title),node('span',row.propId,'meta'));entry.append(link);
+   edit?.decorate(entry,row.propId,row.title,{revision:row.revision,sha256:row.sha256});
+   visible.set(row.propId,entry);return [entry];
+  });
+  items.replaceChildren(...(entries.length?entries:[node('li',terms.length?'검색 결과가 없습니다.':'게시된 프랍이 없습니다.','meta')]));
+  edit?.refresh();
+  const anchor=visible.get(restore?.anchor);
+  items.scrollTop=Math.max(0,anchor?rowTop(anchor)+(Number(restore.offset)||0):Number(restore?.top)||0);
+ }
+ render(saved);
+ search.addEventListener('input',()=>{render();remember();},{signal});
+ items.addEventListener('scroll',remember,{passive:true,signal});
+ globalThis.addEventListener?.('pagehide',remember,{signal});
+ signal.addEventListener('abort',()=>{remember();label.remove();search.remove();},{once:true});
+}
+
 export async function mountPropWorkspace({items,detail,tools,item,propTab,propAnimation,navigate,request,submit,removeAnimations,actions=[],signal,deleteItem}){
  const can=action=>typeof submit==='function'&&actions.includes(action);
  const tab=propTab==='animation'?'animation':'basic';
@@ -117,13 +162,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
  }
  const edit=mountCatalogRosterEdit({items,tools,deleteItem,signal});
  const rows=data.props;
- items.replaceChildren(...rows.map(row=>{
-  const entry=node('li'),link=node('a',null,'request-item npc-roster-entry');
-  link.href=sectionUrl(row.propId);if(item===row.propId)link.setAttribute('aria-current','page');
-  link.append(node('strong',row.title),node('span',row.propId,'meta'));entry.append(link);edit?.decorate(entry,row.propId,row.title,{revision:row.revision,sha256:row.sha256});return entry;
- }));
- edit?.refresh();
- if(rows.length===0)items.append(node('li','게시된 프랍이 없습니다.','meta'));
+ mountPropRoster({items,rows,item,sectionUrl,edit,signal});
  if(!item||!propSlug(item)||!rows.some(row=>row.propId===item)){
   const header=node('header',null,'npc-detail-heading');
   header.append(node('h3','프랍 설계'));

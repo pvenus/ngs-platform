@@ -21,8 +21,11 @@ test('prop preview uses a shared scale on wide and narrow layouts',{skip:!proces
   pixel:{url:'/api/prop-workspace?size=pixel',width:512,height:341,mediaType:'image/png'}}};
  const assert=(condition,error)=>{if(!condition)throw Error(error);};
  try{
- await mountPropWorkspace({items:el('items'),detail:el('detail'),tools:el('tools'),item,
-  navigate:()=>'/test',request:async url=>url.includes('propId=')?{prop}:{props:[prop]}});
+ let controller=new AbortController();
+ const rows=[prop,...Array.from({length:40},(_,i)=>({title:'굿터 촛대 '+i,propId:'candle-v'+i}))];
+ const mount=()=>mountPropWorkspace({items:el('items'),detail:el('detail'),tools:el('tools'),item,signal:controller.signal,
+  navigate:()=>'/test',request:async url=>url.includes('propId=')?{prop}:{props:rows}});
+ await mount();
  const [detail,pixel]=document.querySelectorAll('.prop-preview-pair img');
  assert(detail&&pixel,'both images render');
  const [d,p]=[detail,pixel].map(img=>img.getBoundingClientRect());
@@ -33,6 +36,19 @@ test('prop preview uses a shared scale on wide and narrow layouts',{skip:!proces
  assert(document.querySelector('[data-lane=detail] figcaption').textContent.includes('1536 × 1024 px'),'detail label');
  assert(document.querySelector('[data-lane=pixel] figcaption').textContent.includes('512 × 341 px'),'pixel label');
  assert(p.right<=el('detail').getBoundingClientRect().right+0.2,'no horizontal overflow');
+ const setSearch=value=>{const s=el('prop-search');s.value=value;s.dispatchEvent(new Event('input',{bubbles:true}));};
+ setSearch('촛대 CANDLE');
+ assert(el('items').children.length===40,'roster does not match title and ID');
+ assert(el('detail').querySelector('h3').textContent==='테스트','filter changed selected detail');
+ el('items').scrollTop=180;
+ assert(el('items').scrollTop>0,'fixture does not scroll');
+ const top=el('items').scrollTop;
+ controller.abort();controller=new AbortController();await mount();
+ assert(el('prop-search').value==='촛대 CANDLE'&&Math.abs(el('items').scrollTop-top)<1,'query or scroll lost on remount');
+ setSearch('no such prop');
+ assert(el('items').textContent==='검색 결과가 없습니다.','empty search message');
+ setSearch('');
+ assert(el('items').children.length===41,'clear did not restore the full list');
  el('result').textContent='PASS';
  }catch(e){el('result').textContent=e.message;}
  </script>`;
