@@ -701,13 +701,15 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     chosen.scale=scale.valueAsNumber;changed();
    };
    roster.append(label('표시 모드',visibility));
-   const rotation=el('input');rotation.type='number';rotation.min='0';rotation.max='359';rotation.step='1';
-   rotation.value=mapDecorationRotation(chosen);rotation.disabled=locked;
+   const displayRotation=()=>{const angle=mapDecorationRotation(chosen);return angle>180?angle-360:angle;};
+   const rotation=el('input');rotation.type='number';rotation.min='-180';rotation.max='180';rotation.step='1';
+   rotation.value=displayRotation();rotation.disabled=locked;
    rotation.onchange=()=>{
     const angle=rotation.valueAsNumber;
-    if(!Number.isInteger(angle)||angle<0||angle>359){rotation.value=mapDecorationRotation(chosen);return;}
-    if(angle===mapDecorationRotation(chosen))return;
-    if(angle===0)delete chosen.rotation;else chosen.rotation=angle;
+    if(!Number.isInteger(angle)||angle< -180||angle>180){rotation.value=displayRotation();return;}
+    const canonical=(angle+360)%360;
+    if(canonical===mapDecorationRotation(chosen))return;
+    if(canonical===0)delete chosen.rotation;else chosen.rotation=canonical;
     changed();restoreControl('꾸미기 프랍 회전');
    };
    rotation.setAttribute('aria-label','꾸미기 프랍 회전');
