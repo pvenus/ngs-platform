@@ -1,0 +1,170 @@
+{
+  "schemaVersion": "ngs.puzzle-definition.v1",
+  "entities": [
+    {
+      "role": "bowl",
+      "initial": "altar-empty",
+      "states": [
+        {
+          "id": "altar-empty",
+          "held": false,
+          "payload": "empty"
+        },
+        {
+          "id": "carried-empty",
+          "held": true,
+          "payload": "empty"
+        },
+        {
+          "id": "carried-filled",
+          "held": true,
+          "payload": "filled"
+        },
+        {
+          "id": "altar-filled",
+          "held": false,
+          "payload": "filled"
+        }
+      ]
+    },
+    {
+      "role": "well",
+      "initial": "ready",
+      "states": [
+        {
+          "id": "ready",
+          "held": false,
+          "payload": "ready"
+        }
+      ]
+    },
+    {
+      "role": "altar",
+      "initial": "ready",
+      "states": [
+        {
+          "id": "ready",
+          "held": false,
+          "payload": "ready"
+        }
+      ]
+    },
+    {
+      "role": "lid",
+      "initial": "closed",
+      "states": [
+        {
+          "id": "closed",
+          "held": false,
+          "payload": "closed"
+        },
+        {
+          "id": "open",
+          "held": false,
+          "payload": "open"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "module": "inventory.move.v1",
+      "action": {
+        "kind": "pickup",
+        "target": "bowl",
+        "item": null
+      },
+      "from": {
+        "role": "bowl",
+        "state": "altar-empty"
+      },
+      "to": {
+        "role": "bowl",
+        "state": "carried-empty"
+      },
+      "requires": []
+    },
+    {
+      "module": "switch.v1",
+      "action": {
+        "kind": "activate",
+        "target": "lid",
+        "item": null
+      },
+      "from": {
+        "role": "lid",
+        "state": "closed"
+      },
+      "to": {
+        "role": "lid",
+        "state": "open"
+      },
+      "requires": []
+    },
+    {
+      "module": "prop.interact.v1",
+      "action": {
+        "kind": "drop",
+        "target": "well",
+        "item": "bowl"
+      },
+      "from": {
+        "role": "bowl",
+        "state": "carried-empty"
+      },
+      "to": {
+        "role": "bowl",
+        "state": "carried-filled"
+      },
+      "requires": [
+        {
+          "role": "lid",
+          "state": "open"
+        }
+      ]
+    },
+    {
+      "module": "inventory.move.v1",
+      "action": {
+        "kind": "drop",
+        "target": "altar",
+        "item": "bowl"
+      },
+      "from": {
+        "role": "bowl",
+        "state": "carried-filled"
+      },
+      "to": {
+        "role": "bowl",
+        "state": "altar-filled"
+      },
+      "requires": []
+    }
+  ],
+  "goal": {
+    "role": "bowl",
+    "state": "altar-filled"
+  },
+  "solution": [
+    {
+      "kind": "pickup",
+      "target": "bowl",
+      "item": null
+    },
+    {
+      "kind": "activate",
+      "target": "lid",
+      "item": null
+    },
+    {
+      "kind": "drop",
+      "target": "well",
+      "item": "bowl"
+    },
+    {
+      "kind": "drop",
+      "target": "altar",
+      "item": "bowl"
+    }
+  ]
+}

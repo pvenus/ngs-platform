@@ -18,7 +18,7 @@ export function mapAssemblyAction(type,payload){
 export function validSpaceMapAssemblyCommand(type,payload){
  if(type===fileUpdateType)return validFileUpdate(payload);
  if(mapTypes.includes(type))return validMapRequest(payload,type);
- if(assemblyTypes.includes(type))return validAssemblyRequest(payload,type);
+ if(assemblyTypes.includes(type))return payload?.schemaVersion!=='ngs.assembly-generate.v4'&&validAssemblyRequest(payload,type);
  return type===fileDeleteType&&(validMapFolderDelete(payload)||validAssemblyFolderDelete(payload));
 }
 

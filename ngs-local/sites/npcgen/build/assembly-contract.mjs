@@ -23,9 +23,50 @@ const validManifestation=p=>mapFields(p,['id','type','layout','attachments','bin
  mapFields(p.attachments,[])&&mapFields(p.bindings,['spirit'])&&mapFields(p.bindings.spirit,['propId','revision','sha256'])&&
  propSlug(p.bindings.spirit.propId)&&propRevision(p.bindings.spirit.revision)&&propSha(p.bindings.spirit.sha256)&&
  (!Object.hasOwn(p,'scale')||mapFields(p.scale,['spirit'])&&exactScale(p.scale.spirit));
+const actions=['pickup','drop','activate'],modules=['inventory.move.v1','prop.interact.v1','switch.v1'];
+const label=v=>typeof v==='string'&&v.length>=1&&v.length<=64&&/^[a-z][a-z0-9]*(?:[-._][a-z0-9]+)*$/u.test(v);
+const stateRef=v=>mapFields(v,['role','state'])&&label(v.role)&&label(v.state);
+const action=v=>mapFields(v,['kind','target','item'])&&actions.includes(v.kind)&&label(v.target)&&(v.item===null||label(v.item));
+const waterRules=[
+ ['inventory.move.v1','pickup','bowl',null,'bowl','altar-empty','carried-empty',[]],
+ ['switch.v1','activate','lid',null,'lid','closed','open',[]],
+ ['prop.interact.v1','drop','well','bowl','bowl','carried-empty','carried-filled',[['lid','open']]],
+ ['inventory.move.v1','drop','altar','bowl','bowl','carried-filled','altar-filled',[]],
+];
+const waterRoles={bowl:['altar-empty','carried-empty','carried-filled','altar-filled'],well:['ready'],altar:['ready'],lid:['closed','open']};
+export function validPuzzleDefinition(v){
+ if(!mapFields(v,['schemaVersion','entities','rules','goal','solution'])||v.schemaVersion!=='ngs.puzzle-definition.v1'||
+ !Array.isArray(v.entities)||v.entities.length!==4||!Array.isArray(v.rules)||v.rules.length!==4||
+ !Array.isArray(v.solution)||v.solution.length!==4)return false;
+ const seen=new Set();
+ for(const entity of v.entities){
+  if(!mapFields(entity,['role','initial','states'])||!Object.hasOwn(waterRoles,entity.role)||seen.has(entity.role)||
+     entity.initial!==waterRoles[entity.role][0]||!Array.isArray(entity.states)||entity.states.length!==waterRoles[entity.role].length)return false;
+  const ids=new Set();
+  for(const state of entity.states){
+   if(!mapFields(state,['id','held','payload'])||!waterRoles[entity.role].includes(state.id)||ids.has(state.id)||
+      state.held!==(entity.role==='bowl'&&state.id.startsWith('carried-'))||
+      state.payload!==(entity.role==='bowl'?state.id.split('-')[1]:state.id))return false;
+   ids.add(state.id);
+  }
+  seen.add(entity.role);
+ }
+ const known=v=>stateRef(v)&&Object.hasOwn(waterRoles,v.role)&&waterRoles[v.role].includes(v.state);
+ const knownAction=v=>action(v)&&Object.hasOwn(waterRoles,v.target)&&(v.item===null||Object.hasOwn(waterRoles,v.item));
+ if(!known(v.goal)||v.goal.role!=='bowl'||v.goal.state!=='altar-filled'||!v.solution.every(knownAction))return false;
+ const expected=new Set(waterRules.map(r=>JSON.stringify(r)));
+ for(const r of v.rules){
+  if(!mapFields(r,Object.keys({module:0,action:0,from:0,to:0,requires:0}))||!modules.includes(r.module)||!knownAction(r.action)||
+     !known(r.from)||!known(r.to)||r.from.role!==r.to.role||!Array.isArray(r.requires)||r.requires.length>32||!r.requires.every(known)||
+     !expected.delete(JSON.stringify([r.module,r.action.kind,r.action.target,r.action.item,r.from.role,r.from.state,r.to.state,
+      r.requires.map(c=>[c.role,c.state])])))return false;
+ }
+ return expected.size===0;
+}
 export function validAssemblyPuzzle(p){
  if(p?.type===spiritPuzzleType)return validManifestation(p);
- return mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[]),...(p&&Object.hasOwn(p,'portalConditions')?['portalConditions']:[])])&&
+ return mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[]),...(p&&Object.hasOwn(p,'portalConditions')?['portalConditions']:[]),...(p&&Object.hasOwn(p,'definition')?['definition']:[])])&&
+  (!Object.hasOwn(p,'definition')||validPuzzleDefinition(p.definition))&&
   (!Object.hasOwn(p,'portalConditions')||validPortalConditions(p.portalConditions))&&
   (!Object.hasOwn(p,'scale')||mapFields(p.scale,roleNames)&&roleNames.every(k=>exactScale(p.scale[k])))&&typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&p.type===assemblyPuzzleType&&
   mapFields(p.layout,['altar','well'])&&['altar','well'].every(k=>mapFields(p.layout[k],['regionId','x','y'])&&regionId(p.layout[k].regionId)&&coordinate(p.layout[k],10,90))&&
@@ -39,9 +80,9 @@ export function validAssemblyRequest(p,type){
   const shared=officialId(p.mapId)&&mapText(p.title,100)&&mapText(p.intent,2000);
   if(p.schemaVersion==='ngs.assembly-generate.v1')
    return shared&&mapFields(p,['schemaVersion','projectId','title','mapId','puzzleType','intent'])&&p.puzzleType===assemblyPuzzleType;
-  const v3=p.schemaVersion==='ngs.assembly-generate.v3';
-  return shared&&(v3||p.schemaVersion==='ngs.assembly-generate.v2')&&mapFields(p,['schemaVersion','projectId','title','mapId','intent','puzzles'])&&
-   Array.isArray(p.puzzles)&&p.puzzles.length>=1&&p.puzzles.length<=8&&p.puzzles.every(q=>{
+  const v3=p.schemaVersion==='ngs.assembly-generate.v3', v4=p.schemaVersion==='ngs.assembly-generate.v4';
+  return shared&&(v3||v4||p.schemaVersion==='ngs.assembly-generate.v2')&&mapFields(p,['schemaVersion','projectId','title','mapId','intent','puzzles'])&&
+   Array.isArray(p.puzzles)&&p.puzzles.length>=1&&p.puzzles.length<=(v4?1:8)&&p.puzzles.every(q=>{
     const spirit=v3&&q?.type===spiritPuzzleType;
     return mapFields(q,['id','type','intent',...(spirit?['prop']:[])])&&typeof q.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(q.id)&&
      (spirit?mapFields(q.prop,['propId','revision','sha256'])&&propSlug(q.prop.propId)&&propRevision(q.prop.revision)&&propSha(q.prop.sha256):q.type===assemblyPuzzleType)&&

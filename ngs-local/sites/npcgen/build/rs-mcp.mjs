@@ -24,7 +24,7 @@ import {mapTypes,validMapRequest} from './map-contract.mjs';
 // Bind the assembly v2 multi-puzzle intake to this relay release as well as the shared contract.
 function validateAssemblyRelay(type,payload){
  // Preserve per-role scale metadata; never normalize or discard draft coordinates on relay.
- if(type==='assembly.generate'&&!['ngs.assembly-generate.v1','ngs.assembly-generate.v2','ngs.assembly-generate.v3'].includes(payload?.schemaVersion))return false;
+ if(type==='assembly.generate'&&!['ngs.assembly-generate.v1','ngs.assembly-generate.v2','ngs.assembly-generate.v3','ngs.assembly-generate.v4'].includes(payload?.schemaVersion))return false;
  return validAssemblyRequest(payload,type);
 }
 const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),...mapTypes,...assemblyTypes,fileDeleteType,fileUpdateType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);

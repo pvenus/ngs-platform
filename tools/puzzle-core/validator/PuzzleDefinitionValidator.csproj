@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>disable</ImplicitUsings><NuGetAudit>false</NuGetAudit></PropertyGroup>
+ <ItemGroup>
+   <Compile Include="../../../unity/com.vinus.binari.puzzle-core/Core/*.cs" />
+   <Compile Include="../Water.cs" />
+   <Compile Include="../DefinitionJson.cs" />
+ </ItemGroup>
+</Project>

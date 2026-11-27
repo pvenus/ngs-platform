@@ -64,3 +64,40 @@ export function advancePressMeter(value,{seconds=0,presses=0}={},settings){
     settings.target<=0||settings.gain<=0||settings.decay<0||seconds<0||presses<0)throw Error('INVALID_PUZZLE_METER');
  return Math.min(settings.target,Math.max(0,value-seconds*settings.decay)+presses*settings.gain);
 }
+
+
+// Only an adapter: state, matching, gates, and completion are evaluated by C#.
+let core;
+export async function prepareCsharpWater(definition, ids){
+ if(!globalThis.document?.documentElement?.dataset.puzzleCore)throw Error('PUZZLE_CSHARP_NOT_READY');
+ const base='/puzzle-core/'+document.documentElement.dataset.puzzleCore+'/_framework/dotnet.js';
+ if(!/^\/puzzle-core\/[a-f0-9]{64}\/_framework\/dotnet\.js$/.test(base))throw Error('PUZZLE_CSHARP_INVALID_VERSION');
+ if(!core)core=import(base).then(async({dotnet})=>{
+  const {getAssemblyExports,getConfig}=await dotnet.create();
+  const {Program}=await getAssemblyExports(getConfig().mainAssemblyName);return Program;
+ }).catch(e=>{core=undefined;throw e;});
+ const api=await core, source=JSON.stringify(definition);
+ const roleFor=new Map([[ids.bowl,'bowl'],[ids.well,'well'],[ids.socket,'altar'],[ids.lid,'lid']]);
+ const kinds={pickup:1,drop:2,'meter-success':3};
+ return ()=>{
+  const handle=api.Open(source);
+  const get=id=>id===ids.goal?{state:api.Complete(handle)?'done':'pending'}:
+   roleFor.has(id)?{state:api.StateOf(handle,roleFor.get(id))}:null;
+  function dispatch(e){
+   const kind=kinds[e?.type],target=roleFor.get(e?.target),item=e?.item?roleFor.get(e.item):'';
+   if(!kind||!target||item===undefined)return {ok:false,reason:'not-linked'};
+   const id=e.item??e.target,before=get(id);
+   const result=api.Dispatch(handle,kind,target,item);
+   if(result!=='Accepted'&&result!=='Accepted:complete'){
+    const message=e.target===ids.well&&get(ids.lid).state==='closed'?'우물 뚜껑을 먼저 열어야 해요.':'지금은 이 물건을 사용할 수 없어요.';
+    return {ok:false,reason:result,message};
+   }
+   const after=get(id),changes=before.state===after.state?[]:[{id,before,after}];
+   if(result==='Accepted:complete')changes.push({id:ids.goal,before:{state:'pending'},after:{state:'done'}});
+   const message=e.type==='pickup'?'빈 물그릇을 챙겼어요.':e.type==='meter-success'?'뚜껑이 열렸어요.':
+    result.endsWith(':complete')?'굿상에 물을 올렸어요.':'그릇에 물을 담았어요.';
+   return {ok:true,changes,message};
+  }
+  return {get,dispatch,close:()=>api.Close(handle)};
+ };
+}

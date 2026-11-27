@@ -2,7 +2,7 @@ import {bowlStates,permitsAssemblyPortal,spiritPuzzleType} from './assembly-cont
 import {assemblySpriteBox,applyAssemblySpriteBox,decorationBox,paintDecoration,renderMapDecorations} from './assembly-sprite-layout.mjs';
 import {mapDecorPinKey} from './map-contract.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
-import {createPuzzleRuntime,advancePressMeter} from './puzzle-state-runtime.mjs';
+import {createPuzzleRuntime,advancePressMeter,prepareCsharpWater} from './puzzle-state-runtime.mjs';
 
 export const wellDemoId='binari.ritual-well-water-demo';
 export const wellDemoTitle='굿상에 물 올리기';
@@ -33,6 +33,7 @@ const assembly={
  positions:{altar:{x:23,y:39},well:{x:78,y:39}},
 };
 export const makeWellPuzzle=()=>createPuzzleRuntime({...assembly,rules:wellRules});
+export const prepareWellPuzzle=definition=>definition?prepareCsharpWater(definition,assembly.bindings):Promise.resolve(makeWellPuzzle);
 const meter={target:100,gain:18,decay:16};
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n;};
 const button=(label,cls)=>{const b=el('button',label,cls);b.type='button';return b;};
@@ -85,7 +86,8 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   label.append(jump);if(!useActor)root.append(label);root.append(route);
  }
  root.append(instructions,scene,controls,status);host.append(root);
- let runtime=makeWellPuzzle(),selected=null,held=false,dragged=false,progress=0,lastTick,raf=null,pressing=false;
+ const makeRuntime=rehearsal?.makeRuntime??makeWellPuzzle;
+ let runtime=makeRuntime(),selected=null,held=false,dragged=false,progress=0,lastTick,raf=null,pressing=false;
  const tell=msg=>{status.textContent=msg;};
  function placeNode(node,p){node.style.left=p.x+'%';node.style.top=p.y+'%';}
  // World-sized art and targets share scene-relative coordinates. Their
@@ -225,7 +227,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  cancel.addEventListener('click',cancelMeter,{signal});
  resetButton.addEventListener('click',()=>{
   pressing=false;
-  runtime=makeWellPuzzle();selected=null;held=dragged=false;
+  runtime.close?.();runtime=makeRuntime();selected=null;held=dragged=false;
   tell('제상 위의 빈 물그릇을 챙기세요.');if(actor){actor.setEnabled(true);actor.reset();}else if(rehearsal)showRegion(rehearsal.initialRegion);else render();scene.focus();
  },{signal});
  root.addEventListener('keydown',e=>{
@@ -245,7 +247,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   if(pressing){progress=advancePressMeter(progress,{seconds},meter);gauge.value=progress;raf=requestAnimationFrame(frame);}
  }
  function wake(){if(raf===null){lastTick=undefined;raf=requestAnimationFrame(frame);}}
- signal.addEventListener('abort',()=>{cancelAnimationFrame(raf);root.remove();},{once:true});
+ signal.addEventListener('abort',()=>{runtime.close?.();cancelAnimationFrame(raf);root.remove();},{once:true});
  if(useActor){
   actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:showRegion,onMove:render,
    canTraverse:edge=>permitsAssemblyPortal(rehearsal.portalConditions,edge.id,role=>runtime.get(ids[role])?.state)});

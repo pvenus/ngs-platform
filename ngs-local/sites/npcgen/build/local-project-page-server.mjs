@@ -5,6 +5,7 @@ import {mapTypes,mapPds,mapCapability,validMapRequest} from './map-contract.mjs'
 import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,validNpcFolderDelete,backgroundDeleteRoot,validBackgroundFileDelete,cinematicDeleteRoot,validCinematicFileDelete,cinematicDeletePayloads,mapDeleteRoot,validMapFolderDelete,assemblyDeleteRoot,validAssemblyFolderDelete} from './prop-folder-delete-contract.mjs';
 /** NGS browser app: serve the local replica and enqueue validated requests. */
 import {readFileSync,lstatSync,mkdirSync,realpathSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {createServer,get as loopbackGet} from 'node:http';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
@@ -132,6 +133,29 @@ async function readWorkflowCapability(path,schema){
   return v?.schemaVersion===schema&&v.enabled===true;
  }catch{return false;}
 }
+// The external pack is an ordinary release artifact, never generated request content.
+function openPuzzleCorePack(root){
+ if(typeof root!=='string'||!isAbsolute(root))return null;
+ try{
+  if(realpathSync(root)!==root)return null;
+  const manifestPath=join(root,'manifest.json');
+  if(realpathSync(manifestPath)!==manifestPath||!lstatSync(manifestPath).isFile()||lstatSync(manifestPath).size>16384)return null;
+  const body=readFileSync(manifestPath), manifest=JSON.parse(body);
+  if(manifest.schemaVersion!=='ngs.puzzle-core-pack.v1'||!Array.isArray(manifest.files)||manifest.files.length<1||manifest.files.length>64)return null;
+  const key=createHash('sha256').update(body).digest('hex'), members=new Map();
+  let total=0;
+  for(const {name,sha256} of manifest.files){
+   if(typeof name!=='string'||!/^[-a-zA-Z0-9_.]{1,160}\.(js|json|wasm|dll)$/.test(name)||members.has(name)||!(/^[0-9a-f]{64}$/.test(sha256)))return null;
+   const path=join(root,name),st=lstatSync(path);
+   if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||st.size<1||st.size>6*1024*1024||(total+=st.size)>12*1024*1024)return null;
+   const bytes=readFileSync(path);
+   if(bytes.length!==st.size||createHash('sha256').update(bytes).digest('hex')!==sha256)return null;
+   const type=name.endsWith('.js')?'text/javascript; charset=utf-8':name.endsWith('.json')?'application/json':name.endsWith('.wasm')?'application/wasm':'application/octet-stream';
+   members.set(name,{type,body:bytes});
+  }
+  return members.has('dotnet.js')?{key,members}:null;
+ }catch{return null;}
+}
 const readLocalCinematicReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow','workflow.cinematic-write.v1');
 const readLocalSequenceReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence','workflow.cinematic-sequence-write.v1');
 const readLocalBackgroundAnimationReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence/background-status','workflow.background-animation-write.v1');
@@ -184,10 +208,10 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
   readAssemblyReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(assemblyPds,assemblyCapability):undefined,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
   ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readBackgroundPixelReady:readLocalBackgroundPixelReady,readBackgroundAnimationReady:readLocalBackgroundAnimationReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady,readCinematicDeleteReady:readLocalCinematicDeleteReady,readMapDeleteReady:readLocalMapDeleteReady,readAssemblyDeleteReady:readLocalAssemblyDeleteReady,readCinematicDeleteInventory:readLocalCinematicDeleteInventory}:{}),
-  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',npcBasicPortraitEnabled:env.NGS_NPC_BASIC_PORTRAIT_ENABLED!=='0',npcScopedPortraitEnabled:env.NGS_NPC_SCOPED_PORTRAIT_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
+  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',npcBasicPortraitEnabled:env.NGS_NPC_BASIC_PORTRAIT_ENABLED!=='0',npcScopedPortraitEnabled:env.NGS_NPC_SCOPED_PORTRAIT_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint),localPuzzleCoreRoot:env.NGS_LOCAL_PUZZLE_CORE_ROOT??(isNativeMac(platform,entryPoint)?join(homedir(),'Workspaces','NGS','runtime','puzzle-core-v1'):undefined)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot,localPuzzleCoreRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -232,10 +256,12 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const sourceAssets=new Map([...assets].map(([url,[type,path]])=>[url,{type,body:readFileSync(path)}]));
  sourceAssets.set('/assets/vinus-mark.png',{type:'image/png',body:brandMark(brandMarkPath)});
  const puzzle=openPuzzleBundle(localPuzzleMediaRoot);
+ const puzzleCore=openPuzzleCorePack(localPuzzleCoreRoot);
  const flags=[
   ...(audioWorkspaceEnabled===true?['data-audio-workspace="enabled"']:[]),
   ...(puzzle?['data-puzzle-workspace="enabled"']:[]),
   'data-well-puzzle-demo="enabled"',
+  ...(puzzleCore?['data-puzzle-core="'+puzzleCore.key+'"']:[]),
  ];
  if(flags.length){
   const page=sourceAssets.get('/');
@@ -258,6 +284,20 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
    if(!req.url?.startsWith('/'))throw failure('NOT_FOUND',404);
    const url=new URL(req.url,origin);
    if(url.origin!==origin)throw failure('NOT_FOUND',404);
+   if(url.pathname==='/'&&puzzleCore)res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; img-src 'self' blob:");
+   if(url.pathname.startsWith('/puzzle-core/')){
+    if(!puzzleCore||req.url!==url.pathname||!['GET','HEAD'].includes(req.method))throw failure('NOT_FOUND',404);
+    if(req.headers['sec-fetch-site']&&!['same-origin','none'].includes(req.headers['sec-fetch-site']))throw failure('LOCAL_IPV4_LOOPBACK_ORIGIN_REQUIRED',403);
+    const session=auth.read(req);
+    if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
+    projectPermission(session.principal,'binari',undefined,false);
+    const prefix='/puzzle-core/'+puzzleCore.key+'/_framework/';
+    const member=url.pathname.startsWith(prefix)&&puzzleCore.members.get(url.pathname.slice(prefix.length));
+    if(!member)throw failure('NOT_FOUND',404);
+    res.setHeader('Content-Type',member.type);res.setHeader('Content-Length',String(member.body.length));
+    return res.end(req.method==='HEAD'?undefined:member.body);
+   }
    if(url.pathname.startsWith(puzzlePrefix)){
     if(!puzzleAssets||req.url!==url.pathname)throw failure('NOT_FOUND',404);
     if(req.method!=='GET'&&req.method!=='HEAD')throw failure('METHOD_NOT_ALLOWED',405);
@@ -318,6 +358,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(assemblyTypes.includes(command.requestType)){
      if(!await activeAssembly())throw failure('ASSEMBLY_WORKFLOW_UNAVAILABLE',404);
      const p=command.payload;
+     if(p?.schemaVersion==='ngs.assembly-generate.v4'&&!puzzleCore)throw failure('PUZZLE_CSHARP_NOT_READY',503);
      if(!validAssemblyRequest(p,command.requestType))throw failure('NGS_ASSEMBLY_PAYLOAD_INVALID',400);
      const q=new URLSearchParams({projectId:p.projectId});
      if(command.requestType==='assembly.update'){

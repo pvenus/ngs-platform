@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Binari C# puzzle browser replay</title>
+<pre id="result">running</pre>
+<script type="module">
+const out = document.querySelector('#result');
+try {
+ const {dotnet} = await import('./_framework/dotnet.js');
+ const {getAssemblyExports, getConfig} = await dotnet.create();
+ const {Program} = await getAssemblyExports(getConfig().mainAssemblyName);
+ const definition = await fetch('./water.json').then(r => r.text());
+ const first=Program.Open(definition), second=Program.Open(definition);
+ const eq = (a,b) => { if(a!==b) throw Error(a+' != '+b); };
+ eq(Program.StateOf(first,'bowl'),'altar-empty');
+ eq(Program.Dispatch(first,1,'bowl',''),'Accepted');
+ eq(Program.Dispatch(first,2,'well','bowl'),'Conditions');
+ eq(Program.Dispatch(first,3,'lid',''),'Accepted');
+ eq(Program.Dispatch(first,2,'well','bowl'),'Accepted');
+ eq(Program.Dispatch(first,2,'altar','bowl'),'Accepted:complete');
+ eq(Program.Dispatch(first,2,'altar','bowl'),'Conditions');
+ eq(Program.StateOf(second,'bowl'),'altar-empty');
+ Program.Close(first);Program.Close(second);
+ out.textContent = 'C# browser WASM water replay passed';
+} catch(e) { out.textContent='FAIL: '+String(e.stack??e); }
+</script>

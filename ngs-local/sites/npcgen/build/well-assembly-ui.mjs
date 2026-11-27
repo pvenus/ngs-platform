@@ -3,7 +3,7 @@ import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,de
 import {assemblyReachable,bowlStates,validPortalConditions} from './assembly-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {validMapState} from './map-contract.mjs';
-import {wellDemoId,wellDemoTitle,wellAssemblySlots,mountWellPuzzleDemo,spiritDemoId,spiritDemoTitle,mountSpiritManifestation} from './well-puzzle-demo.mjs';
+import {wellDemoId,wellDemoTitle,wellAssemblySlots,mountWellPuzzleDemo,spiritDemoId,spiritDemoTitle,mountSpiritManifestation,prepareWellPuzzle} from './well-puzzle-demo.mjs';
 
 const slots=Object.entries(wellAssemblySlots),spiritSlots=[['spirit','영물']],allSlots=[...slots,...spiritSlots];
 const usesSpirit=p=>p?.type===spiritDemoId;
@@ -537,7 +537,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
     setStatus('영물 현현 테스트 중이에요.');return;
    }
    const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned,portalConditions:instance.portalConditions});
-   rehearsal.decorArt=decorArt;
+   rehearsal.decorArt=decorArt;rehearsal.makeRuntime=await prepareWellPuzzle(instance.definition);if(signal.aborted||ticket!==generation)return;
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal});stop.hidden=false;
    setStatus('테스트 중이에요. WASD로 움직이고, 표시된 포털 영역에 걸어 들어가면 이동해요.');
    stage.querySelector('.well-demo-scene')?.focus();
@@ -550,6 +550,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(selected&&(!Object.values(layout()).every(viewPoint)||!Object.values(attachments()).every(offsetOk)||!Object.values(scale()).every(exactScale))){setStatus('선택한 퍼즐의 좌표 범위를 확인하세요.');return;}
   snapshotSelected();
   const puzzles=instances.map(p=>({id:p.id,type:p.type,layout:p.layout,attachments:p.attachments,...(p.scale?{scale:p.scale}:{}),
+   ...(p.definition?{definition:p.definition}:{}),
    ...(p.portalConditions?.length?{portalConditions:p.portalConditions}:{}),
    bindings:Object.fromEntries(slotsFor(p).map(([role])=>{
     const row=p.pinned?.[role]??props.find(x=>x.propId===p.bindings[role]);
@@ -601,7 +602,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
     setStatus('게시 리비전 '+published.revision+'로 플레이 중이에요.');return;
    }
    const config=buildWellRehearsal({map:latest,backgrounds:art,props,layout:original.layout,attachments:original.attachments,scale:original.scale,bindings:Object.fromEntries(Object.entries(original.bindings).map(([k,v])=>[k,v.propId])),pins:original.bindings,media,portalConditions:original.portalConditions});
-   config.manifestations=revealConfigs;
+   config.manifestations=revealConfigs;config.makeRuntime=await prepareWellPuzzle(original.definition);if(signal.aborted)return;
    config.decorArt=decorArt;config.formal=true;config.onPropChanged=change=>{
     const event={type:'prop.changed',assemblyId:published.assemblyId,presetId:original.id,asset:original.bindings[change.role],...change};
     detail.dispatchEvent(new CustomEvent('ngs:prop-changed',{detail:event,bubbles:true}));
@@ -613,7 +614,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal:config});stop.hidden=false;
    setStatus('게시 리비전 '+published.revision+'로 플레이 중이에요.');
    stage.querySelector('.well-demo-scene')?.focus();
-  }catch(e){if(!signal.aborted)setStatus(e.message==='ASSEMBLY_PROP_PIN_INACTIVE'?'연결된 프랍의 게시 버전이 바뀌었어요. 현재 버전을 다시 연결하고 적용해 주세요.':'게시본의 맵과 프랍을 읽지 못했어요.');}
+  }catch(e){if(!signal.aborted)setStatus(e.message==='ASSEMBLY_PROP_PIN_INACTIVE'?'연결된 프랍의 게시 버전이 바뀌었어요. 현재 버전을 다시 연결하고 적용해 주세요.':e.message.includes('PUZZLE_CSHARP')?'공용 C# 코어를 불러올 수 없는 환경이라 이 검증 퍼즐을 실행하지 않았어요.':'게시본의 맵과 프랍을 읽지 못했어요.');}
   finally{if(!signal.aborted){busy=false;refresh();}}
  },{signal});
  signal.addEventListener('abort',()=>{if(removeDialog.open)removeDialog.close();cancelDrag();stopPlay();},{once:true});

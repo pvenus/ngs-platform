@@ -44,6 +44,8 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
    intent.maxLength=2000;intent.rows=3;intent.placeholder='배치 의도가 있으면 남겨 주세요.';
    for(const row of maps){const o=el('option',row.title);o.value=row.mapId;map.append(o);}
    const puzzleFields=el('div',null,'assembly-request-puzzles'),newPuzzle=el('button','퍼즐 추가','prop-control');newPuzzle.type='button';
+   const proof=el('input');proof.type='checkbox';
+   const proofChoice=document.documentElement.dataset.puzzleCore?field('공용 C# 코어 검증 · 물 올리기 하나',proof):null;
    const entries=[];let props=null,catalogJob=null;
    const loadProps=()=>catalogJob??=request('/api/prop-workspace?'+q).then(v=>{
     if(!Array.isArray(v.props))throw Error('ASSEMBLY_PROP_CATALOG_MISSING');
@@ -87,7 +89,7 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
    const send=el('button','정식 생성 요청','prop-control'),close=el('button','취소','prop-control'),actions=el('div',null,'prop-actions');
    close.type='button';send.type='submit';actions.append(send,close);
    const heading=el('h3','조립 생성');heading.id='assembly-create-'+crypto.randomUUID();dialog.setAttribute('aria-labelledby',heading.id);
-   form.append(field('조립 이름',title),field('맵',map),field('통합 요청 사항',intent),puzzleFields,newPuzzle,actions,error);
+   form.append(field('조립 이름',title),field('맵',map),field('통합 요청 사항',intent),...(proofChoice?[proofChoice]:[]),puzzleFields,newPuzzle,actions,error);
    dialog.append(heading,form);detail.append(dialog);dialog.showModal();title.focus();
    dialog.addEventListener('close',()=>{dialog.remove();if(!signal.aborted)create.focus();},{once:true});
    close.addEventListener('click',()=>dialog.close(),{signal});
@@ -100,9 +102,9 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
      const row=type.value===spiritPuzzleType&&props?.find(p=>p.propId===art.value);
      return {id,type:type.value,intent:note.value.trim(),...(row?{prop:pin(row)}:{})};
     });
-    const payload={schemaVersion:generateSpirit?'ngs.assembly-generate.v3':'ngs.assembly-generate.v2',projectId,title:title.value.trim(),mapId:map.value,
+    const payload={schemaVersion:proof.checked?'ngs.assembly-generate.v4':generateSpirit?'ngs.assembly-generate.v3':'ngs.assembly-generate.v2',projectId,title:title.value.trim(),mapId:map.value,
      intent:intent.value.trim()||'선택한 맵에서 퍼즐별 필수 프랍을 연결해 플레이 가능한 배치를 구성해 주세요.',puzzles:selected};
-    if(!validAssemblyRequest(payload,'assembly.generate')){error.textContent='조립 이름과 맵, 영물 퍼즐마다 사용할 프랍을 선택하세요.';return;}
+    if(!validAssemblyRequest(payload,'assembly.generate')){error.textContent=proof.checked?'C# 검증 요청에는 물 올리기 퍼즐 하나와 조립 이름, 맵이 필요해요.':'조립 이름과 맵, 영물 퍼즐마다 사용할 프랍을 선택하세요.';return;}
     const body=JSON.stringify(payload);if(last?.body!==body)last={body,key:crypto.randomUUID()};
     send.disabled=close.disabled=true;
     try{
