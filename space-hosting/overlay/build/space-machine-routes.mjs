@@ -27,6 +27,13 @@ const postJSON=req=>/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.hea
 const utf8=new TextEncoder();
 const hex=buffer=>Array.from(new Uint8Array(buffer),v=>v.toString(16).padStart(2,'0')).join('');
 const hash=async v=>hex(await crypto.subtle.digest('SHA-256',utf8.encode(v)));
+// Called only after Sites admits the signed-in user. The private team roster
+// affects workspace access, not Site ownership or the master-concept grant.
+export async function spaceWorkspacePrincipal(user,editorHashes,legacy){
+ const email=typeof user?.email==='string'&&user.email.length<=320&&user.email.trim().toLowerCase();
+ if(email&&Array.isArray(editorHashes)&&editorHashes.includes(await hash(email)))return {projectId:'binari',role:'editor'};
+ return legacy(user);
+}
 // The optional exception is available only on the project queue and only when
 // the server's existing roster explicitly reports no participant.
 export async function authorizeSpaceQueueWrite(user,participant,extraEmailSha256){
