@@ -447,7 +447,7 @@ async function load(){
 }
 
 const areas=[
- ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',false],
+ ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',document.documentElement?.dataset.wellPuzzleDemo==='enabled'],
  ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',['puzzleWorkspace','wellPuzzleDemo'].some(key=>document.documentElement?.dataset[key]==='enabled')],
  ['cinematic','시네마틱 영상',true],['resources','배경 설계',true],['maps','맵 제작',true],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
 ];
@@ -494,7 +494,7 @@ async function loadWorkspace(search){
  const listToolbar=document.querySelector('#concept-category-tools');
  listToolbar.replaceChildren();listToolbar.hidden=true;
  let conceptActions=null,motionSubmit;
- const supported=(area,enabled)=>enabled&&(!['audio','production','props','cinematic'].includes(area)||projectId==='binari');
+ const supported=(area,enabled)=>enabled&&(!['audio','production','assembly','props','cinematic'].includes(area)||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
  document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':tab==='cinematic'?'장면':tab==='resources'?'배경':tab==='maps'?'맵':'항목';
  document.querySelector('#app').classList.remove('project-home');
@@ -715,6 +715,13 @@ async function loadWorkspace(search){
    const deleteItem=!hosted&&session.propFolderDeleteEnabled===true&&submit?
     row=>submitFolderDelete(submit,propFolderDeletePayload(row)):undefined;
    await mountPropWorkspace({items,detail,tools:listToolbar,item,propTab:search.get('propTab'),propAnimation:search.get('propAnimation'),navigate:next,request,submit,removeAnimations,deleteItem,actions:session.propActions??[],signal});
+   if(!signal.aborted)note('');
+   return;
+  }
+  if(tab==='assembly'){
+   if(hosted)return;
+   const {mountWellAssembly}=await import('./well-assembly-ui.mjs');
+   if(!signal.aborted)await mountWellAssembly({items,detail,request,projectId,signal});
    if(!signal.aborted)note('');
    return;
   }

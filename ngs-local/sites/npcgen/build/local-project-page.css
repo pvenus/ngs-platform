@@ -494,3 +494,24 @@ ul{padding:0;list-style:none}
 .well-demo-meter button{font-size:.7rem;padding:.2rem .3rem}.well-demo-meter button + button{margin-left:.18rem}
 
 .well-demo-target[aria-pressed=true]{outline:3px solid #fff0ba;outline-offset:3px}
+
+.well-assembly-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:.5rem .85rem;margin-block:.6rem}
+.well-assembly-grid select,.well-assembly-grid input{width:100%;min-width:0;box-sizing:border-box}
+.well-assembly-grid fieldset{min-width:0;border:1px solid #cbd9ca;border-radius:8px}
+.well-demo-map{aspect-ratio:1.5;min-height:0;background:#323d35}
+.well-demo-map:before,.well-demo-map:after{display:none}
+.well-demo-map-bg{position:absolute;inset:0;z-index:-1;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;pointer-events:none}
+.well-demo-route{display:flex;gap:.4rem;flex-wrap:wrap;margin-block:.5rem}
+.well-demo label select{margin-left:.5rem;max-width:100%}
+.well-demo-station[hidden],.well-demo-sprite[hidden]{display:none}
+.well-demo-target.well-demo-has-art{background:#25332bc2;border-width:1px;border-radius:8px;box-shadow:none;padding:.2rem}
+.well-demo-has-art:before{display:none}
+.well-demo-sprite-stack{position:relative;width:min(110px,100%);height:64px;pointer-events:none}
+.well-demo-sprite{display:block;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;pointer-events:none}
+.well-demo-sprite-bowl,.well-demo-sprite-lid{position:absolute;inset:0;margin:auto;width:55%;height:58%;object-fit:contain}
+.well-demo-sprite-bowl{top:-35%}
+.well-demo-item .well-demo-sprite{position:static;width:34px;height:22px;display:inline-block;margin-right:.27rem;vertical-align:middle}
+.well-demo-item[data-state=filled]{border-color:#44818a;background:#dbf3f6}
+
+.well-demo-map .well-demo-meter{position:absolute;top:100%;z-index:2}
+.well-demo-map .well-demo-well:has(.well-demo-meter:not([hidden])){z-index:2}

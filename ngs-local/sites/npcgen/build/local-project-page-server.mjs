@@ -43,7 +43,7 @@ const assets=new Map([
  ['/cinematic-sequence-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-sequence-contract.mjs',import.meta.url)]],
  ['/cinematic-timeline.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-timeline.mjs',import.meta.url)]],
  ...['map-contract.mjs','map-workspace-ui.mjs','map-warp.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
- ...['puzzle-state-runtime.mjs','well-puzzle-demo.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
+ ...['puzzle-state-runtime.mjs','well-puzzle-demo.mjs','well-assembly-ui.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
  ['/background-playback.mjs',['text/javascript; charset=utf-8',new URL('./background-playback.mjs',import.meta.url)]],
  ['/cinematic-player.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-player.mjs',import.meta.url)]],
  ['/cinematic-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-contract.mjs',import.meta.url)]],
