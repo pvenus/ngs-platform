@@ -102,15 +102,22 @@ export async function mountWellAssembly({items,detail,request,projectId,signal})
  const actions=el('div',null,'prop-actions');actions.append(play,stop);
  const shell=el('div',null,'well-assembly-shell'), boardSide=el('section'), sidebar=el('aside',null,'well-assembly-sidebar');
  const list=el('ul',null,'well-assembly-list'),add=control('퍼즐 추가'),inspector=el('section',null,'well-assembly-inspector');
- const inspectorTitle=el('h4'),fine=el('details');fine.append(el('summary','좌표 미세 조정'),placement);
+ const inspectorTitle=el('h4'),fine=el('details'),remove=control('퍼즐 삭제');
+ remove.classList.add('prop-animation-delete','well-assembly-remove');
+ const removeDialog=el('dialog',null,'prop-workspace-dialog well-assembly-remove-dialog');
+ const removeTitle=el('h3','조립에서 퍼즐 삭제'),removeBody=el('p'),cancelRemove=control('취소'),confirmRemove=control('삭제');
+ removeTitle.id='well-assembly-remove-'+crypto.randomUUID();removeDialog.setAttribute('aria-labelledby',removeTitle.id);
+ confirmRemove.classList.add('prop-animation-delete');
+ const removeActions=el('div',null,'prop-actions');removeActions.append(cancelRemove,confirmRemove);
+ removeDialog.append(removeTitle,removeBody,removeActions);fine.append(el('summary','좌표 미세 조정'),placement);
  boardSide.append(el('h4','맵 전체'),boardNotice,overview);
  sidebar.append(el('h4','퍼즐 목록'),field('추가할 퍼즐',puzzle),add,list,inspector);
- inspector.append(inspectorTitle,bindingFields,fine,actions);inspector.hidden=true;
+ inspector.append(inspectorTitle,bindingFields,fine,actions,remove);inspector.hidden=true;
  shell.append(boardSide,sidebar);
- card.append(head,note,inputs,shell,feedback,stage);detail.replaceChildren(card);
+ card.append(head,note,inputs,shell,feedback,stage,removeDialog);detail.replaceChildren(card);
  let drafts,previous;try{drafts=JSON.parse(sessionStorage.getItem(stateKey+projectId)??'null');previous=JSON.parse(sessionStorage.getItem('ngs:well-rehearsal:v1:'+projectId)??'null');}catch{}
  if(!drafts||typeof drafts!=='object'||Array.isArray(drafts))drafts={};
- let map,run,generation=0,busy=false,instances=[],selected=null;
+ let map,run,generation=0,busy=false,instances=[],selected=null,removing=null;
  const overlays=new Map(),pins=new Map(),artCache=new Map();let dragging=null;
  const lastMap=(()=>{try{return sessionStorage.getItem(stateKey+projectId+':active');}catch{return null;}})();
  mapSelect.append(option('','맵 선택'),...maps.map(x=>option(x.mapId,x.title)));
@@ -173,8 +180,29 @@ export async function mountWellAssembly({items,detail,request,projectId,signal})
   const preset=newPreset();instances.push(preset);renderPins();showList();remember();
   setStatus('빈 퍼즐을 추가했어요. 목록이나 맵의 프랍 자리를 눌러 수정하세요.');
  },{signal});
+ remove.addEventListener('click',()=>{
+  if(busy||!map||!selected||removeDialog.open)return;
+  removing={mapId:map.mapId,preset:selected};
+  removeBody.textContent='‘'+presetName(selected)+'’의 배치와 프랍 연결만 지워요. 원본 맵과 프랍은 그대로예요.';
+  removeDialog.showModal();cancelRemove.focus();
+ },{signal});
+ cancelRemove.addEventListener('click',()=>removeDialog.close(),{signal});
+ removeDialog.addEventListener('close',()=>{
+  if(removing&&selected===removing.preset&&!inspector.hidden)remove.focus();
+  removing=null;
+ },{signal});
+ confirmRemove.addEventListener('click',()=>{
+  const target=removing;
+  if(!target||busy||target.mapId!==map?.mapId||target.preset!==selected||!instances.includes(target.preset))return;
+  const name=presetName(target.preset);
+  stopPlay();cancelDrag();
+  instances=instances.filter(preset=>preset!==target.preset);
+  selected=null;removing=null;inspector.hidden=true;removeDialog.close();
+  renderPins();showList();remember();refresh();add.focus();
+  setStatus('‘'+name+'’의 조립 배치를 삭제했어요.');
+ },{signal});
  function ready(){return map&&selected&&Object.values(bindings()).every(Boolean)&&Object.values(layout()).every(viewPoint)&&Object.values(attachments()).every(offsetOk);}
- function refresh(){play.disabled=Boolean(busy||!ready());add.disabled=busy||!map;}
+ function refresh(){play.disabled=Boolean(busy||!ready());add.disabled=busy||!map;remove.disabled=busy||!selected;}
  function stopPlay(){run?.abort();run=null;stop.hidden=true;stage.replaceChildren();}
  function movePin(preset,role){
   const pin=pins.get(preset.id+':'+role);
@@ -319,6 +347,6 @@ export async function mountWellAssembly({items,detail,request,projectId,signal})
   }catch{if(!signal.aborted&&ticket===generation)setStatus('맵 이미지나 선택한 프랍 버전을 읽지 못했어요. 새로고침 후 다시 연결해 주세요.');}
   finally{if(!signal.aborted&&ticket===generation){busy=false;refresh();}}
  },{signal});
- signal.addEventListener('abort',()=>{cancelDrag();stopPlay();},{once:true});
+ signal.addEventListener('abort',()=>{if(removeDialog.open)removeDialog.close();cancelDrag();stopPlay();},{once:true});
  await readMap();
 }

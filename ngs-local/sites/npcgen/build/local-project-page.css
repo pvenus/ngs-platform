@@ -537,3 +537,4 @@ ul{padding:0;list-style:none}
 .well-assembly-ghost{position:fixed;z-index:999;pointer-events:none;transform:translate(10px,12px);padding:.2rem .45rem;background:#344b41;color:#fff4d6;border-radius:5px;font-size:.76rem}
 @media(max-width:900px){.well-assembly-shell{grid-template-columns:minmax(0,1fr)}.well-assembly-board{grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr))}}
 .well-assembly-pin.unbound{background:#263b3680;border-style:dashed}
+.well-assembly-remove{margin-top:.65rem}
