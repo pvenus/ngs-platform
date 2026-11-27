@@ -715,6 +715,14 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    rotation.setAttribute('aria-label','꾸미기 프랍 회전');
    const sizeField=el('div',undefined,'map-decoration-size');
    sizeField.append(label('크기 (%)',scale),label('회전 (°)',rotation));decoration.append(sizeField);
+   const flips=el('div',undefined,'map-decoration-flips');
+   for(const [key,caption] of [['flipX','좌우 반전'],['flipY','상하 반전']]){
+    const flip=el('input');flip.type='checkbox';flip.checked=chosen[key]===true;flip.disabled=locked;
+    flip.setAttribute('aria-label',caption);
+    flip.onchange=()=>{if(flip.checked)chosen[key]=true;else delete chosen[key];changed();restoreControl(caption);};
+    const control=el('label',undefined,'map-decoration-flip');control.append(flip,el('span',caption));flips.append(control);
+   }
+   decoration.append(flips);
   }
   function createDecorationPrompt(){
    const prompt=card('4. 꾸미기','map-decoration-card');

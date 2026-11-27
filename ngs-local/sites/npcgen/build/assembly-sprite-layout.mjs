@@ -31,14 +31,16 @@ export function decorationBox(row,art,region,spirit){
  if((row.visibility!=='both'&&row.visibility!==mode)||!imageSize(region))return null;
  const asset=art?.[mode];
  if(!imageSize(asset))return null;
- return {src:asset.url,x:row.anchor.x/10,y:row.anchor.y/10,width:asset.width*row.scale/region.width,height:asset.height*row.scale/region.height,rotation:mapDecorationRotation(row)};
+ return {src:asset.url,x:row.anchor.x/10,y:row.anchor.y/10,width:asset.width*row.scale/region.width,height:asset.height*row.scale/region.height,rotation:mapDecorationRotation(row),flipX:row.flipX===true,flipY:row.flipY===true};
 }
 export function paintDecoration(node,box){
  applyAssemblySpriteBox(node,box);
  if(box){
   // The image's bottom center remains pinned to its placement marker.
   node.style.transformOrigin='50% 100%';
-  node.style.transform='translate(-50%,-100%) rotate('+box.rotation+'deg)';
+  const translateY=box.flipY?' translateY(-100%)':'';
+  const mirror=box.flipX||box.flipY?' scale('+(box.flipX?-1:1)+','+(box.flipY?-1:1)+')':'';
+  node.style.transform='translate(-50%,-100%) rotate('+box.rotation+'deg)'+translateY+mirror;
   if(node.getAttribute('src')!==box.src)node.src=box.src;
  }
 }

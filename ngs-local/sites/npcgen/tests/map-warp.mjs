@@ -509,10 +509,18 @@ test('decoration roster and map share selection, including hidden props, and del
  assert.equal(byAria('꾸미기 프랍 회전').value,-75);
  assert.equal(sprites()[0].style.transformOrigin,'50% 100%');
  assert.match(sprites()[0].style.transform,/rotate\(285deg\)/);
+ const flip=async (label,checked)=>{const el=byAria(label);el.checked=checked;el.onchange();await settle();};
+ await flip('좌우 반전',true);
+ assert.equal(draft()[1].flipX,true);assert.match(sprites()[0].style.transform,/scale\(-1,1\)/);
+ await flip('상하 반전',true);
+ assert.equal(draft()[1].flipY,true);assert.match(sprites()[0].style.transform,/translateY\(-100%\) scale\(-1,-1\)/);
+ await flip('좌우 반전',false);
+ assert.equal(draft()[1].flipX,undefined);assert.match(sprites()[0].style.transform,/scale\(1,-1\)/);
+ await flip('좌우 반전',true);
  find('선택한 프랍 복제').onclick();await settle();
  const copy=draft().at(-1);
  assert.ok(!decorations.some(r=>r.id===copy.id));
- assert.deepEqual(copy,{...decorations[1],id:copy.id,scale:185,rotation:285,anchor:{x:590,y:690}});
+ assert.deepEqual(copy,{...decorations[1],id:copy.id,scale:185,rotation:285,flipX:true,flipY:true,anchor:{x:590,y:690}});
  assert.equal(byAria('배치 3 · 등불').attrs['aria-pressed'],'true');
  assert.equal(sprites().length,2);
  byAria('꾸미기 서진 능력 미리보기').onclick();await settle();
@@ -520,7 +528,7 @@ test('decoration roster and map share selection, including hidden props, and del
  find('선택한 프랍 배치 삭제').onclick();await settle();
  assert.equal(byAria('배치 3 · 등불'),undefined);
  assert.deepEqual(state.graph.decorations,decorations);
- const expected=[decorations[0],{...decorations[1],scale:185,rotation:285},decorations[2]];
+ const expected=[decorations[0],{...decorations[1],scale:185,rotation:285,flipX:true,flipY:true},decorations[2]];
  assert.deepEqual(draft(),expected);
  assert.equal(posts.length,0);await find('꾸미기 적용').onclick();
  assert.equal(posts.length,1);assert.equal(posts[0].requestType,'file.update');
