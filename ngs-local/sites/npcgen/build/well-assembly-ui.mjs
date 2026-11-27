@@ -20,6 +20,27 @@ const roleParent={table:'altar',well:'well'};
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Math.round(n)));
 const offsetOk=p=>['x','y'].every(k=>Number.isInteger(p?.[k])&&Math.abs(p[k])<=12);
 
+const applyErrors={
+ ASSEMBLY_REVISION_CONFLICT:'다른 편집이 먼저 적용됐어요. 조립본을 다시 열고 확인해 주세요.',
+ ASSEMBLY_LAYOUT_UNREACHABLE:'최신 맵에서 제상과 우물을 왕복할 수 없어요. 이동 연결을 확인해 주세요.',
+ ASSEMBLY_WORKFLOW_UNAVAILABLE:'조립 요청 서비스에 연결되지 않았어요. 배포가 끝난 뒤 다시 시도해 주세요.',
+ NGS_REQUEST_QUEUE_UNAVAILABLE:'정식 요청 큐가 잠시 연결되지 않았어요. 초안은 남아 있어요.',
+ SPACE_MAP_ASSEMBLY_ACTION_DENIED:'현재 계정에는 조립 수정 권한이 없어요.',
+ SPACE_QUEUE_WRITE_NOT_GRANTED:'현재 계정에는 정식 요청을 보낼 권한이 없어요.',
+ ASSEMBLY_NOT_FOUND:'조립본을 더 이상 찾을 수 없어요. 목록을 다시 열어 주세요.',
+ MAP_NOT_FOUND:'연결한 맵을 찾을 수 없어요. 맵 목록에서 확인해 주세요.',
+ NGS_ASSEMBLY_PAYLOAD_INVALID:'프랍 연결이나 배치 값을 다시 확인해 주세요.',
+ FRONTEND_SESSION_CONTEXT_CHANGED:'배포 또는 로그인으로 세션이 바뀌었어요. 새로고침한 뒤 변경 적용을 다시 눌러 주세요.',
+ LOCAL_SESSION_EXPIRED_OR_REVOKED:'세션이 만료됐어요. 새로고침한 뒤 다시 적용해 주세요.',
+ CSRF_INVALID:'세션이 바뀌었어요. 새로고침한 뒤 다시 적용해 주세요.',
+};
+export function assemblyApplyFailure(code,status){
+ if(typeof code==='string'&&Object.hasOwn(applyErrors,code))return applyErrors[code]+' ('+code+')';
+ if(status===401||status===419)return '세션을 다시 열어야 해요. 새로고침한 뒤 변경 적용을 다시 눌러 주세요. (HTTP '+status+')';
+ if(Number.isInteger(status)&&status>=400&&status<600)return '수정 요청이 접수되지 않았어요. 초안은 남아 있어요. (HTTP '+status+')';
+ return '수정 요청의 접수 여부를 확인하지 못했어요. 초안은 남아 있어요.';
+}
+
 function mapRehearsalRegions(map,backgrounds){
  const byBackground=new Map(backgrounds.map(x=>[x.backgroundId,x]));
  return map.graph.regions.map(region=>{
@@ -471,10 +492,10 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    if(!assemblyReachable(current.graph,puzzles)){
     setStatus('최신 맵에서 제상과 우물 사이를 왕복할 수 없어요. 이동 연결을 확인해 주세요.');return;
    }
-   const res=await submit({requestType:'assembly.update',idempotencyKey:lastApply.key,payload}),value=await res.json();
-   if(!isQueuedRequest(res,value))throw Error(value?.error??'QUEUE_FAILED');
+   const res=await submit({requestType:'assembly.update',idempotencyKey:lastApply.key,payload}),value=await res.json().catch(()=>null);
+   if(!isQueuedRequest(res,value)){setStatus(assemblyApplyFailure(value?.error,res.status));return;}
    setStatus('정식 수정 요청을 접수했어요. 게시가 끝나면 이 조립본을 다시 열어 새 리비전을 확인하세요.');
-  }catch(e){setStatus(e.message==='ASSEMBLY_REVISION_CONFLICT'?'다른 편집에서 먼저 변경했어요. 조립본을 다시 열고 확인해 주세요.':'수정 요청을 접수하지 못했어요.');}
+  }catch(e){if(!signal.aborted)setStatus(assemblyApplyFailure(e?.message,e?.status));}
   finally{if(!signal.aborted){busy=false;refresh();}}
  },{signal});
  playPublished.addEventListener('click',async()=>{

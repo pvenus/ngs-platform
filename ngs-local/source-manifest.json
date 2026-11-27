@@ -106,7 +106,7 @@
     "sites/npcgen/build/space-catalog-owner-mcp.mjs": "cc91e596f50f0b2368e069b52a5ba6a0bd8d52b3a395d0f16203b9e4fd60b25b",
     "sites/npcgen/build/space-catalog-worker.mjs": "84306defc2ec73a57cd19977138a65e0babdb4407f7ed0e0779e33955dccd132",
     "sites/npcgen/build/space-machine-mcp.mjs": "c4476d46d01632066b101535cbfaee1f03fd6bdac37f874c4f4a47d6de5ee1df",
-    "sites/npcgen/build/well-assembly-ui.mjs": "9c9f4a3cb9e32ccad4702c66f9054017113749e76c236c2675ae02837a4b03d9",
+    "sites/npcgen/build/well-assembly-ui.mjs": "c85f8bf58cfadeb7161141deb6072c45fdc8e71c8b5c970d6b103ad504ea05e2",
     "sites/npcgen/build/well-puzzle-demo.mjs": "1f8166d26765286b84b89b173dcf03e932d0b94168ff6eba430e6f16cdefa7ff",
     "sites/npcgen/build/workspace-read-registry.mjs": "da783e26034ef73966c7a7110f77b8b86d83ef3338e402cc00423153c050b648",
     "sites/npcgen/build/workspace-read-storage.mjs": "3939889d63eb5b912fe61cd4c719cb5770a1477c9dfd22842eea5d121ef2c9fd",
@@ -159,7 +159,7 @@
     "sites/npcgen/tests/space-catalog-worker.mjs": "05cc4838c39ac921b35bba947a91af24f1940f9a732de61ad901cbae1ed3c417",
     "sites/npcgen/tests/space-machine-mcp.mjs": "cda60731807a74308abb1176a11595b82682bcb877c1722d6a6172311e26a6df",
     "sites/npcgen/tests/space-project-catalog-browser.mjs": "88ae9000f6c323f0eba6879fb5693744b80b1807b6615df3f556f6156d22bba7",
-    "sites/npcgen/tests/well-assembly.mjs": "789263d7a544909e4c88b3cf471e511208e15262f4842567cc0ca3e031e2e182",
+    "sites/npcgen/tests/well-assembly.mjs": "4ac20e3dd7c9a681b42e4210a417e2188f6e6bc1b3043042daacef42300ba832",
     "sites/npcgen/tests/workspace-storage-boundary.mjs": "670e32380fdc50d2d93ed6e369b94fb0f3fb2aff0c0dfc2236196c13af4f012c"
   }
 }

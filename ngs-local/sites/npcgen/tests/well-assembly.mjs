@@ -39,3 +39,13 @@ test('Dragging a base can change zones but a child retains its owner and adjusts
  assert.equal(dragWellPlacement({...args,role:'well',clientY:50}),null);
  assert.deepEqual(f.layout.altar,{regionId:'zone-1',x:40,y:60});
 });
+
+test('assembly apply distinguishes an expired session, stale meta and ambiguous intake',async()=>{
+ const {assemblyApplyFailure}=await import('../build/well-assembly-ui.mjs');
+ assert.match(assemblyApplyFailure('FRONTEND_SESSION_CONTEXT_CHANGED',409),/새로고침/);
+ assert.match(assemblyApplyFailure('ASSEMBLY_REVISION_CONFLICT',409),/다른 편집/);
+ assert.match(assemblyApplyFailure('ASSEMBLY_LAYOUT_UNREACHABLE',400),/왕복/);
+ assert.match(assemblyApplyFailure('OTHER',503),/HTTP 503/);
+ assert.match(assemblyApplyFailure('NETWORK_ERROR'),/접수 여부/);
+ assert.doesNotMatch(assemblyApplyFailure('private backend trace',500),/trace/);
+});
