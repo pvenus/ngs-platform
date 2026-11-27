@@ -253,7 +253,7 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   await modal.children[0].events.submit({preventDefault(){}});
   assert.deepEqual(submissions[0].payload.reference,{propId,revision:pointer.revision,sha256:pointer.sha256});
   assert.equal(submissions[0].payload.propId,'new-bell-prop');
-  assert.equal(submissions[0].payload.presentationProfile,'spirit-v1');
+  assert.equal(submissions[0].payload.presentationProfile,'spirit-v2');
   modalFixture.tools.children[0].click();
   modal=document.body.children[0];
   walk(modal,x=>x.tag==='input')[0].value='unreferenced-prop';
@@ -374,6 +374,7 @@ test('published reference pin is optional, distinct and exact on CREATE only',as
 test('new presentation accepts only the fixed profile and serves three pinned image lanes',async()=>{
  const profile=propPayload('generate',{propId,intent:'테스트 프랍',designContextSha256:pin,motion:'still',presentationProfile:'spirit-v1'});
  assert.ok(validPropPayload(propTypes.generate,profile));
+ assert.ok(validPropPayload(propTypes.generate,{...profile,presentationProfile:'spirit-v2'}));
  assert.ok(!validPropPayload(propTypes.generate,{...profile,presentationProfile:'legacy-custom'}));
  assert.ok(!validPropPayload(propTypes.animation,{...animation,presentationProfile:'spirit-v1'}));
  const large=png(80,80),small=png(16,16),smooth=Buffer.from(small);

@@ -1,6 +1,6 @@
 import {fileUpdateType,validFileUpdate} from './file-update-envelope.mjs';
 import {assemblyTypes,validAssemblyRequest} from './assembly-contract.mjs';
-// The versioned local relay binds the optional spirit-v1 prop generation envelope.
+// Accept the reference-rendered spirit-v2 pipeline as well as frozen spirit-v1 queue rows.
 import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete,validCinematicFileDelete,validMapFolderDelete,validAssemblyFolderDelete} from './prop-folder-delete-contract.mjs';
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
 import {createNgsHealthRelay} from './rs-ops-ngs-health.mjs';
