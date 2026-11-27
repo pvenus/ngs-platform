@@ -6,7 +6,7 @@ const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textCont
 const field=(label,node)=>{const n=el('label',label,'prop-form-field');n.append(node);return n;};
 const keyOf=text=>text.normalize('NFC').trim().toLocaleLowerCase();
 
-export async function mountAssemblyCatalog({items,detail,tools,request,projectId,item,panel,navigate,signal,submit,deleteItem}){
+export async function mountAssemblyCatalog({items,detail,tools,request,projectId,item,panel,navigate,signal,submit,deleteItem,updateEnabled}){
  const q=new URLSearchParams({projectId}),api=assemblyPath+'?'+q;
  const [catalog,{maps}]=await Promise.all([request(api),request('/api/map-workspace?'+q)]);
  let {assemblies}=catalog;
@@ -117,7 +117,7 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
  }
  const body=el('section',null,'npc-tab-panel');body.id='assembly-tab-panel';body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby','assembly-tab-'+active);
  detail.replaceChildren(tabs,info,body);
- if(active==='puzzles')await mountWellAssembly({items,detail:body,request,projectId,signal,published:assembly,submit});
+ if(active==='puzzles')await mountWellAssembly({items,detail:body,request,projectId,signal,published:assembly,submit,updateEnabled});
  else body.append(el('h3','스토리·연출 연결'),el('p','이 탭은 별도 스토리 연결 메타가 들어갈 자리예요. 현재는 퍼즐 배치만 저장할 수 있어요. 앞으로 스토리 페이즈, NPC·대사·연출은 퍼즐과 구역을 ID로 참조해요.','meta'));
 
 }

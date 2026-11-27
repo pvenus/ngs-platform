@@ -1,3 +1,4 @@
+import {bowlStates,permitsAssemblyPortal} from './assembly-contract.mjs';
 import {assemblySpriteBox,applyAssemblySpriteBox} from './assembly-sprite-layout.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
 import {createPuzzleRuntime,advancePressMeter} from './puzzle-state-runtime.mjs';
@@ -7,26 +8,25 @@ export const wellDemoTitle='굿상에 물 올리기';
 export const wellAssemblySlots=Object.freeze({table:'제상',bowl:'물그릇',well:'우물 몸체',lid:'우물 뚜껑'});
 const has=(ref,field,value)=>({ref,field,value});
 const state=(ref,value)=>has(ref,'state',value);
-const place=(ref,value)=>has(ref,'location',value);
 
 // Design knows how to resolve ports, not which background or prop art will be used.
 export const wellRules=[
- {event:'pickup',target:'bowl',require:[place('bowl','socket'),state('bowl','empty')],
-  effects:[place('bowl','inventory')],message:'빈 물그릇을 챙겼어요.'},
+ {event:'pickup',target:'bowl',require:[state('bowl','altar-empty')],
+  effects:[state('bowl','carried-empty')],message:'빈 물그릇을 챙겼어요.'},
  {event:'meter-success',target:'lid',require:[state('lid','closed')],effects:[state('lid','open')],message:'뚜껑이 열렸어요. 인벤토리의 빈 그릇을 우물에 놓으세요.'},
- {event:'drop',target:'well',item:'bowl',require:[place('$item','inventory'),{...state('lid','open'),message:'우물 뚜껑을 먼저 열어야 해요.'},state('$item','empty')],
-  effects:[state('$item','filled')],blocked:'인벤토리의 빈 그릇만 사용할 수 있어요.',message:'그릇에 물을 담았어요. 제상의 빈 자리에 놓으세요.'},
- {event:'drop',target:'socket',item:'bowl',require:[place('$item','inventory'),state('$item','filled'),state('goal','pending')],
-  effects:[place('$item','socket'),state('goal','done')],blocked:'물을 담은 그릇만 올릴 수 있어요.',message:'굿상에 물을 올렸어요. 준비 과업 완료!'},
+ {event:'drop',target:'well',item:'bowl',require:[state('$item','carried-empty'),{...state('lid','open'),message:'우물 뚜껑을 먼저 열어야 해요.'}],
+  effects:[state('$item','carried-filled')],blocked:'인벤토리의 빈 그릇만 사용할 수 있어요.',message:'그릇에 물을 담았어요. 제상의 빈 자리에 놓으세요.'},
+ {event:'drop',target:'socket',item:'bowl',require:[state('$item','carried-filled'),state('goal','pending')],
+  effects:[state('$item','altar-filled'),state('goal','done')],blocked:'물을 담은 그릇만 올릴 수 있어요.',message:'굿상에 물을 올렸어요. 준비 과업 완료!'},
 ];
 const assembly={
  bindings:{bowl:'water-bowl',well:'back-well',lid:'well-lid',socket:'altar-socket',goal:'offering-goal'},
  entities:[
-  {id:'water-bowl',states:['empty','filled'],initial:'empty',location:'socket'},
-  {id:'back-well',states:['ready'],initial:'ready',location:'scene'},
-  {id:'well-lid',states:['closed','open'],initial:'closed',location:'scene'},
-  {id:'altar-socket',states:['ready'],initial:'ready',location:'scene'},
-  {id:'offering-goal',states:['pending','done'],initial:'pending',location:'scene'},
+  {id:'water-bowl',states:bowlStates,initial:'altar-empty'},
+  {id:'back-well',states:['ready'],initial:'ready'},
+  {id:'well-lid',states:['closed','open'],initial:'closed'},
+  {id:'altar-socket',states:['ready'],initial:'ready'},
+  {id:'offering-goal',states:['pending','done'],initial:'pending'},
  ],
  positions:{altar:{x:23,y:39},well:{x:78,y:39}},
 };
@@ -118,7 +118,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  }
  function selectedAction(){
   const bowl=runtime.get(ids.bowl),lid=runtime.get(ids.lid);
-  const canPickup=bowl.location==='socket'&&bowl.state==='empty',canOpen=lid.state==='closed';
+  const canPickup=bowl.state==='altar-empty',canOpen=lid.state==='closed';
   if(useActor){
    if(selected===ids.well&&canOpen&&stationNear('well'))return 'open';
    if(canPickup&&stationNear('bowl'))return 'pickup';
@@ -131,14 +131,15 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  }
  function render(){
   const bowl=runtime.get(ids.bowl),lid=runtime.get(ids.lid),done=runtime.get(ids.goal).state==='done',action=selectedAction();
-  root.dataset.well=lid.state;root.dataset.bowl=bowl.state;root.dataset.complete=String(done);
-  socket.dataset.state=bowl.location==='socket'?bowl.state:'vacant';
-  socketText.textContent=bowl.location!=='socket'?'빈 그릇 자리':bowl.state==='filled'?'물 담긴 그릇':'빈 물그릇';
+  const atAltar=bowl.state.startsWith('altar-'),filled=bowl.state.endsWith('-filled');
+  root.dataset.well=lid.state;root.dataset.bowl=filled?'filled':'empty';root.dataset.complete=String(done);
+  socket.dataset.state=atAltar?(filled?'filled':'empty'):'vacant';
+  socketText.textContent=!atAltar?'빈 그릇 자리':filled?'물 담긴 그릇':'빈 물그릇';
   water.dataset.state=lid.state;wellText.textContent=lid.state==='open'?'열린 우물':'닫힌 뚜껑';
-  carried.hidden=bowl.location!=='inventory';carriedText.textContent=bowl.state==='filled'?'물 담긴 그릇':'빈 물그릇';
-  if(bowlArt)bowlArt.hidden=bowl.location!=='socket'||(worldSized&&points.altar.regionId!==currentRegion);
+  carried.hidden=atAltar;carriedText.textContent=filled?'물 담긴 그릇':'빈 물그릇';
+  if(bowlArt)bowlArt.hidden=!atAltar||(worldSized&&points.altar.regionId!==currentRegion);
   if(lidArt)lidArt.hidden=lid.state==='open'||(worldSized&&points.well.regionId!==currentRegion);
-  carried.dataset.state=bowl.state;carried.setAttribute('aria-pressed',String(held));
+  carried.dataset.state=filled?'filled':'empty';carried.setAttribute('aria-pressed',String(held));
   meterView.hidden=!pressing;
   socket.setAttribute('aria-pressed',String(selected===ids.socket));water.setAttribute('aria-pressed',String(selected===ids.well));
   startButton.disabled=!action||pressing;startButton.textContent=action==='pickup'?'F · 그릇 줍기':action==='open'?'F · 뚜껑 열기':'F · 상호작용 시작';
@@ -151,7 +152,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
     const role=Object.keys(ids).find(role=>ids[role]===change.id);
     if(role==='bowl'||role==='lid'){
      rehearsal?.onPropChanged?.({...change,role,regionId:currentRegion,
-      ...(role==='bowl'&&change.after.location==='socket'?{socket:'altar-socket'}:{})});
+      ...(role==='bowl'&&change.after.state.startsWith('altar-')?{socket:'altar-socket'}:{})});
     }
     if(role==='goal'&&change.after.state==='done')rehearsal?.onCompleted?.();
    }
@@ -213,7 +214,8 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  function wake(){if(raf===null){lastTick=undefined;raf=requestAnimationFrame(frame);}}
  signal.addEventListener('abort',()=>{cancelAnimationFrame(raf);root.remove();},{once:true});
  if(useActor){
-  actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:showRegion,onMove:render});
+  actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:showRegion,onMove:render,
+   canTraverse:edge=>permitsAssemblyPortal(rehearsal.portalConditions,edge.id,role=>runtime.get(ids[role])?.state)});
   showRegion(actor.snapshot().regionId);
  }else if(rehearsal)showRegion(currentRegion);else render();
 }

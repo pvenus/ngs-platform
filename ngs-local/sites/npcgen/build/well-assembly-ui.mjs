@@ -1,10 +1,12 @@
+import {fileUpdateType,fileUpdateSchema,assemblyUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
 import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize} from './assembly-sprite-layout.mjs';
-import {assemblyReachable,validAssemblyRequest} from './assembly-contract.mjs';
+import {assemblyReachable,bowlStates,validPortalConditions} from './assembly-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {validMapState} from './map-contract.mjs';
 import {wellDemoId,wellDemoTitle,wellAssemblySlots,mountWellPuzzleDemo} from './well-puzzle-demo.mjs';
 
 const slots=Object.entries(wellAssemblySlots);
+const stateLabels=['제상의 빈 그릇','들고 있는 빈 그릇','들고 있는 물그릇','제상에 올린 물그릇'];
 const suggestions={table:/^ritual-seal-altar-/,bowl:/(?:water-bowl|ritual-seal-ash-catcher-)/,well:/^ritual-seal-well-v/,lid:/^ritual-seal-well-cover-/};
 const el=(tag,value,cls)=>{const n=document.createElement(tag);if(value)n.textContent=value;if(cls)n.className=cls;return n;};
 const field=(title,input)=>{const row=el('label',title,'prop-form-field');row.append(input);return row;};
@@ -21,6 +23,7 @@ const clamp=(n,min,max)=>Math.min(max,Math.max(min,Math.round(n)));
 const offsetOk=p=>['x','y'].every(k=>Number.isInteger(p?.[k])&&Math.abs(p[k])<=12);
 
 const applyErrors={
+ FILE_UPDATE_REVISION_CONFLICT:'다른 편집이 먼저 적용됐어요. 조립본을 다시 열고 확인해 주세요.',
  ASSEMBLY_REVISION_CONFLICT:'다른 편집이 먼저 적용됐어요. 조립본을 다시 열고 확인해 주세요.',
  ASSEMBLY_LAYOUT_UNREACHABLE:'최신 맵에서 제상과 우물을 왕복할 수 없어요. 이동 연결을 확인해 주세요.',
  ASSEMBLY_WORKFLOW_UNAVAILABLE:'조립 요청 서비스에 연결되지 않았어요. 배포가 끝난 뒤 다시 시도해 주세요.',
@@ -65,7 +68,7 @@ export function dragWellPlacement({role,regionId,clientX,clientY,rect,layout,att
  return base?{layout:{...layout,[base]:{regionId,x:clamp(x,10,90),y:clamp(y,10,90)}},attachments}:null;
 }
 
-export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bindings,media,pins,scale}){
+export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bindings,media,pins,scale,portalConditions}){
  if(!validMapState(map))throw Error('MAP_INVALID');
  if(!['altar','well'].every(key=>viewPoint(layout[key])&&map.graph.regions.some(x=>x.id===layout[key].regionId)))throw Error('PLACEMENT_INVALID');
  if(attachments&&!['bowl','lid'].every(key=>offsetOk(attachments[key])))throw Error('ATTACHMENT_INVALID');
@@ -78,10 +81,10 @@ export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bin
    throw Error('PROP_ART_MISSING_OR_STALE');
   art[role]=result.media.pixel.url;artSizes[role]={width:result.media.pixel.width,height:result.media.pixel.height};
  }
- return {initialRegion:map.graph.startRegionId,regions,connections:map.graph.connections,positions:layout,attachments,scale,art,artSizes,graph:map.graph};
+ return {initialRegion:map.graph.startRegionId,regions,connections:map.graph.connections,positions:layout,attachments,scale,art,artSizes,graph:map.graph,portalConditions};
 }
 
-export async function mountWellAssembly({items,detail,request,projectId,signal,published,submit}){
+export async function mountWellAssembly({items,detail,request,projectId,signal,published,submit,updateEnabled=true}){
  const api=(resource,query={})=>'/api/'+resource+'-workspace?'+new URLSearchParams({projectId,...query});
  const [{maps},{props},{backgrounds}]=await Promise.all(['map','prop','background'].map(name=>request(api(name))));
  if(signal.aborted)return;
@@ -130,6 +133,12 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   const x=number(),y=number();group.append(el('legend',title),coords);
   coords.append(field('가로 오프셋 (%)',x),field('세로 오프셋 (%)',y));offsetInputs[key]={x,y};placement.append(group);
  }
+ const gates=el('fieldset'),gateList=el('ul',null,'well-assembly-list'),gateEdge=el('select'),gateState=el('select');
+ gateState.append(...bowlStates.map((id,i)=>option(id,stateLabels[i])));
+ gateState.value='carried-empty';
+ const gateSet=control('조건 등록');
+ gates.append(el('legend','포털 사용 조건'),el('p','방향별로 지정해요. 조건이 없으면 포털은 항상 사용할 수 있어요.','meta'),
+  field('이동 연결',gateEdge),field('물그릇 상태',gateState),gateSet,gateList);
  const overview=el('div',null,'well-assembly-board'),boardNotice=el('p','제상·우물은 다른 구역으로도 옮길 수 있어요. 그릇과 뚜껑은 연결된 프랍 근처에서 위치만 조정해요.','meta');
  overview.setAttribute('aria-label','맵 전체 배치');
  const stage=el('section'),play=control('테스트 플레이'),stop=control('테스트 종료'),apply=control('변경 적용'),playPublished=control('게시본 플레이');stop.hidden=true;
@@ -152,7 +161,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   const presetTools=el('div',null,'prop-panel-heading');presetTools.append(el('h4','퍼즐 목록'),add);
  add.textContent='+';add.className='npc-one-stop-trigger';add.setAttribute('aria-label','퍼즐 추가');add.title='퍼즐 추가';
  sidebar.append(presetTools,field('추가할 퍼즐',puzzle),field('검색',search),list,inspector);
- inspector.append(inspectorTitle,bindingFields,fine,actions,remove);inspector.hidden=true;
+ inspector.append(inspectorTitle,bindingFields,fine,gates,actions,remove);inspector.hidden=true;
  shell.append(boardSide,sidebar);
  card.append(head,note,inputs);if(published){const buttons=el('div',null,'prop-actions');buttons.append(apply,playPublished);card.append(buttons);}
  card.append(shell,feedback,stage,removeDialog);detail.replaceChildren(card);
@@ -218,6 +227,38 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(term&&!list.children.length)list.append(el('li','검색 결과가 없습니다.','meta'));
  }
  search.addEventListener('input',showList,{signal});
+ const gateLabel=edge=>edge?
+  (map.graph.regions.find(r=>r.id===edge.from)?.name??edge.from)+' → '+(map.graph.regions.find(r=>r.id===edge.to)?.name??edge.to):'삭제된 이동 연결';
+ function renderGates(){
+  const edges=map?.graph.connections??[],prior=gateEdge.value;
+  gateEdge.replaceChildren(option('','이동 연결 선택'),...edges.map(edge=>option(edge.id,gateLabel(edge)+' · '+edge.label)));
+  if(edges.some(edge=>edge.id===prior))gateEdge.value=prior;
+  const choices=selected?.portalConditions??[];
+  const change=()=>{const current=choices.find(row=>row.portalId===gateEdge.value);
+   if(current)gateState.value=current.requiredState;
+   gateSet.textContent=current?'조건 수정':'조건 등록';
+   gateSet.disabled=busy||!selected||!gateEdge.value||!current&&choices.length>=16;
+  };
+  gateEdge.onchange=change;change();
+  gateList.replaceChildren(...choices.map(row=>{
+   const li=el('li'),remove=control('조건 삭제'),edit=control(gateLabel(edges.find(e=>e.id===row.portalId)));
+   li.append(edit,el('small',stateLabels[bowlStates.indexOf(row.requiredState)],'meta'),remove);
+   edit.disabled=!edges.some(e=>e.id===row.portalId);remove.disabled=busy;
+   edit.addEventListener('click',()=>{gateEdge.value=row.portalId;change();gateState.focus();},{signal});
+   remove.addEventListener('click',()=>{
+    if(!selected||busy)return;
+    selected.portalConditions=(selected.portalConditions??[]).filter(c=>c.portalId!==row.portalId);
+    stopPlay();remember();renderGates();
+   },{signal});return li;
+  }));
+ }
+ gateSet.addEventListener('click',()=>{
+  if(!selected||busy||!map.graph.connections.some(e=>e.id===gateEdge.value))return;
+  const entry={portalId:gateEdge.value,propRole:'bowl',requiredState:gateState.value};
+  const next=[...(selected.portalConditions??[]).filter(row=>row.portalId!==entry.portalId),entry];
+  if(!validPortalConditions(next))return;
+  selected.portalConditions=next;stopPlay();remember();renderGates();
+ },{signal});
  function selectPreset(preset,focusRole){
   if(!preset)return;
   if(selected!==preset){stopPlay();selected=preset;}
@@ -235,7 +276,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   }
   for(const [role] of slots)showDimensions(preset,role);
   for(const pin of pins.values())pin.classList.toggle('active',pin.dataset.instance===preset.id);
-  showList();refresh();if(focusRole)propInputs[focusRole].focus({preventScroll:true});
+  showList();renderGates();refresh();if(focusRole)propInputs[focusRole].focus({preventScroll:true});
  }
  list.addEventListener('click',e=>{
   const id=e.target.closest('[data-preset]')?.dataset.preset;
@@ -270,7 +311,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  },{signal});
  function ready(){return map&&selected&&Object.values(bindings()).every(Boolean)&&Object.values(layout()).every(viewPoint)&&Object.values(attachments()).every(offsetOk)&&Object.values(scale()).every(exactScale);}
  function refresh(){play.disabled=Boolean(busy||!ready());add.disabled=busy||!map;remove.disabled=busy||!selected;
-  apply.disabled=busy||!submit||!map;
+  apply.disabled=busy||!submit||!updateEnabled||!map;
   playPublished.disabled=busy||!map||!published?.puzzles.length;
  }
  function stopPlay(){run?.abort();run=null;stop.hidden=true;stage.replaceChildren();}
@@ -464,7 +505,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
     Object.entries(chosen).map(async([role,id])=>[role,(await loadProp(instance,role,id)).prop])));
    if(signal.aborted||ticket!==generation)return;
    if(selected!==instance||JSON.stringify(chosen)!==JSON.stringify(bindings())||JSON.stringify(coords)!==JSON.stringify(layout())||JSON.stringify(offsets)!==JSON.stringify(attachments())||JSON.stringify(sizes)!==JSON.stringify(scale())){setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');return;}
-   const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned});
+   const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned,portalConditions:instance.portalConditions});
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal});stop.hidden=false;
    setStatus('테스트 중이에요. WASD로 움직이고, 표시된 포털 영역에 걸어 들어가면 이동해요.');
    stage.querySelector('.well-demo-scene')?.focus();
@@ -473,16 +514,19 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  },{signal});
  let lastApply;
  apply.addEventListener('click',async()=>{
-  if(!published||!submit||busy||!map)return;
+  if(!published||!submit||!updateEnabled||busy||!map)return;
   if(selected&&(!Object.values(layout()).every(viewPoint)||!Object.values(attachments()).every(offsetOk)||!Object.values(scale()).every(exactScale))){setStatus('선택한 퍼즐의 좌표 범위를 확인하세요.');return;}
   snapshotSelected();
   const puzzles=instances.map(p=>({id:p.id,type:p.type,layout:p.layout,attachments:p.attachments,...(p.scale?{scale:p.scale}:{}),
+   ...(p.portalConditions?.length?{portalConditions:p.portalConditions}:{}),
    bindings:Object.fromEntries(slots.map(([role])=>{
     const row=p.pinned?.[role]??props.find(x=>x.propId===p.bindings[role]);
     return [role,row?{propId:row.propId,revision:row.revision,sha256:row.sha256}:null];
    }))}));
-  const payload={schemaVersion:'ngs.assembly-update.v1',projectId,assemblyId:published.assemblyId,expectedRevision:published.revision,puzzles};
-  if(!validAssemblyRequest(payload,'assembly.update')){setStatus('모든 퍼즐의 필수 프랍 연결과 좌표를 확인하세요.');return;}
+  const payload={schemaVersion:fileUpdateSchema,projectId,target:{root:assemblyUpdateRoot,path:published.assemblyId,kind:'metadata'},
+   expected:{revision:published.revision,officialRequestId:published.officialRequestId},
+   content:{title:published.title,mapId:published.map.mapId,puzzles}};
+  if(!validFileUpdate(payload)){setStatus('모든 퍼즐의 필수 프랍 연결과 좌표를 확인하세요.');return;}
   const fingerprint=JSON.stringify(payload);
   if(!lastApply||lastApply.body!==fingerprint)lastApply={body:fingerprint,key:crypto.randomUUID()};
   busy=true;refresh();
@@ -492,7 +536,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    if(!assemblyReachable(current.graph,puzzles)){
     setStatus('최신 맵에서 제상과 우물 사이를 왕복할 수 없어요. 이동 연결을 확인해 주세요.');return;
    }
-   const res=await submit({requestType:'assembly.update',idempotencyKey:lastApply.key,payload}),value=await res.json().catch(()=>null);
+   const res=await submit({requestType:fileUpdateType,idempotencyKey:lastApply.key,payload}),value=await res.json().catch(()=>null);
    if(!isQueuedRequest(res,value)){setStatus(assemblyApplyFailure(value?.error,res.status));return;}
    setStatus('정식 수정 요청을 접수했어요. 게시가 끝나면 이 조립본을 다시 열어 새 리비전을 확인하세요.');
   }catch(e){if(!signal.aborted)setStatus(assemblyApplyFailure(e?.message,e?.status));}
@@ -507,7 +551,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    const {latest,art,media}=await playInputs(published.map.mapId,Promise.all(
     Object.entries(original.bindings).map(async([role,pin])=>[role,(await pinnedRead(pin)).prop])));
    if(signal.aborted)return;
-   const config=buildWellRehearsal({map:latest,backgrounds:art,props,layout:original.layout,attachments:original.attachments,scale:original.scale,bindings:Object.fromEntries(Object.entries(original.bindings).map(([k,v])=>[k,v.propId])),pins:original.bindings,media});
+   const config=buildWellRehearsal({map:latest,backgrounds:art,props,layout:original.layout,attachments:original.attachments,scale:original.scale,bindings:Object.fromEntries(Object.entries(original.bindings).map(([k,v])=>[k,v.propId])),pins:original.bindings,media,portalConditions:original.portalConditions});
    config.formal=true;config.onPropChanged=change=>{
     const event={type:'prop.changed',assemblyId:published.assemblyId,presetId:original.id,asset:original.bindings[change.role],...change};
     detail.dispatchEvent(new CustomEvent('ngs:prop-changed',{detail:event,bubbles:true}));

@@ -21,7 +21,7 @@ export function orderedMapChain(regions){
   throw Error('MAP_WARP_ORDER_INVALID');
  return regions.slice(1).map((to,i)=>({id:'order-'+(i+1),from:regions[i].id,to:to.id,label:to.name,hit:null,spawn:null}));
 }
-export function createMapWarp(graph,{start=graph?.startPoint??{x:500,y:850}}={}){
+export function createMapWarp(graph,{start=graph?.startPoint??{x:500,y:850},canTraverse}={}){
  if(!validMapGraph(graph)||!mapPoint(start))throw Error('MAP_WARP_GRAPH_INVALID');
  const edges=new Map(graph.regions.map(r=>[r.id,[]]));
  for(const e of graph.connections)edges.get(e.from).push(e);
@@ -42,7 +42,7 @@ export function createMapWarp(graph,{start=graph?.startPoint??{x:500,y:850}}={})
     const t=entryFraction(position,next,e.hit);
     if(t!==null&&(!first||t<first.t))first={edge:e,t};
    }
-   if(!first){
+   if(!first||canTraverse&&canTraverse(first.edge)!==true){
     position=next;
     for(const e of edges.get(regionId))if(!inside(e.hit,position))blocked.delete(e.id);
     return {...snapshot(),warp:null};

@@ -723,7 +723,7 @@ async function loadWorkspace(search){
   if(tab==='assembly'){
    const {mountAssemblyCatalog}=await import('./assembly-catalog-ui.mjs');
    const deleteItem=session.assemblyDeleteEnabled===true&&submit?row=>submitFolderDelete(submit,assemblyFolderDeletePayload(row)):undefined;
-   if(!signal.aborted)await mountAssemblyCatalog({items,detail,tools:listToolbar,request,projectId,item,panel:search.get('assemblyTab'),navigate:next,signal,deleteItem,submit:session.assemblyEnabled?submit:undefined});
+   if(!signal.aborted)await mountAssemblyCatalog({items,detail,tools:listToolbar,request,projectId,item,panel:search.get('assemblyTab'),navigate:next,signal,deleteItem,submit:session.assemblyEnabled?submit:undefined,updateEnabled:session.fileUpdateEnabled===true});
    if(!signal.aborted)note('');
    return;
   }

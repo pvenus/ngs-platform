@@ -7,14 +7,25 @@ export const assemblyPds='/v1/assemblies/ownership/workflow-assembly',assemblyCa
 export const assemblyPuzzleType='binari.ritual-well-water-demo';
 const coordinate=(p,lo,hi)=>['x','y'].every(k=>Number.isInteger(p[k])&&p[k]>=lo&&p[k]<=hi);
 const roleNames=['table','bowl','well','lid'];
+export const bowlStates=Object.freeze(['altar-empty','carried-empty','carried-filled','altar-filled']);
+export const validPortalConditions=rows=>Array.isArray(rows)&&rows.length<=16&&
+ new Set(rows.map(row=>row?.portalId)).size===rows.length&&rows.every(row=>
+  mapFields(row,['portalId','propRole','requiredState'])&&regionId(row.portalId)&&row.propRole==='bowl'&&bowlStates.includes(row.requiredState));
+export const portalsMatchGraph=(graph,puzzles)=>puzzles.every(p=>
+ (p.portalConditions??[]).every(c=>graph.connections.some(e=>e.id===c.portalId)));
+export function permitsAssemblyPortal(conditions,id,propState){
+ const matches=(conditions??[]).filter(c=>c.portalId===id);
+ return matches.every(c=>propState(c.propRole)===c.requiredState);
+}
 export function validAssemblyPuzzle(p){
- return mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[])])&&
+ return mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[]),...(p&&Object.hasOwn(p,'portalConditions')?['portalConditions']:[])])&&
+  (!Object.hasOwn(p,'portalConditions')||validPortalConditions(p.portalConditions))&&
   (!Object.hasOwn(p,'scale')||mapFields(p.scale,roleNames)&&roleNames.every(k=>exactScale(p.scale[k])))&&typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&p.type===assemblyPuzzleType&&
   mapFields(p.layout,['altar','well'])&&['altar','well'].every(k=>mapFields(p.layout[k],['regionId','x','y'])&&regionId(p.layout[k].regionId)&&coordinate(p.layout[k],10,90))&&
   mapFields(p.attachments,['bowl','lid'])&&['bowl','lid'].every(k=>mapFields(p.attachments[k],['x','y'])&&coordinate(p.attachments[k],-12,12))&&
   mapFields(p.bindings,roleNames)&&roleNames.every(k=>{const q=p.bindings[k];return mapFields(q,['propId','revision','sha256'])&&propSlug(q.propId)&&propRevision(q.revision)&&propSha(q.sha256);});
 }
-const puzzleList=p=>Array.isArray(p)&&p.length<=16&&p.every(validAssemblyPuzzle)&&new Set(p.map(q=>q.id)).size===p.length;
+export const puzzleList=p=>Array.isArray(p)&&p.length<=16&&p.every(validAssemblyPuzzle)&&new Set(p.map(q=>q.id)).size===p.length;
 export function validAssemblyRequest(p,type){
  if(!assemblyTypes.includes(type)||p?.projectId!=='binari')return false;
  if(type==='assembly.generate'){

@@ -10,8 +10,8 @@ export function createPuzzleRuntime({bindings,entities,rules}){
  let state=new Map();
  for(const entity of config.entities){
   const {id,states,initial,location}=entity;
-  if(!name(id)||specs.has(id)||!Array.isArray(states)||!states.length||!states.every(name)||!states.includes(initial)||!places.includes(location))fail();
-  specs.set(id,new Set(states));state.set(id,{state:initial,location});
+  if(!name(id)||specs.has(id)||!Array.isArray(states)||!states.length||!states.every(name)||!states.includes(initial)||(location!==undefined&&!places.includes(location)))fail();
+  specs.set(id,new Set(states));state.set(id,{state:initial,...(location===undefined?{}:{location})});
  }
  for(const [port,id] of Object.entries(config.bindings)){
   if(!name(port)||!specs.has(id))fail();
@@ -41,7 +41,7 @@ export function createPuzzleRuntime({bindings,entities,rules}){
   const [rule]=eligible, writes=new Map();
   for(const eff of rule.effects){
    const id=readRef(eff.ref,event);
-   if(!specs.has(id)||(eff.field==='state'&&!specs.get(id).has(eff.value)))return {ok:false,reason:'invalid-effect'};
+   if(!specs.has(id)||(eff.field==='state'&&!specs.get(id).has(eff.value))||(eff.field==='location'&&!own(state.get(id),'location')))return {ok:false,reason:'invalid-effect'};
    const key=id+':'+eff.field;
    if(writes.has(key)&&writes.get(key).value!==eff.value)return {ok:false,reason:'conflicting-effects'};
    writes.set(key,{id,field:eff.field,value:eff.value});

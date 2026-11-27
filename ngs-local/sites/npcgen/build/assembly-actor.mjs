@@ -37,13 +37,13 @@ function colliderEntry(a,b,collider,aspect){
  return enter<=1?enter:null;
 }
 
-export function createAssemblyActor(graph,{collisions=true}={}){
- let warp=createMapWarp(graph);
+export function createAssemblyActor(graph,{collisions=true,canTraverse}={}){
+ let warp=createMapWarp(graph,{canTraverse});
  const walls=new Map(graph.regions.map(r=>[r.id,[]]));
  for(const c of collisions?graph.colliders??[]:[])walls.get(c.regionId).push(c);
  return {
   snapshot:()=>warp.snapshot(),
-  reset(){warp=createMapWarp(graph);return warp.snapshot();},
+  reset(){warp=createMapWarp(graph,{canTraverse});return warp.snapshot();},
   move(dx,dy,aspect=1){
    if(!Number.isFinite(dx)||!Number.isFinite(dy))throw Error('ASSEMBLY_ACTOR_DELTA_INVALID');
    const {regionId,position:a}=warp.snapshot();
@@ -67,10 +67,10 @@ export function createAssemblyActor(graph,{collisions=true}={}){
 }
 
 const isControl=target=>Boolean(target?.isContentEditable||target?.closest?.('input,textarea,select,button,[role="textbox"],[contenteditable]:not([contenteditable="false"])'));
-export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegion,nearRadius=8,speed=260,arrows=false,clickToMove=false,collisions=true,markerClass='assembly-actor',
+export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegion,nearRadius=8,speed=260,arrows=false,clickToMove=false,collisions=true,markerClass='assembly-actor',canTraverse,
  requestFrame=globalThis.requestAnimationFrame?.bind(globalThis),
  cancelFrame=globalThis.cancelAnimationFrame?.bind(globalThis)}={}){
- const actor=createAssemblyActor(graph,{collisions}),keys=new Map();
+ const actor=createAssemblyActor(graph,{collisions,canTraverse}),keys=new Map();
  const document=scene.ownerDocument??globalThis.document;
  const marker=document.createElement('span');
  marker.className=markerClass;

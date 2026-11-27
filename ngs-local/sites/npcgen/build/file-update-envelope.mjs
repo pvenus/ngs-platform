@@ -1,13 +1,20 @@
-import {mapFields, mapCanonical, officialId, validMapGraph} from './map-contract.mjs';
+import {puzzleList} from './assembly-contract.mjs';
+import {mapFields, mapCanonical, mapText, officialId, validMapGraph} from './map-contract.mjs';
 
 export const fileUpdateType='file.update',fileUpdateSchema='ngs.file-update.v1';
 export const fileUpdateTaskKey='file_update',fileUpdatePds='/v1/storage/workflow-file-update';
+export const assemblyUpdateRoot='canonical-files/binari/cinematics/assemblies';
 export const mapUpdateRoot='canonical-files/binari/cinematics/maps';
 const pin=p=>mapFields(p,['revision','officialRequestId'])&&Number.isSafeInteger(p.revision)&&
  p.revision>=1&&p.revision<Number.MAX_SAFE_INTEGER&&officialId(p.officialRequestId);
 
 // Adapters own content validation. Never accept arbitrary filesystem paths or partial patches.
 const targets=Object.freeze({
+ [assemblyUpdateRoot]:{
+  id:officialId,
+  content:v=>mapFields(v,['title','mapId','puzzles'])&&mapText(v.title,100)&&officialId(v.mapId)&&puzzleList(v.puzzles),
+  ref:(id,revision)=>'binari/cinematics/assemblies/'+id+'/'+revision+'.json',
+ },
  [mapUpdateRoot]:{
   id:officialId, content:validMapGraph,
   ref:(id,revision)=>'binari/cinematics/maps/'+id+'/'+revision+'.json',

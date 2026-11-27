@@ -1,4 +1,4 @@
-import {fileUpdateType,validFileUpdate} from '../ngs-local/sites/npcgen/build/file-update-envelope.mjs';
+import {fileUpdateType,assemblyUpdateRoot,validFileUpdate} from '../ngs-local/sites/npcgen/build/file-update-envelope.mjs';
 /** Read/write policies for the explicitly hosted map and assembly families only. */
 import {mapTypes,validMapRequest} from '../ngs-local/sites/npcgen/build/map-contract.mjs';
 import {assemblyTypes,validAssemblyRequest,assemblyReachable} from '../ngs-local/sites/npcgen/build/assembly-contract.mjs';
@@ -38,6 +38,16 @@ export async function admitSpaceMapAssembly({command,read}){
  // using the hosted replica as authority would reject a valid retry after sync.
  if(type===fileDeleteType)return;
  const query=new URLSearchParams({projectId:p.projectId});
+ if(type===fileUpdateType&&p.target.root===assemblyUpdateRoot){
+  query.set('item',p.target.path);
+  const {assembly}=await read('/api/assembly-workspace',query);
+  need(assembly.revision===p.expected.revision&&assembly.officialRequestId===p.expected.officialRequestId,409,'FILE_UPDATE_REVISION_CONFLICT');
+  need(assembly.title===p.content.title&&assembly.map.mapId===p.content.mapId,409,'ASSEMBLY_IDENTITY_IMMUTABLE');
+  query.set('item',assembly.map.mapId);
+  const {map}=await read('/api/map-workspace',query);
+  need(assemblyReachable(map.graph,p.content.puzzles),400,'ASSEMBLY_LAYOUT_UNREACHABLE');
+  return;
+ }
  if(mapTypes.includes(type)||type===fileUpdateType){
   const {backgrounds}=await read('/api/background-workspace',query);
   const pins=new Map(backgrounds.filter(b=>!b.title.endsWith(' · 시네마틱 원본')).map(b=>[b.backgroundId,b.sha256]));

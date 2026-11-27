@@ -104,7 +104,7 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
       (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
       (assemblyTypes.includes(row.requestType)&&!validateAssemblyRelay(row.requestType,row.payload))||
       (mapTypes.includes(row.requestType)&&!validMapRequest(row.payload,row.requestType))||
-      (row.requestType===fileUpdateType&&!validFileUpdate(row.payload))||
+      (row.requestType===fileUpdateType&&!validFileUpdate(row.payload)) /* same typed metadata rules for map and assembly */||
       (row.requestType===fileDeleteType&&!(validMapFolderDelete(row.payload)||validAssemblyFolderDelete(row.payload)||
        local&&(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload))))){result.rejected++;continue;}
    // Background media v2 has real scheduler stages; relay the contract unchanged,

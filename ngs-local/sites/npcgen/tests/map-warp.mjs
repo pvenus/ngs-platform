@@ -373,3 +373,25 @@ test('several portal edits survive blur, rebase over newly published reverse lin
   ['order-1',760],['order-2',765],['order-3',800],['order-4',800],['return-1',20],
  ]);
 });
+
+
+test('a direction condition checks the current combined bowl state, without locking the return portal or latching',async()=>{
+ const {makeWellPuzzle}=await import('../build/well-puzzle-demo.mjs');
+ const {permitsAssemblyPortal}=await import('../build/assembly-contract.mjs');
+ const puzzle=makeWellPuzzle(),item='water-bowl';
+ const pair={...graph,regions:regions.slice(0,2),connections:[
+  graph.connections[0],{id:'return-1',from:'r2',to:'r1',label:'return',hit:{x:310,y:220,width:20,height:40},spawn:{x:500,y:240}}]};
+ const conditions=[{portalId:'order-1',propRole:'bowl',requiredState:'carried-empty'}];
+ const actor=createMapWarp(pair,{start:{x:500,y:240},canTraverse:e=>permitsAssemblyPortal(conditions,e.id,()=>puzzle.get(item).state)});
+ assert.equal(actor.move(900,240).regionId,'r1');
+ actor.move(500,240);
+ assert.equal(puzzle.dispatch({type:'pickup',target:item}).ok,true);
+ assert.equal(actor.move(900,240).regionId,'r2');
+ assert.equal(puzzle.dispatch({type:'meter-success',target:'well-lid'}).ok,true);
+ assert.equal(puzzle.dispatch({type:'drop',target:'back-well',item}).ok,true);
+ assert.equal(actor.move(350,240).regionId,'r1');
+ assert.equal(actor.move(900,240).regionId,'r1');
+ actor.move(500,240);
+ assert.equal(puzzle.dispatch({type:'drop',target:'altar-socket',item}).ok,true);
+ assert.equal(actor.move(900,240).regionId,'r1');
+});

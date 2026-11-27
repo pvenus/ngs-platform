@@ -1,4 +1,4 @@
-import {fileUpdateType,fileUpdatePds,validFileUpdate} from './file-update-envelope.mjs';
+import {fileUpdateType,fileUpdatePds,assemblyUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
 import {assemblyTypes,assemblyPath,assemblyPds,assemblyCapability,validAssemblyRequest,assemblyReachable} from './assembly-contract.mjs';
 import {assemblyWorkspaceRead} from './assembly-workspace.mjs';
 import {mapTypes,mapPds,mapCapability,validMapRequest} from './map-contract.mjs';
@@ -337,14 +337,26 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      const p=command.payload;
      if(!validFileUpdate(p))throw failure('NGS_FILE_UPDATE_PAYLOAD_INVALID',400);
      const q=new URLSearchParams({projectId:p.projectId});
-     const {json:{backgrounds}}=await readWorkspace('/api/background-workspace',q,()=>{});
-     const available=new Map(backgrounds.filter(b=>!b.title.endsWith(' · 시네마틱 원본')).map(b=>[b.backgroundId,b.sha256]));
-     if(!p.content.regions.every(r=>available.get(r.backgroundId)===r.imageSha256))throw failure('MAP_BACKGROUND_NOT_FOUND',404);
-     q.set('item',p.target.path);
-     const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
-     if(map.revision!==p.expected.revision||map.officialRequestId!==p.expected.officialRequestId)
-      throw failure('FILE_UPDATE_REVISION_CONFLICT',409);
-     if(map.graph.title!==p.content.title)throw failure('MAP_TITLE_IMMUTABLE',409);
+     if(p.target.root===assemblyUpdateRoot){
+      q.set('item',p.target.path);
+      const {json:{assembly}}=await assemblyWorkspaceRead({query:q,openProject,authorize:()=>{}});
+      if(assembly.revision!==p.expected.revision||assembly.officialRequestId!==p.expected.officialRequestId)
+       throw failure('FILE_UPDATE_REVISION_CONFLICT',409);
+      if(assembly.title!==p.content.title||assembly.map.mapId!==p.content.mapId)
+       throw failure('ASSEMBLY_IDENTITY_IMMUTABLE',409);
+      q.set('item',assembly.map.mapId);
+      const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
+      if(!assemblyReachable(map.graph,p.content.puzzles))throw failure('ASSEMBLY_LAYOUT_UNREACHABLE',400);
+     }else{
+      const {json:{backgrounds}}=await readWorkspace('/api/background-workspace',q,()=>{});
+      const available=new Map(backgrounds.filter(b=>!b.title.endsWith(' · 시네마틱 원본')).map(b=>[b.backgroundId,b.sha256]));
+      if(!p.content.regions.every(r=>available.get(r.backgroundId)===r.imageSha256))throw failure('MAP_BACKGROUND_NOT_FOUND',404);
+      q.set('item',p.target.path);
+      const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
+      if(map.revision!==p.expected.revision||map.officialRequestId!==p.expected.officialRequestId)
+       throw failure('FILE_UPDATE_REVISION_CONFLICT',409);
+      if(map.graph.title!==p.content.title)throw failure('MAP_TITLE_IMMUTABLE',409);
+     }
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
     if(mapTypes.includes(command.requestType)){

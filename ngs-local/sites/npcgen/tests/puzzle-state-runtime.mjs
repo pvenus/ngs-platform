@@ -12,20 +12,20 @@ test('Water offering changes only the linked item after the lid opens; only retu
  assert.match(drop('back-well').message,/뚜껑/);
  assert.equal(drop('altar-socket').ok,false);
  assert.equal(play.dispatch({type:'drop',target:'back-well',item:'foreign'}).reason,'not-linked');
- assert.deepEqual(play.get(bowl),{state:'empty',location:'inventory'});
+ assert.deepEqual(play.get(bowl),{state:'carried-empty'});
  assert.equal(play.dispatch({type:'interact',target:'well-lid'}).ok,false);
  assert.equal(play.get('well-lid').state,'closed');
  assert.equal(play.dispatch({type:'meter-success',target:'well-lid'}).ok,true);
  assert.equal(drop('back-well').ok,true);
  assert.equal(drop('back-well').ok,false);
- assert.deepEqual(play.get(bowl),{state:'filled',location:'inventory'});
+ assert.deepEqual(play.get(bowl),{state:'carried-filled'});
  assert.equal(play.get('offering-goal').state,'pending');
  const placed=drop('altar-socket');
  assert.equal(placed.ok,true);
  assert.deepEqual(placed.changes.find(change=>change.id===bowl),{id:bowl,
-  before:{state:'filled',location:'inventory'},after:{state:'filled',location:'socket'}});
+  before:{state:'carried-filled'},after:{state:'altar-filled'}});
  assert.equal(drop('altar-socket').ok,false);
- assert.deepEqual(play.get(bowl),{state:'filled',location:'socket'});
+ assert.deepEqual(play.get(bowl),{state:'altar-filled'});
  assert.equal(play.get('offering-goal').state,'done');
  assert.equal(makeWellPuzzle().get('well-lid').state,'closed');
 });
