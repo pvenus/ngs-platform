@@ -40,23 +40,27 @@ test('a normal move outside the portal does not warp',()=>{
 
 function fakeDom(t){
  class Element extends EventTarget{
-  constructor(tag){super();this.tag=tag;this.children=[];this.attrs={};this.style={};}
+  constructor(tag){super();this.tag=tag;this.children=[];this.attrs={};this.style={};this.dataset={};}
   append(...children){for(const child of children){child.remove();child.parent=this;this.children.push(child);}}
   replaceChildren(...children){for(const x of this.children)x.parent=null;this.children=[];this.append(...children);}
   remove(){if(this.parent){this.parent.children=this.parent.children.filter(x=>x!==this);this.parent=null;}}
   setAttribute(k,v){this.attrs[k]=v;}
   getAttribute(k){return this.attrs[k];}
+  hasAttribute(k){return Object.hasOwn(this.attrs,k);}
+  removeAttribute(k){delete this.attrs[k];}
+  get parentNode(){return this.parent;}
+  contains(n){return n===this||this.descendants().includes(n);}
   querySelectorAll(){return this.descendants().filter(n=>n.attrs['aria-label']);}
   setPointerCapture(){}
   showModal(){this.open=true;}
   close(){if(this.open){this.open=false;this.dispatchEvent(new Event('close'));}}
   descendants(){return this.children.flatMap(x=>[x,...x.descendants()]);}
-  querySelector(){return this.descendants().find(x=>x.tag==='input'&&!x.disabled);}
+  querySelector(selector='input'){return this.descendants().find(x=>x.tag===selector.split(':')[0]&&!x.disabled);}
   focus(){focused=this;}
   getBoundingClientRect(){return {left:0,top:0,width:1000,height:1000};}
  }
  let focused;const body=new Element('body'),original=globalThis.document;
- Object.defineProperty(globalThis,'document',{configurable:true,value:{body,createElement:tag=>new Element(tag)}});
+ Object.defineProperty(globalThis,'document',{configurable:true,value:{body,createElement:tag=>new Element(tag),get activeElement(){return focused;}}});
  t.after(()=>{if(original===undefined)delete globalThis.document;else globalThis.document=original;});
  return {Element,body,get focused(){return focused;}};
 }
@@ -112,27 +116,35 @@ test('Warp preview reaches the last room, starts over twice, then closes and cle
   submit:async()=>assert.fail('playback must not submit')});
  const find=text=>detail.descendants().find(n=>n.textContent===text),canvas=()=>detail.descendants().find(n=>n.className==='map-canvas');
  const start=()=>{assert.equal(find('워프 플레이').disabled,false);find('워프 플레이').onclick();};
- const reachLast=()=>{
-  assert.ok(find('1 / 2 · 구역 1'));assert.equal(frames.size,1);
+ const dispatch=(node,type,fields)=>{const e=new Event(type,{cancelable:true});Object.assign(e,fields);node.dispatchEvent(e);return e;};
+ const reachLast=how=>{
+  assert.ok(find('1 / 2 · 구역 1'));assert.equal(frames.size,0);
   const oldCanvas=canvas();assert.equal(dom.focused,oldCanvas);
   const overlays=box=>box.descendants().filter(n=>n.className?.includes('map-play-collider'));
   assert.equal(overlays(oldCanvas).length,1);
   assert.equal(overlays(oldCanvas)[0].style.transform,'rotate(45deg)');
   assert.equal(overlays(oldCanvas)[0].style.borderRadius,'50%');
-  oldCanvas.onpointerdown({button:0,clientX:700,clientY:850});
-  for(let i=0;i<4&&frames.size;i++)tick();
-  assert.ok(find('2 / 2 · 구역 2'));assert.equal(frames.size,0);
+  if(how==='keyboard')assert.ok(dispatch(oldCanvas,'keydown',{key:'ㅇ',code:'KeyD'}).defaultPrevented);
+  else dispatch(oldCanvas,'pointerdown',{button:0,clientX:700,clientY:850});
+  for(let i=0;i<5&&!find('2 / 2 · 구역 2');i++)tick();
+  assert.ok(find('2 / 2 · 구역 2'));
+  if(how==='keyboard')dispatch(oldCanvas,'keyup',{key:'ㅇ',code:'KeyD'});
+  assert.equal(frames.size,0);
+  assert.equal(canvas(),oldCanvas,'warp keeps the focused shared scene');
   assert.equal(overlays(canvas()).length,1);
   assert.equal(overlays(canvas())[0].style.transform,'rotate(0deg)');
-  assert.equal(oldCanvas.onkeydown,null);assert.equal(oldCanvas.onkeyup,null);assert.equal(oldCanvas.onpointerdown,null);
-  assert.equal(dom.focused,find('처음부터 다시'));
+  assert.equal(dom.focused,oldCanvas);
+  const at=find('발 위치: 250, 240');assert.ok(at);
+  dispatch(oldCanvas,'keydown',{key:'ArrowDown',code:'ArrowDown'});tick();tick();
+  assert.notEqual(at.textContent,'발 위치: 250, 240','actor still moves in a dead-end room');
+  dispatch(oldCanvas,'keyup',{key:'ArrowDown',code:'ArrowDown'});
  };
- start();reachLast();find('처음부터 다시').onclick();reachLast();
+ start();reachLast('keyboard');find('처음부터 다시').onclick();reachLast('pointer');
  find('플레이 닫기').onclick();assert.equal(frames.size,0);assert.equal(dom.focused,find('워프 플레이'));
- start();const liveCanvas=canvas();assert.equal(frames.size,1);
+ start();const liveCanvas=canvas();dispatch(liveCanvas,'keydown',{key:'d',code:'KeyD'});assert.equal(frames.size,1);
  const playView=detail.descendants().find(n=>n.className==='map-play-layout');
  playView.onkeydown({key:'Escape',preventDefault(){}});
- assert.equal(frames.size,0);assert.equal(liveCanvas.onpointerdown,null);
+ assert.equal(frames.size,0);assert.equal(dispatch(liveCanvas,'keydown',{key:'d',code:'KeyD'}).defaultPrevented,false);
  start();signal.abort();assert.equal(frames.size,0);
 });
 

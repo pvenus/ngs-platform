@@ -4,7 +4,10 @@ import {mapColliderRotation,mapColliderShape} from './map-contract.mjs';
 const clamp=n=>Math.min(1000,Math.max(0,n));
 const movementKeys=new Set(['w','a','s','d']);
 const physicalMovement=new Map([['KeyW','w'],['KeyA','a'],['KeyS','s'],['KeyD','d']]);
-const movementKey=event=>!event.code||event.code==='Unidentified'?event.key?.toLowerCase():physicalMovement.get(event.code);
+const arrowMovement=new Map([['ArrowUp','w'],['ArrowLeft','a'],['ArrowDown','s'],['ArrowRight','d']]);
+const movementCode=e=>e.code&&e.code!=='Unidentified'?e.code:e.key;
+const movementKey=(event,arrows)=>physicalMovement.get(movementCode(event))??(arrows?arrowMovement.get(movementCode(event)):null)??
+ (!event.code||event.code==='Unidentified'?event.key?.toLowerCase():null);
 export function assemblyDirection(keys){
  const x=Number(keys.has('d'))-Number(keys.has('a')),y=Number(keys.has('s'))-Number(keys.has('w'));
  const length=Math.hypot(x,y)||1;
@@ -34,10 +37,10 @@ function colliderEntry(a,b,collider,aspect){
  return enter<=1?enter:null;
 }
 
-export function createAssemblyActor(graph){
+export function createAssemblyActor(graph,{collisions=true}={}){
  let warp=createMapWarp(graph);
  const walls=new Map(graph.regions.map(r=>[r.id,[]]));
- for(const c of graph.colliders??[])walls.get(c.regionId).push(c);
+ for(const c of collisions?graph.colliders??[]:[])walls.get(c.regionId).push(c);
  return {
   snapshot:()=>warp.snapshot(),
   reset(){warp=createMapWarp(graph);return warp.snapshot();},
@@ -64,17 +67,17 @@ export function createAssemblyActor(graph){
 }
 
 const isControl=target=>Boolean(target?.isContentEditable||target?.closest?.('input,textarea,select,button,[role="textbox"],[contenteditable]:not([contenteditable="false"])'));
-export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegion,nearRadius=8,speed=260,
+export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegion,nearRadius=8,speed=260,arrows=false,clickToMove=false,collisions=true,markerClass='assembly-actor',
  requestFrame=globalThis.requestAnimationFrame?.bind(globalThis),
  cancelFrame=globalThis.cancelAnimationFrame?.bind(globalThis)}={}){
- const actor=createAssemblyActor(graph),keys=new Set();
+ const actor=createAssemblyActor(graph,{collisions}),keys=new Map();
  const document=scene.ownerDocument??globalThis.document;
  const marker=document.createElement('span');
- marker.className='assembly-actor';
+ marker.className=markerClass;
  marker.setAttribute('role','img');marker.setAttribute('aria-label','캐릭터 위치');
  marker.style.pointerEvents='none';
  const addTab=!scene.hasAttribute('tabindex');
- let enabled=!signal?.aborted,disposed=Boolean(signal?.aborted),frame=null,last=null;
+ let enabled=!signal?.aborted,disposed=Boolean(signal?.aborted),frame=null,last=null,target=null;
  if(!disposed){
   if(addTab)scene.setAttribute('tabindex','0');
   scene.append(marker);
@@ -84,47 +87,59 @@ export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegio
   marker.style.left=position.x/10+'%';marker.style.top=position.y/10+'%';
  }
  function stop(){
-  keys.clear();last=null;
+  keys.clear();target=null;last=null;
   if(frame!==null){cancelFrame?.(frame);frame=null;}
  }
  function inScope(){
   const target=document.activeElement;
   return Boolean(target&&(target===root||root.contains(target))&&!isControl(target));
  }
+ function schedule(){if(frame===null)frame=requestFrame?.(tick)??null;}
  function tick(time){
   frame=null;
-  if(!enabled||!keys.size||!inScope()){stop();return;}
+  if(!enabled||(!keys.size&&!target)||!inScope()){stop();return;}
   const previous=last;last=time;
   if(previous!==null){
-   const dt=Math.min(50,Math.max(0,time-previous))/1000,d=assemblyDirection(keys);
-   if(d.x||d.y){
-    const size=scene.getBoundingClientRect(),before=actor.snapshot();
-    const next=actor.move(d.x*speed*dt,d.y*speed*dt,size.width/size.height);
+   const dt=Math.min(50,Math.max(0,time-previous))/1000,step=speed*dt;
+   const before=actor.snapshot();let {x,y}=assemblyDirection(new Set(keys.values()));
+   if(target){
+    const dx=target.x-before.position.x,dy=target.y-before.position.y,len=Math.hypot(dx,dy)||1,dist=Math.min(len,step);
+    x=dx/len*dist;y=dy/len*dist;if(dist>=len)target=null;
+   }else{x*=step;y*=step;}
+   if(x||y){
+    const size=scene.getBoundingClientRect();
+    const next=actor.move(x,y,size.width/size.height);
+    if(next.warp){target=null;onRegion?.(next.regionId,next.warp);}
     if(next.warp||before.position.x!==next.position.x||before.position.y!==next.position.y){
-     if(next.warp)onRegion?.(next.regionId);
      draw(next);onMove?.(actor.snapshot());
-    }
-   }
+    }else if(target)target=null;
+   }else if(target&&target.x===before.position.x&&target.y===before.position.y)target=null;
   }
-  if(enabled&&keys.size&&frame===null)frame=requestFrame?.(tick)??null;
+  if(enabled&&(keys.size||target))schedule();else last=null;
  }
  function down(event){
-  const key=movementKey(event);
+  const key=movementKey(event,arrows);
   if(!enabled||!movementKeys.has(key)||event.defaultPrevented||event.isComposing||
      event.altKey||event.ctrlKey||event.metaKey||isControl(event.target)||!inScope())return;
-  event.preventDefault();
-  keys.add(key);
-  if(frame===null)frame=requestFrame?.(tick)??null;
+  event.preventDefault();target=null;
+  keys.set(event.code&&event.code!=='Unidentified'?event.code:key,key);schedule();
  }
  function up(event){
-  if(keys.delete(movementKey(event))&&!keys.size)stop();
+  const key=movementKey(event,arrows);
+  if(keys.delete(event.code&&event.code!=='Unidentified'?event.code:key)&&!keys.size&&!target)stop();
  }
  function focusOut(event){
   const next=event.relatedTarget;
   if(!next||!(next===root||root.contains(next))||isControl(next))stop();
  }
  function focusScene(event){
-  if(event.button===0&&!isControl(event.target))scene.focus({preventScroll:true});
+  if(event.button!==0||isControl(event.target))return;
+  scene.focus({preventScroll:true});
+  if(!clickToMove||!enabled||!inScope())return;
+  const rect=scene.getBoundingClientRect();
+  if(!(rect.width>0&&rect.height>0))return;
+  keys.clear();target={x:clamp((event.clientX-rect.left)*1000/rect.width),y:clamp((event.clientY-rect.top)*1000/rect.height)};
+  schedule();
  }
  function dispose(){
   disposed=true;enabled=false;stop();
