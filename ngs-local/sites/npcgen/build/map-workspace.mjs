@@ -37,9 +37,9 @@ async function readMapRevision(project,base,id,rev){
  return composite;
 }
 export async function mapWorkspaceRead({query,openProject,authorize}){
- const projectId=query.get('projectId'),item=query.get('item'),keys=[...query.keys()];
- if(projectId!=='binari'||keys.length!==new Set(keys).size||keys.some(k=>!['projectId','item'].includes(k))||
-    item!==null&&!officialId(item))throw error('MAP_QUERY_INVALID',400);
+ const projectId=query.get('projectId'),item=query.get('item'),version=query.get('revision'),keys=[...query.keys()];
+ if(projectId!=='binari'||keys.length!==new Set(keys).size||keys.some(k=>!['projectId','item','revision'].includes(k))||
+    item!==null&&!officialId(item)||version!==null&&(!item||!/^[1-9]\d{0,15}$/.test(version)||!Number.isSafeInteger(Number(version))))throw error('MAP_QUERY_INVALID',400);
  await authorize(projectId);
  const p=await openProject(projectId);
  if(!p)throw replicaUnavailable();
@@ -54,7 +54,7 @@ export async function mapWorkspaceRead({query,openProject,authorize}){
   return null;
  }
  if(item!==null){
-  const map=await latest(item);
+  const map=version!==null?await readMapRevision(p,mapRoot+'/'+item,item,Number(version)):await latest(item);
   if(!map)throw error('MAP_NOT_FOUND',404);
   return {json:{map}};
  }

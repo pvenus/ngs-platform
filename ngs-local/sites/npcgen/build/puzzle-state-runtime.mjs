@@ -48,8 +48,12 @@ export function createPuzzleRuntime({bindings,entities,rules}){
   }
   const next=new Map(state);
   for(const {id,field,value} of writes.values())next.set(id,{...next.get(id),[field]:value});
+  const changes=[...new Set([...writes.values()].map(x=>x.id))].flatMap(id=>{
+   const before=state.get(id),after=next.get(id);
+   return before.state===after.state&&before.location===after.location?[]:[{id,before:{...before},after:{...after}}];
+  });
   state=next;
-  return {ok:true,message:rule.message};
+  return {ok:true,message:rule.message,changes};
  }
  return Object.freeze({dispatch,get:id=>{const row=state.get(id);return row?{...row}:null;}});
 }

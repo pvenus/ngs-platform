@@ -720,8 +720,8 @@ async function loadWorkspace(search){
   }
   if(tab==='assembly'){
    if(hosted)return;
-   const {mountWellAssembly}=await import('./well-assembly-ui.mjs');
-   if(!signal.aborted)await mountWellAssembly({items,detail,request,projectId,signal});
+   const {mountAssemblyCatalog}=await import('./assembly-catalog-ui.mjs');
+   if(!signal.aborted)await mountAssemblyCatalog({items,detail,tools:listToolbar,request,projectId,item,panel:search.get('assemblyTab'),navigate:next,signal,submit:session.assemblyEnabled?submit:undefined});
    if(!signal.aborted)note('');
    return;
   }

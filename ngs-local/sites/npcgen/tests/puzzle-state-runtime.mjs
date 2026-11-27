@@ -20,7 +20,10 @@ test('Water offering changes only the linked item after the lid opens; only retu
  assert.equal(drop('back-well').ok,false);
  assert.deepEqual(play.get(bowl),{state:'filled',location:'inventory'});
  assert.equal(play.get('offering-goal').state,'pending');
- assert.equal(drop('altar-socket').ok,true);
+ const placed=drop('altar-socket');
+ assert.equal(placed.ok,true);
+ assert.deepEqual(placed.changes.find(change=>change.id===bowl),{id:bowl,
+  before:{state:'filled',location:'inventory'},after:{state:'filled',location:'socket'}});
  assert.equal(drop('altar-socket').ok,false);
  assert.deepEqual(play.get(bowl),{state:'filled',location:'socket'});
  assert.equal(play.get('offering-goal').state,'done');

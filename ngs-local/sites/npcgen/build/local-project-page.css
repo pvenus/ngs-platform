@@ -538,3 +538,7 @@ ul{padding:0;list-style:none}
 @media(max-width:900px){.well-assembly-shell{grid-template-columns:minmax(0,1fr)}.well-assembly-board{grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr))}}
 .well-assembly-pin.unbound{background:#263b3680;border-style:dashed}
 .well-assembly-remove{margin-top:.65rem}
+.well-assembly-board.zoomed{grid-template-columns:minmax(0,1fr)}
+.well-assembly-shell:has(.zoomed){grid-template-columns:minmax(0,1fr)}
+.well-assembly-board.zoomed .well-assembly-pin{width:32px;height:32px}
+.well-assembly-board.zoomed .well-assembly-pin img{width:27px;height:27px}

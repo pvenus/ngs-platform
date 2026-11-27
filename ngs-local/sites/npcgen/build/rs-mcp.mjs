@@ -1,3 +1,4 @@
+import {assemblyTypes,validAssemblyRequest} from './assembly-contract.mjs';
 // The versioned local relay binds the optional spirit-v1 prop generation envelope.
 import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete,validCinematicFileDelete,validMapFolderDelete} from './prop-folder-delete-contract.mjs';
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
@@ -18,7 +19,7 @@ import {propTypes} from './prop-workspace-contract.mjs';
 // Release together with map-contract.mjs: the relay checks map.generate v2 stage
 // options and optional start points, as well as older map and collider packets.
 import {mapTypes,validMapRequest} from './map-contract.mjs';
-const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),...mapTypes,fileDeleteType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
+const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),...mapTypes,...assemblyTypes,fileDeleteType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const queueId=(v,source)=>typeof v==='string'&&v.length===46&&v.startsWith('ngs.'+source+'.')&&uuid.test(v.slice(10));
@@ -94,6 +95,7 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
       (row.requestType===backgroundAnimationType&&(!local||!validBackgroundAnimation(row.payload)||
        row.payload.playback.durationFrames===84&&row.payload.schemaVersion!==backgroundAnimationSchema))||
       (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
+      (assemblyTypes.includes(row.requestType)&&(!local||!validAssemblyRequest(row.payload,row.requestType)))||
       (mapTypes.includes(row.requestType)&&(!local||!validMapRequest(row.payload,row.requestType)))||
       (row.requestType===fileDeleteType&&(!local||!(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload)||validMapFolderDelete(row.payload))))){result.rejected++;continue;}
    // Background media v2 has real scheduler stages; relay the contract unchanged,

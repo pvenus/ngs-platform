@@ -66,7 +66,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   scene.classList.add('well-demo-map');bg.alt='';bg.draggable=false;scene.prepend(bg);
   const label=el('label','테스트 구역 바로가기');jump.setAttribute('aria-label','테스트 구역 바로가기');
   for(const region of rehearsal.regions){const option=el('option',region.name);option.value=region.id;jump.append(option);}
-  label.append(jump);root.append(label,route);
+  label.append(jump);if(!rehearsal.formal)root.append(label);root.append(route);
  }
  root.append(instructions,scene,controls,status);host.append(root);
  let runtime=makeWellPuzzle(),selected=null,held=false,dragged=false,progress=0,lastTick,raf=null,pressing=false;
@@ -112,6 +112,16 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  function command(event){
   const result=runtime.dispatch(event);
   if(result.message)tell(result.message);
+  if(result.ok){
+   for(const change of result.changes??[]){
+    const role=Object.keys(ids).find(role=>ids[role]===change.id);
+    if(role==='bowl'||role==='lid'){
+     rehearsal?.onPropChanged?.({...change,role,regionId:currentRegion,
+      ...(role==='bowl'&&change.after.location==='socket'?{socket:'altar-socket'}:{})});
+    }
+    if(role==='goal'&&change.after.state==='done')rehearsal?.onCompleted?.();
+   }
+  }
   return result;
  }
  function interact(){

@@ -1,3 +1,6 @@
+import {assemblyPinnedPropRead} from './prop-workspace.mjs';
+import {assemblyTypes,assemblyPath,assemblyPds,assemblyCapability,validAssemblyRequest,assemblyReachable} from './assembly-contract.mjs';
+import {assemblyWorkspaceRead} from './assembly-workspace.mjs';
 import {mapTypes,mapPds,mapCapability,validMapRequest} from './map-contract.mjs';
 import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,validNpcFolderDelete,backgroundDeleteRoot,validBackgroundFileDelete,cinematicDeleteRoot,validCinematicFileDelete,cinematicDeletePayloads,mapDeleteRoot,validMapFolderDelete} from './prop-folder-delete-contract.mjs';
 /** NGS browser app: serve the local replica and enqueue validated requests. */
@@ -43,7 +46,7 @@ const assets=new Map([
  ['/cinematic-sequence-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-sequence-contract.mjs',import.meta.url)]],
  ['/cinematic-timeline.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-timeline.mjs',import.meta.url)]],
  ...['map-contract.mjs','map-workspace-ui.mjs','map-warp.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
- ...['puzzle-state-runtime.mjs','well-puzzle-demo.mjs','well-assembly-ui.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
+ ...['puzzle-state-runtime.mjs','well-puzzle-demo.mjs','well-assembly-ui.mjs','assembly-contract.mjs','assembly-catalog-ui.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
  ['/background-playback.mjs',['text/javascript; charset=utf-8',new URL('./background-playback.mjs',import.meta.url)]],
  ['/cinematic-player.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-player.mjs',import.meta.url)]],
  ['/cinematic-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-contract.mjs',import.meta.url)]],
@@ -176,12 +179,13 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
  return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
   readMapReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(mapPds,mapCapability):undefined,
+  readAssemblyReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(assemblyPds,assemblyCapability):undefined,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
   ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readBackgroundPixelReady:readLocalBackgroundPixelReady,readBackgroundAnimationReady:readLocalBackgroundAnimationReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady,readCinematicDeleteReady:readLocalCinematicDeleteReady,readMapDeleteReady:readLocalMapDeleteReady,readCinematicDeleteInventory:readLocalCinematicDeleteInventory}:{}),
   audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',npcBasicPortraitEnabled:env.NGS_NPC_BASIC_PORTRAIT_ENABLED!=='0',npcScopedPortraitEnabled:env.NGS_NPC_SCOPED_PORTRAIT_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readMapReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -200,6 +204,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const queue=requestQueue??ownedQueue;
  const cinematicReads={[cinematicType]:readCinematicReady,[cinematicSequenceType]:readCinematicSequenceReady,[cinematicPlaybackUpdateType]:readCinematicPlaybackReady,[cinematicSourceGenerateType]:readCinematicSourceReady,[backgroundSourceType]:readBackgroundReady,[backgroundPixelType]:readBackgroundPixelReady,[backgroundAnimationType]:readBackgroundAnimationReady,[cinematicSequencesRemoveType]:readCinematicRemoveReady};
  const activeCinematic=async(type)=>Boolean(queue&&typeof cinematicReads[type]==='function'&&await cinematicReads[type]());
+ const activeAssembly=async()=>Boolean(queue&&typeof readAssemblyReady==='function'&&await readAssemblyReady());
  const activeMap=async()=>Boolean(queue&&typeof readMapReady==='function'&&await readMapReady());
  const activePropRemoval=async()=>Boolean(queue&&typeof readPropAnimationRemoveReady==='function'&&await readPropAnimationRemoveReady());
  const propFolderDeleteReady=async()=>Boolean(queue&&typeof readPropFolderDeleteReady==='function'&&await readPropFolderDeleteReady());
@@ -304,6 +309,23 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(Object.hasOwn(cinematicReads,command.requestType)){
      if(!await activeCinematic(command.requestType))throw failure('CINEMATIC_GENERATION_UNAVAILABLE',404);
      await admitCinematicRequest({openProject,command,authorize:id=>projectPermission(session.principal,id,undefined,false)});
+     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+    }
+    if(assemblyTypes.includes(command.requestType)){
+     if(!await activeAssembly())throw failure('ASSEMBLY_WORKFLOW_UNAVAILABLE',404);
+     const p=command.payload;
+     if(!validAssemblyRequest(p,command.requestType))throw failure('NGS_ASSEMBLY_PAYLOAD_INVALID',400);
+     const q=new URLSearchParams({projectId:p.projectId});
+     if(command.requestType==='assembly.update'){
+      q.set('item',p.assemblyId);
+      const {json:{assembly}}=await assemblyWorkspaceRead({query:q,openProject,authorize:()=>{}});
+      if(assembly.revision!==p.expectedRevision)throw failure('ASSEMBLY_REVISION_CONFLICT',409);
+      q.set('item',assembly.map.mapId);q.set('revision',assembly.map.revision);
+      const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
+      if(map.officialRequestId!==assembly.map.officialRequestId||!assemblyReachable(map.graph,p.puzzles))throw failure('ASSEMBLY_LAYOUT_UNREACHABLE',400);
+     }else{
+      q.set('item',p.mapId);await readWorkspace('/api/map-workspace',q,()=>{});
+     }
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
     if(mapTypes.includes(command.requestType)){
@@ -445,11 +467,11 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
     const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady(),deleteBackground=await backgroundDeleteReady(),deleteCinematic=await cinematicDeleteReady();
-    const [mapReady,deleteMap]=await Promise.all([activeMap(),mapDeleteReady()]);
+    const [mapReady,deleteMap,assemblyReady]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly()]);
     const [pixelBackground,animateBackground]=await Promise.all([activeCinematic(backgroundPixelType),activeCinematic(backgroundAnimationType)]);
     const [actions,legacyCine,sequenceCine,playbackCine,sourceCine,backgroundReady,removeCine,removeProp]=await Promise.all([activePropActions(),activeCinematic(cinematicType),activeCinematic(cinematicSequenceType),activeCinematic(cinematicPlaybackUpdateType),activeCinematic(cinematicSourceGenerateType),activeCinematic(backgroundSourceType),activeCinematic(cinematicSequencesRemoveType),activePropRemoval()]);
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
-     ...(actions.length?{propActions:actions}:{}),...(mapReady?{mapEnabled:true}:{}),...(deleteMap?{mapDeleteEnabled:true}:{}),
+     ...(actions.length?{propActions:actions}:{}),...(mapReady?{mapEnabled:true}:{}),...(assemblyReady?{assemblyEnabled:true}:{}),...(deleteMap?{mapDeleteEnabled:true}:{}),
      ...(legacyCine?{cinematicEnabled:true}:{}),
      ...(sequenceCine?{cinematicSequenceEnabled:true}:{}),...(playbackCine?{cinematicPlaybackEnabled:true}:{}),
      ...(sourceCine?{cinematicSourceEnabled:true}:{}),...(backgroundReady?{backgroundSourceEnabled:true}:{}),...(pixelBackground?{backgroundPixelEnabled:true}:{}),...(animateBackground?{backgroundAnimationEnabled:true}:{}),...(removeCine?{cinematicRemoveEnabled:true}:{}),...(removeProp?{propAnimationRemoveEnabled:true}:{}),...(deleteProp?{propFolderDeleteEnabled:true}:{}),...(deleteNpc?{npcFolderDeleteEnabled:true}:{}),...(deleteBackground?{backgroundDeleteEnabled:true}:{}),...(deleteCinematic?{cinematicDeleteEnabled:true}:{}),
@@ -503,6 +525,28 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     res.setHeader('Content-Length',String(end-start+1));
     res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'");
     return res.end(result.bytes.subarray(start,end+1));
+   }
+   if(url.pathname==='/api/assembly-prop'){
+    const session=auth.read(req);if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
+    if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
+    const authorize=(id,resource)=>projectPermission(session.principal,id,resource,false);
+    const result=await assemblyPinnedPropRead({query:url.searchParams,openProject,authorize,allowPin:async pin=>{
+     const query=new URLSearchParams({projectId:'binari',item:pin.assemblyId??''});
+     const {json:{assembly}}=await assemblyWorkspaceRead({query,openProject,authorize});
+     return assembly.puzzles.some(p=>Object.values(p.bindings).some(b=>b.propId===pin.propId&&b.revision===pin.revision&&b.sha256===pin.sha256));
+    }});
+    if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+    if(result.json)return json(200,result.json);
+    res.setHeader('Content-Type',result.mime);res.setHeader('Content-Length',String(result.bytes.length));
+    res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'");return res.end(result.bytes);
+   }
+   if(url.pathname===assemblyPath){
+    const session=auth.read(req);
+    if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
+    if(req.method!=='GET')throw failure('METHOD_NOT_ALLOWED',405);
+    const result=await assemblyWorkspaceRead({query:url.searchParams,openProject,authorize:id=>projectPermission(session.principal,id,undefined,false)});
+    if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+    return json(200,result.json);
    }
    if(workspaceReadRoute(url.pathname)){
     const session=auth.read(req);
