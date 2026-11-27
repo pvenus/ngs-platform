@@ -67,3 +67,14 @@ New-map `ngs.map-generate.v3` adds a separate `decorationDesign` choice.
 uses only the selected pinned prop candidates, visibility settings, and
 placement notes. The saved placement list is an independently hashed optional
 map group part, not a duplicate assembly or background.
+
+### 구역별 원근과 조립 플레이
+`맵 제작 > 원근`에서 가까운 곳과 먼 곳의 발 위치를 지도에 찍고, 각 지점의
+캐릭터 높이(이미지 세로 대비)와 시야 폭(이미지 가로 대비)을 조정한다. v6 프리셋은
+근점 37.6% · 폭 87.2%, 원점 8.7% · 폭 54.3%이며 다른 배경에서는 발점을 다시 찍는다.
+설정은 맵 구역의 `perspective` 필드에 기존 공용 `file.update`로 저장된다.
+배경을 교체하면 이전 좌표를 가져오지 않는다. 기능을 끄려면 `perspective:null`을 저장한다.
+게시된 맵을 불러온 조립 플레이는 캐릭터 발의 깊이로 크기와 화면 줌을 계산한다.
+가장자리에서는 빈 배경이 보이지 않도록 카메라 이동을 제한한다. 조립 플레이의
+‘원근 카메라’와 ‘캐릭터 표시’는 비교용이며 맵이나 퍼즐 상태를 저장하지 않는다.
+카메라나 캐릭터 표현은 충돌, 이동 속도, 포털, 상호작용 범위를 바꾸지 않는다.

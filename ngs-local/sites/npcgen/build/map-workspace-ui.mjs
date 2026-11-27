@@ -3,17 +3,30 @@ import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {orderedMapChain} from './map-warp.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
 import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations,decorationZOrder} from './assembly-sprite-layout.mjs';
-import {hashBrowserMap} from './map-contract.mjs';
+import {hashBrowserMap,validMapPerspective} from './map-contract.mjs';
 import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,validPropZOrder,propZMin,propZMax,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
 const empty=()=>({title:'',regions:[],startRegionId:null,connections:[]});
-const mapTabs=[['start','시작 맵'],['links','이동 연결'],['colliders','충돌 영역'],['decorations','꾸미기']];
+const mapTabs=[['start','시작 맵'],['links','이동 연결'],['colliders','충돌 영역'],['decorations','꾸미기'],['perspective','원근']];
 const tabFields={start:['startRegionId','startPoint'],links:['regions','connections'],colliders:['colliders'],decorations:['decorations']};
 const tabTitle=tab=>mapTabs.find(([key])=>key===tab)?.[1];
+const sameRegionArt=(x,y)=>x?.backgroundId===y?.backgroundId&&x?.imageSha256===y?.imageSha256;
 export function projectMapTab(base,draft,tab){
  const graph={...base};
+ if(tab==='perspective'||tab==='links'){
+  const rows=tab==='perspective'?base.regions:draft.regions;
+  const source=tab==='perspective'?draft.regions:base.regions;
+  graph.regions=rows.map(({perspective,...r})=>{
+   const match=source.find(x=>x.id===r.id);
+   const camera=sameRegionArt(r,match)?(Object.hasOwn(match,'perspective')?match.perspective:tab==='perspective'?perspective:undefined):
+    tab==='perspective'?perspective:undefined;
+   return camera===undefined?r:{...r,perspective:camera};
+  });
+  if(tab==='links')graph.connections=draft.connections;
+  return graph;
+ }
  for(const name of tabFields[tab]??[]){
   if(Object.hasOwn(draft,name))graph[name]=draft[name];else delete graph[name];
  }
@@ -26,7 +39,7 @@ export const mapDraftKey=(project,id)=>'ngs-map-draft:v1:'+project+':'+(id??'new
 function rebasePortalDraft(base,draft,current){
  if(!base||!draft||!current||!['regions','connections'].every(k=>Array.isArray(base[k])&&Array.isArray(draft[k])&&Array.isArray(current[k])))return null;
  if(mapCanonical(base.regions)!==mapCanonical(draft.regions)||mapCanonical(base.regions)!==mapCanonical(current.regions)||
-    ['start','colliders','decorations'].some(k=>tabChanged(base,draft,k)))return null;
+    ['start','colliders','decorations','perspective'].some(k=>tabChanged(base,draft,k)))return null;
  const index=g=>new Map(g.connections.map(row=>[row.id,row]));
  const before=index(base),local=index(draft),merged=index(current);
  const eq=(a,b)=>a===undefined||b===undefined?a===b:mapCanonical(a)===mapCanonical(b);
@@ -226,6 +239,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
  let startSelected=saved?.startSelected===true;
  let graph=structuredClone(draft.graph),intent=typeof saved?.intent==='string'?saved.intent:'',conflict=draft.conflict,pending=draft.done?null:saved?.pending??null,lastToken=draft.done?null:saved?.requestToken??null,lastBody=saved?.requestBody??null;
  if(published)graph.title=published.graph.title;
+ let perspectivePick='near';
  let tab=tabTitle(saved?.tab)?saved.tab:'start',submission=draft.done?null:saved?.submission??null;
  let collisionRegion=graph.startRegionId,collisionId=null,drawingCollider=false,newColliderShape='rect';
  let refreshAction=()=>{};
@@ -789,7 +803,45 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    const regionDetails=el('details',undefined,'prop-surface map-region-details');regionDetails.open=setupExpanded;
    regionDetails.append(el('summary','구역 구성 · '+graph.regions.length+'개'),setup);
    regionDetails.ontoggle=()=>{setupExpanded=regionDetails.open;};
-   if(tab==='start')sections.append(start);else if(tab==='links')sections.append(movement,regionDetails);else if(tab==='colliders')sections.append(collision);else{renderDecorations();sections.append(decoration);}
+   if(tab==='start')sections.append(start);else if(tab==='links')sections.append(movement,regionDetails);else if(tab==='colliders')sections.append(collision);else if(tab==='decorations'){renderDecorations();sections.append(decoration);}
+   else{
+    const pane=card('구역별 원근','map-perspective-card'),current=region(active);
+    const pick=setOptions(regionIds(),active);pick.onchange=()=>{active=pick.value;render();};
+    pane.append(label('편집할 구역',pick),el('p','카메라는 캐릭터를 따라갑니다. 가까운 점과 먼 점을 찍고, 각 지점의 캐릭터 높이와 시야 폭을 조절하세요.','meta'));
+    if(current){
+     const base=publishedRegion(current.id);
+     const compatible=base&&sameRegionArt(base,current);
+     const profile=current.perspective;
+     if(!compatible)pane.append(el('p','새 배경을 이동 연결 탭에서 먼저 적용해 주세요.','meta'));
+     else if(!profile)pane.append(button('v6 원근 프리셋 사용',()=>{
+      current.perspective={near:{point:{x:486,y:645},actorHeight:376,viewWidth:872},far:{point:{x:308,y:366},actorHeight:87,viewWidth:543}};
+      changed();
+     }));
+     else{
+      const mode=setOptions(['near','far'],perspectivePick,x=>x==='near'?'가까운 점':'먼 점');
+      mode.onchange=()=>{perspectivePick=mode.value;render();};
+      pane.append(label('이미지에서 찍을 위치',mode));
+      const box=preview(pane,current,{aria:'원근 기준 발점 지정',activate:point=>{
+       const candidate={...profile,[perspectivePick]:{...profile[perspectivePick],point}};
+       if(!validMapPerspective(candidate)){bark.textContent='두 기준점을 조금 더 멀리 잡아 주세요.';return;}
+       current.perspective=candidate;changed();
+      }});
+      if(box)for(const k of ['near','far'])marker(box,profile[k].point,'map-depth-anchor',k==='near'?'가까움':'멀리');
+      for(const k of ['near','far']){
+       const block=el('fieldset');block.append(el('legend',k==='near'?'가까운 위치':'먼 위치'));
+       for(const [field,caption,lo,hi] of [['actorHeight','캐릭터 높이 (% / 이미지 높이)',10,650],['viewWidth','보이는 폭 (% / 이미지 너비)',200,1000]]){
+        const n=el('input');n.type='number';n.min=String(lo/10);n.max=String(hi/10);n.step='0.1';n.value=String(profile[k][field]/10);
+        n.onchange=()=>{const value=Math.round(n.valueAsNumber*10);if(!Number.isInteger(value)||value<lo||value>hi){n.value=String(profile[k][field]/10);return;}
+         current.perspective={...current.perspective,[k]:{...current.perspective[k],[field]:value}};changed();};
+        block.append(label(caption,n));
+       }
+       pane.append(block);
+      }
+      pane.append(button('이 구역의 원근 끄기',()=>{current.perspective=null;changed();}));
+     }
+    }
+    sections.append(pane);
+   }
   }
   if(conflict){side.append(el('p','현재 버전이 바뀌었습니다. 세션 초안은 유지되지만 이전 버전으로 적용할 수 없습니다.'),button('초안 버리고 최신 버전 열기',()=>{
    if(!globalThis.confirm('세션에만 저장된 초안을 버리고 최신 버전을 열까요?'))return;
@@ -854,10 +906,11 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     const rebind=()=>{
      const bg=assets.get(linked.value);
      if(!bg||current.backgroundId===linked.value&&current.imageSha256===bg.sha256)return;
-     if(published&&(colliderRegionDirty(current.id)||decorRegionDirty(current.id))){
-      linked.value=current.backgroundId;bark.textContent='이 구역의 충돌 또는 꾸미기 초안을 먼저 적용하거나 지운 뒤 배경을 바꿔 주세요.';return;
+     if(published&&(colliderRegionDirty(current.id)||decorRegionDirty(current.id)||
+        JSON.stringify(publishedRegion(current.id)?.perspective)!==JSON.stringify(current.perspective))){
+      linked.value=current.backgroundId;bark.textContent='이 구역의 충돌, 꾸미기 또는 원근 초안을 먼저 적용하거나 지운 뒤 배경을 바꿔 주세요.';return;
      }
-     current.backgroundId=linked.value;current.imageSha256=bg.sha256;
+     current.backgroundId=linked.value;current.imageSha256=bg.sha256;delete current.perspective;
      for(const e of graph.connections){if(e.from===current.id)e.hit=null;if(e.to===current.id)e.spawn=null;}
      changed();bark.textContent='새 배경에서 출입구와 도착점을 다시 지정해 주세요.'+
       (published&&(published.graph.colliders??[]).some(c=>c.regionId===current.id)?' 적용한 뒤 기존 충돌 영역도 새 배경에 맞는지 확인해 주세요.':'');

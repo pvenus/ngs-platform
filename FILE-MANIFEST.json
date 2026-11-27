@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 306,
+  "fileCountIncludingManifest": 315,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1222,6 +1222,42 @@
     "tools/runtime-prerequisites/bootstrap/trusted-uv.lock.json": {
       "bytes": 1802,
       "sha256": "07259f7f175a8d34451d65a1e9c0841670f138a44e96528c3b1ad51b97679381"
+    },
+    "ngs-local/sites/npcgen/tests/map-perspective.mjs": {
+      "bytes": 2907,
+      "sha256": "c69c0d548745ebcc86b8981f2e9bc1ce5daf69591b2230a86fa2ab3f928aeba0"
+    },
+    "ngs-local/docs/map-workspace.md": {
+      "bytes": 8035,
+      "sha256": "1947de28f67d15eeebaac7fffe955fc641104fca11d3151e0cb322399ae2be1a"
+    },
+    "ngs-local/sites/npcgen/build/assembly-actor.mjs": {
+      "bytes": 11753,
+      "sha256": "4eb51e91dea1fd30033b65c624bb242ee92cc16e63224af866a93a97ef74175a"
+    },
+    "ngs-local/sites/npcgen/build/local-project-page.css": {
+      "bytes": 58203,
+      "sha256": "45803791df770115c8f3d77153ed7de6dee1280c28c47c4f03f37f925d1d8db2"
+    },
+    "ngs-local/sites/npcgen/build/map-contract.mjs": {
+      "bytes": 13814,
+      "sha256": "43d44ff27d5797eec43e897bfd82b2b75b84c0cb1f58881f9b34b706e2ad465f"
+    },
+    "ngs-local/sites/npcgen/build/map-workspace-ui.mjs": {
+      "bytes": 75560,
+      "sha256": "a6c0c42ffd18ae3dd3cdf7f66c1e6ed5b4ef31d55c8d07e5a0aa5fe40930e0bb"
+    },
+    "ngs-local/sites/npcgen/build/well-puzzle-demo.mjs": {
+      "bytes": 23161,
+      "sha256": "0c2fcbd8c60c983d6671ff5abeb3ab4ee4fb15383bd15d075248787b313d7982"
+    },
+    "ngs-local/sites/npcgen/tests/assembly-spirit-browser.mjs": {
+      "bytes": 6957,
+      "sha256": "a99e05e6ee2fed6fc82566ae87e3a05fa526652e93171fb666cffeac7ed5132f"
+    },
+    "ngs-local/sites/npcgen/tests/map-group-replica.mjs": {
+      "bytes": 3899,
+      "sha256": "a67071f139e415caf9cc5b1823ad6212e6177974d0e14baa2414c2252da245b4"
     }
   }
 }

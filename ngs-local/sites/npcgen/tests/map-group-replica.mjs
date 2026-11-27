@@ -50,3 +50,9 @@ test('corrupted or mismatched bytes do not silently become map metadata',async()
  f.write(base+'/1.start.json',{startRegionId:'end'});
  await assert.rejects(f.get(),error=>error.status===503);
 });
+test('published perspective survives split storage and returns with its exact region image pin',async()=>{
+ const f=fixture();
+ const perspective={near:{point:{x:486,y:645},actorHeight:376,viewWidth:872},far:{point:{x:308,y:366},actorHeight:87,viewWidth:543}};
+ const g={...graph,regions:[{...regions[0],perspective},regions[1]]};f.add(1,mapId,g);
+ assert.deepEqual((await f.get()).json.map,state(1,mapId,g));
+});

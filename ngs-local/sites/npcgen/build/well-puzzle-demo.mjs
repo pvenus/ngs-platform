@@ -1,7 +1,7 @@
 import {bowlStates,permitsAssemblyPortal,spiritPuzzleType} from './assembly-contract.mjs';
 import {assemblySpriteBox,applyAssemblySpriteBox,decorationBox,paintDecoration,renderMapDecorations,paintPropDepth,puzzleZOrder} from './assembly-sprite-layout.mjs';
 import {mapDecorPinKey} from './map-contract.mjs';
-import {mountAssemblyActor} from './assembly-actor.mjs';
+import {mountAssemblyActor,mountAssemblyPerspective} from './assembly-actor.mjs';
 import {createPuzzleRuntime,advancePressMeter,prepareCsharpWater} from './puzzle-state-runtime.mjs';
 
 export const wellDemoId='binari.ritual-well-water-demo';
@@ -249,9 +249,10 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  function wake(){if(raf===null){lastTick=undefined;raf=requestAnimationFrame(frame);}}
  signal.addEventListener('abort',()=>{runtime.close?.();cancelAnimationFrame(raf);root.remove();},{once:true});
  if(useActor){
-  actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:showRegion,onMove:render,
+  const camera=mountAssemblyPerspective(scene,controls,rehearsal.graph,signal,meterView);
+  actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:showRegion,onMove:state=>{camera?.paint(state);render();},
    canTraverse:edge=>permitsAssemblyPortal(rehearsal.portalConditions,edge.id,role=>runtime.get(ids[role])?.state)});
-  showRegion(actor.snapshot().regionId);
+  showRegion(actor.snapshot().regionId);camera?.paint(actor.snapshot());
  }else if(rehearsal)showRegion(currentRegion);else render();
 }
 
@@ -338,6 +339,10 @@ export function mountSpiritManifestation(host,{signal,rehearsal}){
   if(!ev.repeat&&(ev.code==='KeyF'||ev.key?.toLowerCase()==='f')){ev.preventDefault();activate();}
  },{signal});
  controls.append(switchSight,engage);root.append(scene,controls,story);host.append(root);
- if(rehearsal)actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:id=>{regionId=id;display();}});
+ if(rehearsal){
+  const camera=mountAssemblyPerspective(scene,controls,rehearsal.graph,signal);
+  actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:id=>{regionId=id;display();},onMove:state=>camera?.paint(state)});
+  camera?.paint(actor.snapshot());
+ }
  display();signal?.addEventListener('abort',()=>root.remove(),{once:true});scene.focus({preventScroll:true});
 }

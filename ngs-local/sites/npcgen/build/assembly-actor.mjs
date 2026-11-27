@@ -1,5 +1,5 @@
 import {createMapWarp,entryFraction} from './map-warp.mjs';
-import {mapColliderRotation,mapColliderShape} from './map-contract.mjs';
+import {mapColliderRotation,mapColliderShape,validMapPerspective} from './map-contract.mjs';
 
 const clamp=n=>Math.min(1000,Math.max(0,n));
 const movementKeys=new Set(['w','a','s','d']);
@@ -172,4 +172,65 @@ export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegio
   },
   setEnabled(value){enabled=Boolean(value)&&!disposed;if(!enabled)stop();},
  });
+}
+
+// Render-only projection. Positions and interactions remain in unscaled world coordinates.
+export function assemblyPerspective(profile,position){
+ if(!profile||!validMapPerspective(profile))return null;
+ const a=profile.near,b=profile.far;
+ const dx=b.point.x-a.point.x,dy=b.point.y-a.point.y;
+ const depth=clamp(((position.x-a.point.x)*dx+(position.y-a.point.y)*dy)*1000/(dx*dx+dy*dy))/1000;
+ const t=depth*depth*(3-2*depth);
+ const actorHeight=(a.actorHeight+(b.actorHeight-a.actorHeight)*depth)/1000;
+ const zoom=1000/(a.viewWidth+(b.viewWidth-a.viewWidth)*t);
+ const offset=v=>Math.max(-100*(zoom-1),Math.min(0,v));
+ return {depth,actorHeight,zoom,x:offset(50-position.x/10*zoom),
+  y:offset(50-(position.y/10-actorHeight*50)*zoom)};
+}
+
+function rearAvatar(doc){
+ // Temporary silhouette used to evaluate depth, not a released Seojin asset.
+ const ns='http://www.w3.org/2000/svg',svg=doc.createElementNS(ns,'svg');
+ svg.setAttribute('viewBox','0 0 56 135');svg.setAttribute('aria-hidden','true');
+ for(const [fill,d] of [
+  ['#17202a','M8 38h10v-9h-3V17h6V8h8V0h8v10h5v17h-4v10h9v7h5v17h4v24H45l1 34h4v16H35v-16h-4v-13h-6v16h-5v13H7v-15h5L11 88H1V57h3V44h4z'],
+  ['#344c54','M10 43l18-6 16 5 6 15 2 23-10-8-3 16 5 29-15 2-13-3 4-32-7-12-7 7V60z'],
+  ['#526974','M12 46l15-7 16 7-6 18-17 9-9-2 3-14z'],
+  ['#9e7056','M11 73l17 2 15-3v6l-14 4-18-3z'],
+  ['#4b484b','M19 30l3-13 12-5 6 5-6 4-5 8-9 4z'],
+  ['#41515d','M11 123h8v5h-8zm25 1h9v4h-9z'],
+ ]){
+  const path=doc.createElementNS(ns,'path');path.setAttribute('fill',fill);path.setAttribute('d',d);svg.append(path);
+ }
+ return svg;
+}
+
+export function mountAssemblyPerspective(scene,controls,graph,signal,overlay){
+ const profiles=new Map(graph.regions.filter(r=>r.perspective&&validMapPerspective(r.perspective)).map(r=>[r.id,r.perspective]));
+ if(!profiles.size)return null;
+ const doc=scene.ownerDocument,viewport=doc.createElement('div');
+ viewport.className='assembly-perspective-viewport';scene.replaceWith(viewport);viewport.append(scene);
+ if(overlay)viewport.append(overlay);
+ const control=name=>{const b=doc.createElement('button');b.type='button';b.className='prop-control';b.setAttribute('aria-label',name);controls.append(b);return b;};
+ const camera=control('원근 카메라'),visibility=control('캐릭터 표시');
+ let enabled=true,visible=true,last=null,avatar=null;
+ function paint(state){
+  last=state;
+  const marker=scene.querySelector('.assembly-actor');
+  if(!marker)return;
+  const profile=profiles.get(state.regionId), value=enabled&&assemblyPerspective(profile,state.position);
+  camera.hidden=visibility.hidden=!profile;
+  camera.textContent='원근 카메라 · '+(enabled?'ON':'OFF');
+  visibility.textContent='캐릭터 표시 · '+(visible?'ON':'OFF');
+  camera.setAttribute('aria-pressed',String(enabled));visibility.setAttribute('aria-pressed',String(visible));
+  scene.style.transform=value?'translate('+value.x+'%,'+value.y+'%) scale('+value.zoom+')':'';
+  scene.dataset.perspective=value?'on':'off';
+  marker.hidden=Boolean(profile&&!visible);
+  if(!profile){delete marker.dataset.perspectiveAvatar;marker.style.height='';if(avatar?.parentNode===marker)avatar.remove();return;}
+  marker.dataset.perspectiveAvatar='';marker.style.height=((value?.actorHeight??profile.far.actorHeight/1000)*100)+'%';
+  avatar??=rearAvatar(doc);if(avatar.parentNode!==marker)marker.append(avatar);
+ }
+ camera.addEventListener('click',()=>{enabled=!enabled;if(last)paint(last);scene.focus({preventScroll:true});},{signal});
+ visibility.addEventListener('click',()=>{visible=!visible;if(last)paint(last);scene.focus({preventScroll:true});},{signal});
+ return {paint};
 }
