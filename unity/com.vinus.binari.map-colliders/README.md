@@ -18,3 +18,9 @@ GameObject walls = MapColliders.Create(mapJson, regionId, regionVisual, localIma
 
 사각형은 BoxCollider2D, 실제 표시 영역에서 정원인 경우 CircleCollider2D, 타원은 48점
 PolygonCollider2D를 사용한다. 회전은 모양 중심 기준이며 기존의 사각형 메타도 호환된다.
+
+## 공용 코드와 Unity 연결
+
+`Core/MapColliderGeometry.cs`는 UnityEngine 없이 DTO, 구역 필터링, 검증, 좌표·크기·회전
+변환 및 타원 점 계산을 제공한다. `Runtime/MapColliders.cs`는 Unity에서 JSON을 읽고
+Collider2D를 붙이는 선택 어댑터다. 실제 씬이나 게임의 이동 로직은 패키지가 변경하지 않는다.

@@ -1,0 +1,6 @@
+{
+  "name": "Vinus.Binari.MapColliderCore",
+  "rootNamespace": "Vinus.Binari",
+  "noEngineReferences": true,
+  "autoReferenced": true
+}

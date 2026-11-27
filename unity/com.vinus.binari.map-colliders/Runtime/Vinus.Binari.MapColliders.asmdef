@@ -1,5 +1,6 @@
 {
   "name": "Vinus.Binari.MapColliders",
   "rootNamespace": "Vinus.Binari",
+  "references": ["Vinus.Binari.MapColliderCore"],
   "autoReferenced": true
 }
