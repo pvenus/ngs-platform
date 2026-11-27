@@ -1,3 +1,10 @@
+import assembly0 from "../ngs-local/sites/npcgen/build/assembly-catalog-ui.mjs?raw";
+import assembly1 from "../ngs-local/sites/npcgen/build/assembly-contract.mjs?raw";
+import assembly2 from "../ngs-local/sites/npcgen/build/well-assembly-ui.mjs?raw";
+import assembly3 from "../ngs-local/sites/npcgen/build/well-puzzle-demo.mjs?raw";
+import assembly4 from "../ngs-local/sites/npcgen/build/puzzle-state-runtime.mjs?raw";
+import assembly5 from "../ngs-local/sites/npcgen/build/assembly-sprite-layout.mjs?raw";
+import assembly6 from "../ngs-local/sites/npcgen/build/assembly-actor.mjs?raw";
 import mapWarp from "../ngs-local/sites/npcgen/build/map-warp.mjs?raw";
 import mapContract from "../ngs-local/sites/npcgen/build/map-contract.mjs?raw";
 import mapWorkspace from "../ngs-local/sites/npcgen/build/map-workspace-ui.mjs?raw";
@@ -39,6 +46,13 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/cinematic-sequence-contract.mjs",{type:javascript,body:cine0}],
  ["/cinematic-timeline.mjs",{type:javascript,body:cine1}],
  ["/map-warp.mjs",{type:javascript,body:mapWarp}],
+ ["/assembly-catalog-ui.mjs",{type:javascript,body:assembly0}],
+ ["/assembly-contract.mjs",{type:javascript,body:assembly1}],
+ ["/well-assembly-ui.mjs",{type:javascript,body:assembly2}],
+ ["/well-puzzle-demo.mjs",{type:javascript,body:assembly3}],
+ ["/puzzle-state-runtime.mjs",{type:javascript,body:assembly4}],
+ ["/assembly-sprite-layout.mjs",{type:javascript,body:assembly5}],
+ ["/assembly-actor.mjs",{type:javascript,body:assembly6}],
  ["/map-contract.mjs",{type:javascript,body:mapContract}],
  ["/map-workspace-ui.mjs",{type:javascript,body:mapWorkspace}],
  ["/background-playback.mjs",{type:javascript,body:backgroundPlayback}],

@@ -1,5 +1,6 @@
 import handler from "vinext/server/fetch-handler";
 import { sharedNgsResponse } from "./shared-ngs-assets";
+import { admitSpaceMapAssembly } from "./space-map-assembly.mjs";
 import { replicaSyncProgressPath,readReplicaSyncProgress } from "../ngs-local/sites/npcgen/build/replica-sync-progress.mjs";
 import { projectCatalogResponse, projectCatalogMcp } from "./space-project-catalog.mjs";
 import { appProject, siteAppMaster } from "../lib/app-master";
@@ -56,13 +57,21 @@ export default {
     }
     const machine = await machineResponse(request,{db,secret,fileReplica,fileTools:spaceFileSyncTools,commitSha:ngsCommitSha});
     if (machine) return machine;
+    // This is the native Binari participant grant, not the generic queue
+    // capability (which can separately grant one configured email).
+    const mapAssemblyGrant = async (user:{userId:string,email:string}) => {
+      try {
+        const grant=await masterPrincipal(user);
+        return spaceQueueParticipant(grant)?grant:null;
+      } catch { return null; }
+    };
     const workspaceAuthorize = async (user:{userId:string,email:string},projectId:string,resource:string|undefined) => {
       if (projectId !== "binari" || !await authorize(user) || !resource) return false;
       try {
         // The new prop folder is not a legacy PromptService logical resource.
         // Only the existing active Binari participant roster can read it.
         // In particular, a queue-only additional email is not a prop grant.
-        if(resource==="props"||resource==="cinematics")return spaceQueueParticipant(await masterPrincipal(user));
+        if(resource==="props"||resource==="cinematics"||resource==="assembly")return !!await mapAssemblyGrant(user);
         await new PromptService(db!,user.userId,undefined,siteAppMaster(user)).resourcePolicy(projectId,resource);
         return true;
       } catch { return false; }
@@ -82,6 +91,20 @@ export default {
       return result.npcs.some((npc:{id:string})=>npc.id===npcId);
     } : undefined;
     const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
+      mapAssemblyGrant,
+      admitMapAssembly:replicaReads?async (user,command)=>admitSpaceMapAssembly({
+        command,read:async (pathname,query)=>{
+          const {json}=await dispatchWorkspaceRead({pathname,query,
+            openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),
+            authorize:async projectId=>{
+              const resource=pathname==="/api/assembly-workspace"?"assembly":"cinematics";
+              if(!await workspaceAuthorize(user,projectId,resource))
+                throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
+            },
+          });
+          return json;
+        },
+      }):undefined,
       cinematicEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_ENABLED?:string}).NGS_CINEMATIC_ENABLED==="1",
       cinematicSequenceEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_SEQUENCE_ENABLED?:string}).NGS_CINEMATIC_SEQUENCE_ENABLED==="1",
       cinematicPlaybackEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_PLAYBACK_ENABLED?:string}).NGS_CINEMATIC_PLAYBACK_ENABLED==="1",

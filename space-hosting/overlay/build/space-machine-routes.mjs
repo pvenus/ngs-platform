@@ -1,4 +1,5 @@
 /** Explicit Site routes for one project. Native visitors and Mac relay have separate identities. */
+import {mapAssemblyAction,spaceMapAssemblyCapabilities,validSpaceMapAssemblyCommand} from './space-map-assembly.mjs';
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
 import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from '../ngs-local/sites/npcgen/build/replica-whole-file-wire.mjs';
 import {audioSeparationType,validAudioSeparationPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
@@ -135,7 +136,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,backgroundSourceEnabled=false,cinematicRemoveEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,backgroundSourceEnabled=false,cinematicRemoveEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic,mapAssemblyGrant,admitMapAssembly}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -155,11 +156,15 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   const activeBackground=nativeReady&&backgroundSourceEnabled===true;
   const activeRemove=nativeReady&&cinematicRemoveEnabled===true;
   const activePropRemove=replicaReads&&workspaceReady&&propAnimationRemoveEnabled===true&&typeof admitPropAnimationRemove==='function';
+  const participant={userId:id,email};
+  const workspaceCapabilities=async writable=>replicaReads&&workspaceReady&&typeof mapAssemblyGrant==='function'
+   ?spaceMapAssemblyCapabilities(await mapAssemblyGrant(participant),writable&&typeof admitMapAssembly==='function'):{};
+
   if(url.pathname===session){
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
    const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeBackground?{backgroundSourceEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...tokens});
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeBackground?{backgroundSourceEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...await workspaceCapabilities(requestWritable),...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));
@@ -172,7 +177,16 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   need(typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true,403,'SPACE_QUEUE_WRITE_NOT_GRANTED');
   need(await sameToken(request.headers.get('X-NPCGen-Csrf'),tokens.csrfToken)&&
     request.headers.get('X-NPCGen-Frontend-Context')===tokens.contextId,403,'CSRF_INVALID');
-  const {value}=await body(request,small);
+  const {value,read}=await body(request,64*1024);
+  const mapAction=mapAssemblyAction(value?.requestType,value?.payload);
+  need(mapAction||read<=small,413,'SPACE_BODY_TOO_LARGE');
+  if(mapAction){
+   need(validSpaceMapAssemblyCommand(value.requestType,value.payload),400,'SPACE_REQUEST_INVALID');
+   const caps=await workspaceCapabilities(true);
+   need(caps[mapAction]===true,403,'SPACE_MAP_ASSEMBLY_ACTION_DENIED');
+   await admitMapAssembly(participant,value);
+  }
+
   if(value?.requestType==='npc.workflow'&&value.payload?.schemaVersion===npcBasicSchema)
    need(activeNpcBasic,404,'NPC_BASIC_PORTRAIT_UNAVAILABLE');
   if((value?.requestType==='npc.workflow'||value?.requestType==='npc.animation.regenerate')&&isPoseSelectionV2(value.payload?.schemaVersion))

@@ -429,3 +429,90 @@ test('Space Basic NPC uses the same browser payload contract and relays it uncha
  const queue=new SpaceRequestQueue(db);
  assert.equal((await queue.pending({})).requests.length,2);
 });
+
+test('map and assembly queue rights use the native Binari roster, never queue-only write',async t=>{
+ const grants=Object.fromEntries(['owner','editor','viewer'].map(role=>[role,{role,projectId:'binari'}]));
+ const options={db:store(t),secret:token,replicaReads:true,workspaceReady:true,
+  authorize:async u=>u.userId!=='revoked',authorizeWrite:async()=>true,
+  mapAssemblyGrant:async u=>grants[u.userId]??null,admitMapAssembly:async()=>{}};
+ const browser=(...args)=>browserQueueResponse(request(...args),options);
+ const session=async who=>(await browser('/__npcgen_session','GET',headers(who))).json();
+ const post=(who,s,cmd,extra={})=>browser('/api/requests','POST',{...headers(who),Origin:origin,
+  'X-NPCGen-Csrf':s.csrfToken,'X-NPCGen-Frontend-Context':s.contextId,...extra},cmd);
+ const fixtureId='request.official.'+'c'.repeat(64);
+ const room=(id,c)=>({id,name:'Room '+id,description:'Fixture',backgroundId:'background.'+c.repeat(64),imageSha256:c.repeat(64)});
+ const graph={title:'Map',startRegionId:'a',regions:[room('a','a'),room('b','b')],connections:[
+  {id:'portal',from:'a',to:'b',hit:null,spawn:null,label:'Portal'}]};
+ const map={requestType:'map.generate',idempotencyKey:'map-generate',payload:{
+  schemaVersion:'ngs.map-generate.v1',projectId:'binari',graph,intent:'Fixture'}};
+ const mapUpdate={requestType:'map.update',idempotencyKey:'map-update',payload:{
+  schemaVersion:'ngs.map-update.v1',projectId:'binari',mapId:fixtureId,expectedRevision:1,
+  graph:{...graph,connections:[{...graph.connections[0],hit:{x:500,y:500,width:10,height:10},spawn:{x:200,y:500}}]}}};
+ const assembly={requestType:'assembly.generate',idempotencyKey:'assembly-generate',payload:{
+  schemaVersion:'ngs.assembly-generate.v1',projectId:'binari',mapId:fixtureId,title:'Assembly',
+  puzzleType:'binari.ritual-well-water-demo',intent:'Fixture'}};
+ const assemblyUpdate={requestType:'assembly.update',idempotencyKey:'assembly-update',payload:{
+  schemaVersion:'ngs.assembly-update.v1',projectId:'binari',assemblyId:fixtureId,expectedRevision:1,puzzles:[]}};
+ const deletes=['maps','assemblies'].map(kind=>({requestType:'file.delete',idempotencyKey:'delete-'+kind,payload:{
+  schemaVersion:'ngs.file-delete.v1',projectId:'binari',target:{root:'canonical-files/binari/cinematics/'+kind,path:fixtureId,kind:'directory'},
+  expected:{revision:1,officialRequestId:fixtureId}}}));
+ for(const who of ['owner','editor','viewer','queue-only']){
+  const s=await session(who);
+  assert.equal(s.requestWritable,true);
+  assert.equal(s.mapReadEnabled,who==='queue-only'?undefined:true);
+  assert.equal(s.assemblyReadEnabled,who==='queue-only'?undefined:true);
+  assert.equal(s.mapEnabled,['owner','editor'].includes(who)?true:undefined);
+  assert.equal(s.assemblyEnabled,['owner','editor'].includes(who)?true:undefined);
+  assert.equal(s.mapDeleteEnabled,who==='owner'?true:undefined);
+  assert.equal(s.assemblyDeleteEnabled,who==='owner'?true:undefined);
+  for(const cmd of [map,mapUpdate,assembly,assemblyUpdate]){
+   const out=await post(who,s,cmd);
+   assert.equal(out.status,['owner','editor'].includes(who)?202:403,JSON.stringify(await out.json()));
+  }
+  for(const cmd of deletes)assert.equal((await post(who,s,cmd)).status,who==='owner'?202:403);
+ }
+ const owner=await session('owner');
+ assert.equal((await post('owner',owner,deletes[0],{'X-NPCGen-Csrf':'wrong'})).status,403);
+ assert.equal((await post('owner',owner,deletes[1],{Origin:'https://other.example'})).status,403);
+ for(const root of ['canonical-files/binari/cinematics','canonical-files/binari/cinematics/backgrounds']){
+  const cmd=structuredClone(deletes[0]);cmd.payload.target.root=root;
+  assert.equal((await post('owner',owner,cmd)).status,400);
+ }
+ const stale=structuredClone(deletes[1]);stale.payload.expected.revision=0;
+ assert.equal((await post('owner',owner,stale)).status,400);
+ assert.equal((await browser('/__npcgen_session','GET',headers('revoked'))).status,403);
+});
+
+test('map/assembly admission uses replica pins and keeps title, revision and reachability checks',async()=>{
+ const {admitSpaceMapAssembly}=await import('../build/space-map-assembly.mjs');
+ const official='request.official.'+'f'.repeat(64),char='a'.repeat(64),backgroundId='background.'+char;
+ const graph={title:'Pinned Map',startRegionId:'start',regions:[{id:'start',name:'Start',description:'Fixture',backgroundId,imageSha256:char}],connections:[]};
+ const map={requestType:'map.update',payload:{schemaVersion:'ngs.map-update.v1',projectId:'binari',mapId:official,expectedRevision:1,graph}};
+ const latest={map:{revision:1,graph},assembly:{revision:1,map:{mapId:official}},backgrounds:[{title:'Fixture',backgroundId,sha256:char}]};
+ const visit=[];
+ const read=async(path,q)=>{
+  visit.push(path);
+  if(path==='/api/background-workspace')return {backgrounds:latest.backgrounds};
+  assert.equal(q.get('item'),official);
+  if(path==='/api/map-workspace')return {map:latest.map};
+  return {assembly:latest.assembly};
+ };
+ await admitSpaceMapAssembly({command:map,read});
+ assert.deepEqual(visit.splice(0),['/api/background-workspace','/api/map-workspace']);
+ latest.map.revision=2;
+ await assert.rejects(admitSpaceMapAssembly({command:map,read}),{status:409,message:'MAP_REVISION_CONFLICT'});
+ latest.map.revision=1;latest.map.graph={...graph,title:'Other'};
+ await assert.rejects(admitSpaceMapAssembly({command:map,read}),{status:409,message:'MAP_TITLE_IMMUTABLE'});
+ latest.map.graph=graph;latest.backgrounds[0].sha256='b'.repeat(64);
+ await assert.rejects(admitSpaceMapAssembly({command:map,read}),{status:404,message:'MAP_BACKGROUND_NOT_FOUND'});
+ const assemble={requestType:'assembly.update',payload:{schemaVersion:'ngs.assembly-update.v1',projectId:'binari',assemblyId:official,expectedRevision:1,puzzles:[]}};
+ await admitSpaceMapAssembly({command:assemble,read});
+ latest.assembly.revision=2;
+ await assert.rejects(admitSpaceMapAssembly({command:assemble,read}),{status:409,message:'ASSEMBLY_REVISION_CONFLICT'});
+ latest.assembly.revision=1;
+ const slot={propId:'fixture',revision:1,sha256:char};
+ assemble.payload.puzzles=[{id:'fixture',type:'binari.ritual-well-water-demo',
+  layout:{altar:{regionId:'start',x:50,y:50},well:{regionId:'unreachable',x:50,y:50}},
+  attachments:{bowl:{x:0,y:0},lid:{x:0,y:0}},bindings:{table:slot,bowl:slot,well:slot,lid:slot}}];
+ await assert.rejects(admitSpaceMapAssembly({command:assemble,read}),{status:400,message:'ASSEMBLY_LAYOUT_UNREACHABLE'});
+});

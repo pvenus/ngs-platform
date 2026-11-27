@@ -7,6 +7,7 @@ const unavailable=new Map([
  ['/api/project-folders/compare','POST'],['/api/project-folders/refresh','POST'],['/api/project-folders/icon','GET'],
  ['/api/folders/compare','POST'],['/api/folders/refresh','POST'],['/api/audio-workspace','GET'],
  ['/api/project-workspace','GET'],['/api/npc-workspace','GET'],['/api/prop-workspace','GET'],['/api/cinematic-workspace','GET'],['/api/requests','POST'],
+ ['/api/map-workspace','GET'],['/api/background-workspace','GET'],['/api/assembly-workspace','GET'],
 ]);
 const previousHostedBgm=new Set(['/api/space/audio-workspace','/api/space/audio-concepts','/api/space/audio-requests']);
 const csp="default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' blob:";

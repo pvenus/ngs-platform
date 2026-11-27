@@ -96,7 +96,7 @@ test('ungranted visitors cannot run storage reads, and files outside selected as
  ])assert.equal((await spaceWorkspaceReadResponse(request(string),space,{authorize:async()=>true})).status,404);
 });
 test('one registry declares workspace routes and the view cannot import either storage engine',()=>{
- assert.deepEqual(workspaceReadRegistry,{'/api/project-workspace':'project','/api/npc-workspace':'npc','/api/prop-workspace':'prop','/api/cinematic-workspace':'cinematic'});
+ assert.deepEqual(workspaceReadRegistry,{'/api/project-workspace':'project','/api/npc-workspace':'npc','/api/prop-workspace':'prop','/api/cinematic-workspace':'cinematic','/api/background-workspace':'background','/api/map-workspace':'map','/api/assembly-workspace':'assembly'});
  for(const path of ['project-workspace-view','workspace-read-storage','workspace-read-registry']){
   const source=readFileSync(new URL('../ngs-local/sites/npcgen/build/'+path+'.mjs',import.meta.url),'utf8');
   assert.doesNotMatch(source,/(?:from ['"](?:node:fs|node:path|cloudflare:workers)|\b(?:process\.env|R2Bucket|D1Database)\b)/);
@@ -173,4 +173,19 @@ test('same prop roster and pinned detail across Local/Space; hosted denies befor
   assert.deepEqual(await actual.json(),local.json);
  }
  assert.ok(touches.length>0&&touches.every(path=>path.startsWith(p+'/')&&!path.includes('/assets/')));
+});
+
+test('Space map, background and assembly reads remain scoped to their own native resource grant',async t=>{
+ const {space}=fixture(t);
+ for(const [route,resource] of [['map','cinematics'],['background','cinematics'],['assembly','assembly']]){
+  const url='https://fixture.invalid/api/'+route+'-workspace?projectId=binari';
+  const headers={'oai-authenticated-user-id':'viewer','oai-authenticated-user-email':'viewer@example.invalid'};
+  assert.equal((await spaceWorkspaceReadResponse(new Request(url),space,{authorize:async()=>true})).status,401);
+  assert.equal((await spaceWorkspaceReadResponse(new Request(url,{headers:{...headers,Origin:'https://other.invalid'}}),space,
+   {authorize:async()=>true})).status,403);
+  assert.equal((await spaceWorkspaceReadResponse(new Request(url,{headers}),space,
+   {authorize:async()=>false})).status,403);
+  assert.equal((await spaceWorkspaceReadResponse(new Request(url,{headers}),space,
+   {authorize:async(u,id,r)=>u.userId==='viewer'&&id==='binari'&&r===resource})).status,200);
+ }
 });

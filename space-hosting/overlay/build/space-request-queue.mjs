@@ -1,4 +1,5 @@
 /** Site-owned transit only. The Mac Request Service owns durable official state. */
+import {validSpaceMapAssemblyCommand} from './space-map-assembly.mjs';
 import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local-concept-category-contract.mjs';
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
 import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
@@ -69,7 +70,7 @@ function commandOK(cmd){
  case 'concept.category.workflow':return validConceptCategoryRequest(p);
  case 'npc.workflow':return validOneStop(p);
  case animationRegenerateType:return validNpcAnimationRegenerate(p);
- default:return !!propAction(cmd.requestType)&&validPropPayload(cmd.requestType,p);
+ default:return validSpaceMapAssemblyCommand(cmd.requestType,p)||!!propAction(cmd.requestType)&&validPropPayload(cmd.requestType,p);
  }
 }
 export const officialIdForSpace=async key=>'request.official.'+await hash(json(['request.official.v1','space','binari',key]));
