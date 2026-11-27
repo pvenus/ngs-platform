@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 315,
+  "fileCountIncludingManifest": 316,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1258,6 +1258,10 @@
     "ngs-local/sites/npcgen/tests/map-group-replica.mjs": {
       "bytes": 3899,
       "sha256": "a67071f139e415caf9cc5b1823ad6212e6177974d0e14baa2414c2252da245b4"
+    },
+    "ngs-local/source-manifest.json": {
+      "bytes": 19265,
+      "sha256": "abf0e60ae2a4d57722e47c697f25b7dc0cbaf0419863383cb2820bd9549427d0"
     }
   }
 }
