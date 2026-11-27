@@ -1,0 +1,7 @@
+{
+  "name": "com.vinus.binari.map-colliders",
+  "version": "1.0.0",
+  "displayName": "Binari Map Colliders",
+  "description": "Builds Unity 2D colliders from published NGS map metadata for the active region.",
+  "unity": "6000.0"
+}

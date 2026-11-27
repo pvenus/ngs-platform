@@ -455,3 +455,5 @@ ul{padding:0;list-style:none}
 .map-collider-ghost[hidden]{display:none}
 .map-collider-marker.selected{border-color:#ff9a87;background:#ac393c70}
 .map-collider-marker .map-resize-handle{border-color:#ad4a42}
+
+.map-play-collider{pointer-events:none;box-sizing:border-box;border-style:dashed;background:#ad493738}

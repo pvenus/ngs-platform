@@ -142,7 +142,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  function startWarp(){
   if(!playable()||signal?.aborted)return;
   if(mode==='edit')returnRegion=active;
-  warp=createMapWarp(graph,{aspectForRegion:id=>aspectOf(region(id))});active=warp.snapshot().regionId;mode='play';
+  warp=createMapWarp(graph);active=warp.snapshot().regionId;mode='play';
   bark.textContent='';render();
  }
  function closeWarp(){
@@ -557,11 +557,16 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    view.append(el('h4',(graph.regions.findIndex(r=>r.id===active)+1)+' / '+graph.regions.length+' · '+title(active)));
    const box=preview(view,region(active));
    if(box&&mode==='play'){
+    for(const c of (graph.colliders??[]).filter(c=>c.regionId===active)){
+     const outline=el('span',undefined,'map-collider-outline map-play-collider');
+     paintCollider(outline,c.rect,mapColliderShape(c),mapColliderRotation(c));
+     outline.setAttribute('aria-hidden','true');box.append(outline);
+    }
     for(const e of graph.connections.filter(e=>e.from===active&&mapRect(e.hit)))marker(box,e.hit,'map-exit',e.label);
     const actor=el('span',undefined,'map-player');actor.setAttribute('aria-label','캐릭터 위치');box.append(actor);
     const pos=el('p',undefined,'map-position');
     const outgoing=graph.connections.some(e=>e.from===active);
-    view.append(el('p',outgoing?'방향키·WASD 또는 바닥 클릭으로 이동하세요. 포털 영역에 들어가면 워프합니다.':'마지막 구역에 도착했습니다. 처음부터 다시 플레이하거나 편집으로 돌아갈 수 있어요.'),pos);
+    view.append(el('p',outgoing?'방향키·WASD 또는 바닥 클릭으로 이동하세요. 주황색 충돌 영역은 표시만 하고 포털은 그대로 작동합니다.':'마지막 구역에 도착했습니다. 처음부터 다시 플레이하거나 편집으로 돌아갈 수 있어요.'),pos);
     const draw=state=>drawPosition(actor,pos,state);draw(warp.snapshot());
     mountPlay=outgoing?()=>bindMovement(box,draw):()=>play.focus({preventScroll:true});
    }

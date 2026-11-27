@@ -32,28 +32,12 @@ test('colliders are optional, bounded and exact; only an edit may supply nonempt
  assert.equal(mapGraphMatches(withWall,graph),false);
 });
 
-test('a thin wall on the current map clips long moves and wins ties against a portal',()=>{
- for(const x of [700,800]){
-  const p=play([collider(x)]);
-  const state=p.move(990,250);
-  assert.equal(state.regionId,'first');assert.equal(state.warp,null);
-  assert.ok(state.position.x<x&&state.position.x>x-0.01);
-  assert.equal(p.move(990,250).warp,null);
-  assert.equal(p.move(990,350).regionId,'first');
- }
-});
-test('an earlier portal wins, and walls in other rooms do not alter the path',()=>{
- for(const wall of [collider(850),collider(700,'second')]){
-  const p=play([wall]);
-  assert.deepEqual(p.move(990,250),{regionId:'second',position:portal.spawn,
+test('web movement ignores wall metadata, even where a wall covers a portal',()=>{
+ for(const wall of [collider(700),collider(800),{...collider(800),shape:'ellipse',rotation:90}]){
+  const result=play([wall]).move(990,250);
+  assert.deepEqual(result,{regionId:'second',position:portal.spawn,
    warp:{id:'edge-1',from:'first',to:'second'}});
  }
-});
-test('a player starting inside a wall can step out but cannot enter it again',()=>{
- const p=play([{...collider(),rect:{x:650,y:200,width:100,height:100}}],{x:700,y:250});
- assert.equal(p.move(680,250).position.x,680);
- assert.equal(p.move(600,250).position.x,600);
- assert.ok(p.move(700,250).position.x<650);
 });
 
 test('shapes and whole-degree rotations are exact and backwards compatible',()=>{
@@ -64,29 +48,5 @@ test('shapes and whole-degree rotations are exact and backwards compatible',()=>
  for(const wall of [{...collider(),shape:'ellipse'},{...collider(),rotation:2},{...shaped,shape:'polygon'},
   ...[-1,360,2.5,true,null].map(rotation=>({...shaped,rotation}))]){
   assert.equal(validMapGraph({...graph,colliders:[wall]}),false);
- }
-});
-
-test('a swept move blocks on the ellipse itself, not an empty corner of its box',()=>{
- const wall={id:'round',regionId:'first',rect:{x:660,y:200,width:100,height:100},shape:'ellipse',rotation:0};
- const hit=play([wall]).move(780,250);
- assert.ok(hit.position.x<660&&hit.position.x>659.99);
- const corner=play([wall],{x:620,y:201}).move(675,201);
- assert.equal(corner.position.x,675);
- const inside=play([wall],{x:710,y:250});
- assert.equal(inside.move(650,250).position.x,650);
- assert.ok(inside.move(710,250).position.x<660);
-});
-
-test('rotated shapes use pinned non-square image aspect and stop before a portal',()=>{
- const rect={x:650,y:240,width:120,height:20},start={x:590,y:335};
- for(const shape of ['rect','ellipse']){
-  const wall={id:'turned',regionId:'first',rect,shape,rotation:90};
-  const g={...graph,colliders:[wall]};
-  assert.equal(createMapWarp(g,{start}).move(790,335).position.x,790);
-  const p=createMapWarp(g,{start,aspectForRegion:()=>2});
-  const result=p.move(790,335);
-  assert.ok(result.position.x>700&&result.position.x<710);
-  assert.equal(result.warp,null);
  }
 });

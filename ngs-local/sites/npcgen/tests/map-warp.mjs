@@ -97,7 +97,9 @@ test('Warp preview reaches the last room, starts over twice, then closes and cle
  }});
  const tick=()=>{const batch=[...frames.values()];frames.clear();for(const fn of batch)fn(time+=50);};
  const mapId='request.official.'+'a'.repeat(64);
- const twoRoom={...graph,regions:regions.slice(0,2),connections:[{...graph.connections[0],hit:{x:525,y:830,width:10,height:40}}]};
+ const twoRoom={...graph,regions:regions.slice(0,2),connections:[{...graph.connections[0],hit:{x:525,y:830,width:10,height:40}}],
+  colliders:[{id:'left-wall',regionId:'r1',rect:{x:510,y:820,width:50,height:80},shape:'ellipse',rotation:45},
+   {id:'right-wall',regionId:'r2',rect:{x:111,y:320,width:90,height:130}}]};
  const state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph:twoRoom};
  const backgrounds=twoRoom.regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
  const signal=new AbortController(),detail=new Element('div'),items=new Element('div'),tools=new Element('div');
@@ -110,9 +112,15 @@ test('Warp preview reaches the last room, starts over twice, then closes and cle
  const reachLast=()=>{
   assert.ok(find('1 / 2 · 구역 1'));assert.equal(frames.size,1);
   const oldCanvas=canvas();assert.equal(dom.focused,oldCanvas);
+  const overlays=box=>box.descendants().filter(n=>n.className?.includes('map-play-collider'));
+  assert.equal(overlays(oldCanvas).length,1);
+  assert.equal(overlays(oldCanvas)[0].style.transform,'rotate(45deg)');
+  assert.equal(overlays(oldCanvas)[0].style.borderRadius,'50%');
   oldCanvas.onpointerdown({button:0,clientX:700,clientY:850});
   for(let i=0;i<4&&frames.size;i++)tick();
   assert.ok(find('2 / 2 · 구역 2'));assert.equal(frames.size,0);
+  assert.equal(overlays(canvas()).length,1);
+  assert.equal(overlays(canvas())[0].style.transform,'rotate(0deg)');
   assert.equal(oldCanvas.onkeydown,null);assert.equal(oldCanvas.onkeyup,null);assert.equal(oldCanvas.onpointerdown,null);
   assert.equal(dom.focused,find('처음부터 다시'));
  };
