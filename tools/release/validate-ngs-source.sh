@@ -17,4 +17,4 @@ hosted_queue="$(mktemp -d)"
 trap 'rm -rf "$hosted_queue"' EXIT
 cp -R space-hosting/overlay/. "$hosted_queue/"
 ln -s "$PWD/ngs-local" "$hosted_queue/ngs-local"
-node --test "$hosted_queue/tests/space-machine-queue.mjs"
+node --test "$hosted_queue/tests/"{space-machine-queue,shared-workspace-read-parity,shared-ngs-response}.mjs
