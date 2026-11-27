@@ -398,7 +398,7 @@ test('a direction condition checks the current combined bowl state, without lock
 });
 
 
-test('map decoration tab adds a cinematic-only pin, moves it, and uses one formal map save',async t=>{
+for(const visibility of ['cinematic','pixel'])test('map decoration tab reveals '+visibility+' placements, moves them, and uses one formal map save',async t=>{
  const {mountMapWorkspace,mapDraftKey}=await import('../build/map-workspace-ui.mjs');
  const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div'),memory=new Map(),posts=[];
  const mapId='request.official.'+'d'.repeat(64),state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',
@@ -406,6 +406,7 @@ test('map decoration tab adds a cinematic-only pin, moves it, and uses one forma
  const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
  const pin={propId:'lantern-art',revision:1,sha256:'a'.repeat(64)},row={...pin,title:'등불'};
  const art={propId:pin.propId,source:{revision:pin.revision,sha256:pin.sha256},media:{
+  pixel:{mediaType:'image/png',url:'/api/prop-workspace?pixel',width:200,height:100},
   spirit:{mediaType:'image/png',url:'/api/prop-workspace?spirit',width:200,height:100}}};
  await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',
   storage:{getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v)},
@@ -417,13 +418,23 @@ test('map decoration tab adds a cinematic-only pin, moves it, and uses one forma
  const settle=()=>new Promise(r=>setImmediate(r));
  parts().find(e=>e.id==='map-tab-decorations').onclick();await settle();
  const prop=field('사용할 프랍');prop.value=pin.propId;prop.onchange();
- field('표시 모드').value='cinematic';find('프랍 추가').onclick();await settle();
+ const on=visibility==='cinematic',modeLabel=flag=>'서진 능력 · '+(flag?'ON':'OFF');
+ if(!on){find(modeLabel(false)).onclick();await settle();}
+ field('표시 모드').value=visibility;find('프랍 추가').onclick();await settle();
  const current=()=>JSON.parse(memory.get(mapDraftKey('binari',mapId))).graph;
+ const sprite=()=>parts().find(n=>n.tag==='img'&&n.className==='map-decor-sprite'&&!n.hidden);
  assert.equal(current().decorations.length,1);
- assert.deepEqual(current().decorations[0].prop,pin);assert.equal(current().decorations[0].visibility,'cinematic');
- assert.ok(!parts().some(n=>n.tag==='img'&&n.className==='map-decor-sprite'&&!n.hidden));
- find('서진 능력 · OFF').onclick();await settle();
- assert.ok(parts().some(n=>n.tag==='img'&&n.className==='map-decor-sprite'&&!n.hidden&&n.src==='/api/prop-workspace?spirit'));
+ assert.deepEqual(current().decorations[0].prop,pin);assert.equal(current().decorations[0].visibility,visibility);
+ assert.equal(sprite()?.src,'/api/prop-workspace?'+(on?'spirit':'pixel'));
+ find(modeLabel(on)).onclick();await settle();
+ assert.equal(sprite(),undefined);
+ assert.ok(parts().some(n=>n.textContent?.includes('현재 미리보기에서 숨겨져요')));
+ const next=on?'pixel':'cinematic';
+ find(modeLabel(!on)).onclick();await settle();
+ const currentEdit=parts().filter(x=>x.tag==='label'&&x.textContent==='표시 모드').at(-1).children[0];
+ currentEdit.value=next;await currentEdit.onchange();await settle();
+ assert.equal(current().decorations[0].visibility,next);
+ assert.equal(sprite()?.src,'/api/prop-workspace?'+(on?'pixel':'spirit'));
  const mark=parts().find(n=>n.attrs['aria-label']==='등불 위치');
  mark.onkeydown({key:'ArrowRight',shiftKey:true,preventDefault(){}});await settle();
  assert.equal(current().decorations[0].anchor.x,510);
