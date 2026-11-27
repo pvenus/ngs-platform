@@ -148,6 +148,19 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  const scale=()=>Object.fromEntries(Object.entries(scaleInputs).map(([key,v])=>[key,Number(v.value)]));
  const bindings=()=>Object.fromEntries(Object.entries(propInputs).map(([key,v])=>[key,v.value]));
  const setStatus=s=>{feedback.textContent=s;};
+ async function latestMap(id){
+  const {map:next}=await request(api('map',{item:id}));
+  if(!validMapState(next)||next.mapId!==id)throw Error('MAP_INVALID');
+  return next;
+ }
+ async function playInputs(id,loadMedia){
+  const [latest,{backgrounds:art},entries]=await Promise.all([
+   latestMap(id),request(api('background')),loadMedia,
+  ]);
+  if(!Array.isArray(art))throw Error('MAP_ART_MISSING');
+  return {latest,art,media:Object.fromEntries(entries)};
+ }
+
  function remember(){
   if(!map)return;
   drafts[map.mapId]=instances;
@@ -390,9 +403,8 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   try{
    if(!mapSelect.value){setStatus('게시된 맵을 선택하세요.');return;}
    setStatus('맵 구역을 읽고 있어요.');
-   const {map:next}=await request(api('map',{item:mapSelect.value,...(published?{revision:published.map.revision}:{})}));
+   const next=await latestMap(mapSelect.value);
    if(signal.aborted||ticket!==generation)return;
-   if(!validMapState(next)||published&&next.officialRequestId!==published.map.officialRequestId)throw Error('MAP_INVALID');
    map=next;
    const targets=map.graph.regions;
    zoom.replaceChildren(option('','전체 구역'),...targets.map(x=>option(x.id,x.name)));
@@ -427,10 +439,11 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   const which=map, instance=selected, coords=layout(), offsets=attachments(), sizes=scale(), chosen=bindings(), ticket=++generation;
   stopPlay();busy=true;refresh();setStatus('연결한 프랍과 맵 이미지를 확인하고 있어요.');
   try{
-   const entries=await Promise.all(Object.entries(chosen).map(async([role,id])=>[role,(await loadProp(instance,role,id)).prop]));
+   const {latest,art,media}=await playInputs(which.mapId,Promise.all(
+    Object.entries(chosen).map(async([role,id])=>[role,(await loadProp(instance,role,id)).prop])));
    if(signal.aborted||ticket!==generation)return;
    if(selected!==instance||JSON.stringify(chosen)!==JSON.stringify(bindings())||JSON.stringify(coords)!==JSON.stringify(layout())||JSON.stringify(offsets)!==JSON.stringify(attachments())||JSON.stringify(sizes)!==JSON.stringify(scale())){setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');return;}
-   const rehearsal=buildWellRehearsal({map:which,backgrounds,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media:Object.fromEntries(entries),pins:instance.pinned});
+   const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned});
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal});stop.hidden=false;
    setStatus('테스트 중이에요. WASD로 움직이고, 표시된 포털 영역에 걸어 들어가면 이동해요.');
    stage.querySelector('.well-demo-scene')?.focus();
@@ -449,11 +462,15 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    }))}));
   const payload={schemaVersion:'ngs.assembly-update.v1',projectId,assemblyId:published.assemblyId,expectedRevision:published.revision,puzzles};
   if(!validAssemblyRequest(payload,'assembly.update')){setStatus('모든 퍼즐의 필수 프랍 연결과 좌표를 확인하세요.');return;}
-  if(!assemblyReachable(map.graph,puzzles)){setStatus('제상에서 우물까지 갔다가 돌아오는 맵 연결이 필요해요. 맵 연결을 확인하거나 두 프랍을 같은 구역에 놓으세요.');return;}
   const fingerprint=JSON.stringify(payload);
   if(!lastApply||lastApply.body!==fingerprint)lastApply={body:fingerprint,key:crypto.randomUUID()};
   busy=true;refresh();
   try{
+   const current=await latestMap(map.mapId);
+   if(signal.aborted)return;
+   if(!assemblyReachable(current.graph,puzzles)){
+    setStatus('최신 맵에서 제상과 우물 사이를 왕복할 수 없어요. 이동 연결을 확인해 주세요.');return;
+   }
    const res=await submit({requestType:'assembly.update',idempotencyKey:lastApply.key,payload}),value=await res.json();
    if(!isQueuedRequest(res,value))throw Error(value?.error??'QUEUE_FAILED');
    setStatus('정식 수정 요청을 접수했어요. 게시가 끝나면 이 조립본을 다시 열어 새 리비전을 확인하세요.');
@@ -466,9 +483,10 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   try{
    const selectedId=selected?.id,original=published.puzzles.find(p=>p.id===selectedId)??published.puzzles[0];
    if(!original)return;
-   const entries=await Promise.all(Object.entries(original.bindings).map(async([role,pin])=>[role,(await pinnedRead(pin)).prop]));
+   const {latest,art,media}=await playInputs(published.map.mapId,Promise.all(
+    Object.entries(original.bindings).map(async([role,pin])=>[role,(await pinnedRead(pin)).prop])));
    if(signal.aborted)return;
-   const config=buildWellRehearsal({map,backgrounds,props,layout:original.layout,attachments:original.attachments,scale:original.scale,bindings:Object.fromEntries(Object.entries(original.bindings).map(([k,v])=>[k,v.propId])),pins:original.bindings,media:Object.fromEntries(entries)});
+   const config=buildWellRehearsal({map:latest,backgrounds:art,props,layout:original.layout,attachments:original.attachments,scale:original.scale,bindings:Object.fromEntries(Object.entries(original.bindings).map(([k,v])=>[k,v.propId])),pins:original.bindings,media});
    config.formal=true;config.onPropChanged=change=>{
     const event={type:'prop.changed',assemblyId:published.assemblyId,presetId:original.id,asset:original.bindings[change.role],...change};
     detail.dispatchEvent(new CustomEvent('ngs:prop-changed',{detail:event,bubbles:true}));

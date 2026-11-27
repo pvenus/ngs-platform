@@ -319,9 +319,9 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
       q.set('item',p.assemblyId);
       const {json:{assembly}}=await assemblyWorkspaceRead({query:q,openProject,authorize:()=>{}});
       if(assembly.revision!==p.expectedRevision)throw failure('ASSEMBLY_REVISION_CONFLICT',409);
-      q.set('item',assembly.map.mapId);q.set('revision',assembly.map.revision);
+      q.set('item',assembly.map.mapId);
       const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
-      if(map.officialRequestId!==assembly.map.officialRequestId||!assemblyReachable(map.graph,p.puzzles))throw failure('ASSEMBLY_LAYOUT_UNREACHABLE',400);
+      if(!assemblyReachable(map.graph,p.puzzles))throw failure('ASSEMBLY_LAYOUT_UNREACHABLE',400);
      }else{
       q.set('item',p.mapId);await readWorkspace('/api/map-workspace',q,()=>{});
      }
