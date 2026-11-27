@@ -268,7 +268,11 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    const image=el('img',null,'well-assembly-map-art'),layer=el('div',null,'well-assembly-layer');
    image.src=region.src;image.alt='';image.draggable=false;image.loading='lazy';
    layer.style.aspectRatio=String(region.width/region.height);layer.dataset.regionId=region.id;
-   layer.append(image);tile.append(el('h5',region.name),layer);overview.append(tile);overlays.set(region.id,layer);
+   const caption=el('header',null,'well-assembly-region-heading'),zoomButton=control(zoom.value?'전체 보기':'크게 보기');
+   zoomButton.setAttribute('aria-label',zoom.value?'전체 구역 보기':region.name+' 크게 보기');
+   zoomButton.addEventListener('click',()=>{zoom.value=zoom.value?'':region.id;renderBoard();zoom.focus({preventScroll:true});},{once:true});
+   caption.append(el('h5',region.name),zoomButton);
+   layer.append(image);tile.append(caption,layer);overview.append(tile);overlays.set(region.id,layer);
   }
   renderPins();
  }

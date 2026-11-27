@@ -25,3 +25,11 @@ test('Local replica serves the newest exact immutable assembly without rewriting
  assert.deepEqual((await read({projectId:'binari',item:id})).json,{assembly:state});
  assert.deepEqual((await read({projectId:'binari'})).json.assemblies.map(x=>[x.assemblyId,x.revision]),[[id,1]]);
 });
+
+test('Formal generation version 2 keeps whole-request and per-puzzle notes separate',()=>{
+ const body={schemaVersion:'ngs.assembly-generate.v2',projectId:'binari',title:'굿터 조립',mapId:id,intent:'공통 연결 요청',
+  puzzles:[{id:'first',type:puzzle.type,intent:'첫 배치는 앞마당'},{id:'second',type:puzzle.type,intent:'둘째 배치는 뒤뜰'}]};
+ assert.ok(validAssemblyRequest(body,'assembly.generate'));
+ assert.ok(!validAssemblyRequest({...body,puzzles:[body.puzzles[0],body.puzzles[0]]},'assembly.generate'));
+ assert.ok(!validAssemblyRequest({...body,puzzles:[]},'assembly.generate'));
+});

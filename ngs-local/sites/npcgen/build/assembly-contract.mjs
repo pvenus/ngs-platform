@@ -15,8 +15,15 @@ export function validAssemblyPuzzle(p){
 const puzzleList=p=>Array.isArray(p)&&p.length<=16&&p.every(validAssemblyPuzzle)&&new Set(p.map(q=>q.id)).size===p.length;
 export function validAssemblyRequest(p,type){
  if(!assemblyTypes.includes(type)||p?.projectId!=='binari')return false;
- if(type==='assembly.generate')return mapFields(p,['schemaVersion','projectId','title','mapId','puzzleType','intent'])&&p.schemaVersion==='ngs.assembly-generate.v1'&&
-  officialId(p.mapId)&&p.puzzleType===assemblyPuzzleType&&mapText(p.title,100)&&mapText(p.intent,2000);
+ if(type==='assembly.generate'){
+  const shared=officialId(p.mapId)&&mapText(p.title,100)&&mapText(p.intent,2000);
+  if(p.schemaVersion==='ngs.assembly-generate.v1')
+   return shared&&mapFields(p,['schemaVersion','projectId','title','mapId','puzzleType','intent'])&&p.puzzleType===assemblyPuzzleType;
+  return shared&&p.schemaVersion==='ngs.assembly-generate.v2'&&mapFields(p,['schemaVersion','projectId','title','mapId','intent','puzzles'])&&
+   Array.isArray(p.puzzles)&&p.puzzles.length>=1&&p.puzzles.length<=8&&p.puzzles.every(q=>mapFields(q,['id','type','intent'])&&
+    /^[a-z0-9][a-z0-9-]{0,63}$/u.test(q.id)&&typeof q.id==='string'&&q.type===assemblyPuzzleType&&(q.intent===''||mapText(q.intent,1000)))&&
+   new Set(p.puzzles.map(q=>q.id)).size===p.puzzles.length;
+ }
  return mapFields(p,['schemaVersion','projectId','assemblyId','expectedRevision','puzzles'])&&p.schemaVersion==='ngs.assembly-update.v1'&&
   officialId(p.assemblyId)&&propRevision(p.expectedRevision)&&puzzleList(p.puzzles);
 }

@@ -542,3 +542,7 @@ ul{padding:0;list-style:none}
 .well-assembly-shell:has(.zoomed){grid-template-columns:minmax(0,1fr)}
 .well-assembly-board.zoomed .well-assembly-pin{width:32px;height:32px}
 .well-assembly-board.zoomed .well-assembly-pin img{width:27px;height:27px}
+.assembly-request-puzzles{display:grid;gap:.65rem}
+.assembly-request-puzzles fieldset{min-width:0;border:1px solid #cbd9ca;border-radius:8px;padding:.5rem .7rem}
+.well-assembly-region-heading{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.2rem}
+.well-assembly-region-heading button{font-size:.68rem;padding:.12rem .3rem;margin-bottom:.15rem}

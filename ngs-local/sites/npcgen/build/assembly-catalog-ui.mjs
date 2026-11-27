@@ -33,15 +33,31 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
   create.disabled=!maps.length;
   tools.replaceChildren(create);tools.hidden=false;
   create.addEventListener('click',()=>{
-   const dialog=el('dialog',null,'prop-workspace-dialog'),form=el('form'),title=el('input'),map=el('select'),puzzle=el('select'),intent=el('textarea'),error=el('p',null,'meta');
+   const dialog=el('dialog',null,'prop-workspace-dialog'),form=el('form'),title=el('input'),map=el('select'),intent=el('textarea'),error=el('p',null,'meta');
    title.required=true;title.maxLength=100;title.placeholder='예: 굿터 · 물 올리기';
    intent.maxLength=2000;intent.rows=3;intent.placeholder='배치 의도가 있으면 남겨 주세요.';
    for(const row of maps){const o=el('option',row.title);o.value=row.mapId;map.append(o);}
-   const o=el('option','굿상에 물 올리기');o.value=assemblyPuzzleType;puzzle.append(o);
+   const puzzleFields=el('div',null,'assembly-request-puzzles'),newPuzzle=el('button','퍼즐 추가','prop-control');newPuzzle.type='button';
+   const entries=[];
+   function addPuzzle(){
+    if(entries.length>=8)return;
+    const group=el('fieldset'),legend=el('legend'),type=el('select'),note=el('textarea'),drop=el('button','이 퍼즐 빼기','prop-control');
+    const o=el('option','굿상에 물 올리기');o.value=assemblyPuzzleType;type.append(o);
+    note.rows=2;note.maxLength=1000;note.placeholder='이 퍼즐의 구역·배치·연결 요청';
+    drop.type='button';group.append(legend,field('퍼즐 종류',type),field('퍼즐별 요청 사항',note),drop);
+    const row={id:'puzzle-'+crypto.randomUUID(),type,note,drop,group,legend};entries.push(row);puzzleFields.append(group);
+    function counts(){
+     entries.forEach((entry,i)=>{entry.legend.textContent='퍼즐 '+(i+1);entry.drop.disabled=entries.length===1;});
+     newPuzzle.disabled=entries.length>=8;
+    }
+    drop.addEventListener('click',()=>{if(entries.length<=1)return;entries.splice(entries.indexOf(row),1);group.remove();counts();},{signal});
+    counts();
+   }
+   newPuzzle.addEventListener('click',addPuzzle,{signal});addPuzzle();
    const send=el('button','정식 생성 요청','prop-control'),close=el('button','취소','prop-control'),actions=el('div',null,'prop-actions');
    close.type='button';send.type='submit';actions.append(send,close);
    const heading=el('h3','조립 생성');heading.id='assembly-create-'+crypto.randomUUID();dialog.setAttribute('aria-labelledby',heading.id);
-   form.append(field('조립 이름',title),field('맵',map),field('퍼즐',puzzle),field('요청 사항',intent),actions,error);
+   form.append(field('조립 이름',title),field('맵',map),field('통합 요청 사항',intent),puzzleFields,newPuzzle,actions,error);
    dialog.append(heading,form);detail.append(dialog);dialog.showModal();title.focus();
    dialog.addEventListener('close',()=>{dialog.remove();if(!signal.aborted)create.focus();},{once:true});
    close.addEventListener('click',()=>dialog.close(),{signal});
@@ -49,8 +65,9 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
    let last;
    form.addEventListener('submit',async e=>{
     e.preventDefault();if(send.disabled)return;
-    const payload={schemaVersion:'ngs.assembly-generate.v1',projectId,title:title.value.trim(),mapId:map.value,puzzleType:puzzle.value,
-     intent:intent.value.trim()||'선택한 맵과 퍼즐의 필수 프랍을 연결해 플레이할 수 있는 기본 배치를 만들어 주세요.'};
+    const payload={schemaVersion:'ngs.assembly-generate.v2',projectId,title:title.value.trim(),mapId:map.value,
+     intent:intent.value.trim()||'선택한 맵에서 퍼즐별 필수 프랍을 연결해 플레이 가능한 배치를 구성해 주세요.',
+     puzzles:entries.map(({id,type,note})=>({id,type:type.value,intent:note.value.trim()}))};
     if(!validAssemblyRequest(payload,'assembly.generate')){error.textContent='조립 이름과 필수 선택을 확인하세요.';return;}
     const body=JSON.stringify(payload);if(last?.body!==body)last={body,key:crypto.randomUUID()};
     send.disabled=close.disabled=true;
