@@ -246,11 +246,12 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   finally{busy=false;render();}
  }
  signal?.addEventListener('abort',()=>stopMovement(),{once:true});
- const playable=()=>validMapGraph(graph)&&graph.connections.length>0&&graph.regions.every(imageAligned);
+ const warpGraph=()=>conflict&&published?published.graph:graph;
+ const playable=()=>{const plan=warpGraph();return validMapGraph(plan)&&plan.connections.length>0&&plan.regions.every(imageAligned);};
  function startWarp(){
   if(!playable()||signal?.aborted)return;
   if(mode==='edit')returnRegion=active;
-  active=graph.startRegionId;mode='play';
+  active=warpGraph().startRegionId;mode='play';
   bark.textContent='';render();
  }
  function closeWarp(){
@@ -679,35 +680,38 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   }
   const view=el('div',undefined,'map-preview');
   if(mode==='play'||!published){
-   const heading=el('h4',(graph.regions.findIndex(r=>r.id===active)+1)+' / '+graph.regions.length+' · '+title(active));view.append(heading);
-   const box=preview(view,region(active));
+   const plan=mode==='play'?warpGraph():graph;
+   const playRegion=id=>plan.regions.find(r=>r.id===id),playTitle=id=>playRegion(id)?.name??'구역 미선택';
+   const heading=el('h4',(plan.regions.findIndex(r=>r.id===active)+1)+' / '+plan.regions.length+' · '+playTitle(active));view.append(heading);
+   if(mode==='play'&&conflict&&published)view.append(el('p','게시 버전 '+published.revision+'로 플레이 중 · 이전 편집 초안은 그대로 남아 있어요.','meta'));
+   const box=preview(view,playRegion(active));
    if(box&&mode==='play'){
     const picture=box.querySelector('img'),overlay=el('div'),pos=el('p',undefined,'map-position'),hint=el('p');
     overlay.style.cssText='position:absolute;inset:0;pointer-events:none';box.append(overlay);view.append(hint,pos);
     const draw=({position})=>{pos.textContent='발 위치: '+Math.round(position.x)+', '+Math.round(position.y);};
     const show=(id,edge)=>{
      active=id;box.dataset.regionId=id;
-     const r=region(id),asset=assets.get(r.backgroundId);
+     const r=playRegion(id),asset=assets.get(r.backgroundId);
      picture.src=imageUrl(asset);picture.alt=r.name;picture.width=asset.width;picture.height=asset.height;
-     heading.textContent=(graph.regions.findIndex(r=>r.id===id)+1)+' / '+graph.regions.length+' · '+title(id);
+     heading.textContent=(plan.regions.findIndex(r=>r.id===id)+1)+' / '+plan.regions.length+' · '+title(id);
      box.setAttribute('aria-label',r.name+' 워프 플레이 · WASD로 이동');
      overlay.replaceChildren();
-     for(const c of (graph.colliders??[]).filter(c=>c.regionId===id)){
+     for(const c of (plan.colliders??[]).filter(c=>c.regionId===id)){
       const outline=el('span',undefined,'map-collider-outline map-play-collider');
       paintCollider(outline,c.rect,mapColliderShape(c),mapColliderRotation(c));
       outline.setAttribute('aria-hidden','true');overlay.append(outline);
      }
-     const exits=graph.connections.filter(e=>e.from===id&&mapRect(e.hit));
+     const exits=plan.connections.filter(e=>e.from===id&&mapRect(e.hit));
      for(const e of exits)marker(overlay,e.hit,'map-exit',e.label);
      hint.textContent=exits.length
       ?'WASD·방향키 또는 바닥 클릭으로 이동하세요. 포털 영역에 들어가면 이동합니다. 주황색 충돌 영역은 이 미리보기에서 표시만 해요.'
       :'이 구역에서 나가는 포털이 없어요. 구역 안에서는 계속 이동할 수 있어요.';
-     if(edge)bark.textContent=title(edge.from)+' → '+title(id);
+     if(edge)bark.textContent=playTitle(edge.from)+' → '+playTitle(id);
     };
     mountPlay=()=>{
      const controller=new AbortController();
      stopMovement=()=>controller.abort();
-     const actor=mountAssemblyActor(box,{graph,signal:controller.signal,arrows:true,clickToMove:true,collisions:false,markerClass:'map-player',onRegion:show,onMove:draw});
+     const actor=mountAssemblyActor(box,{graph:plan,signal:controller.signal,arrows:true,clickToMove:true,collisions:false,markerClass:'map-player',onRegion:show,onMove:draw});
      show(actor.snapshot().regionId);draw(actor.snapshot());box.focus({preventScroll:true});
     };
    }

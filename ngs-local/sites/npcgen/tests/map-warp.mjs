@@ -148,6 +148,29 @@ test('Warp preview reaches the last room, starts over twice, then closes and cle
  start();signal.abort();assert.equal(frames.size,0);
 });
 
+test('a stale one-way session draft never overrides the currently published warp graph',async t=>{
+ const {mountMapWorkspace}=await import('../build/map-workspace-ui.mjs');
+ const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div');
+ const mapId='request.official.'+'f'.repeat(64);
+ const old={...graph,regions:regions.slice(0,2),connections:graph.connections.slice(0,1),startPoint:{x:501,y:850}};
+ const fresh={...old,startPoint:{x:699,y:850},connections:[...old.connections,
+  {id:'return-1',from:'r2',to:'r1',label:'복귀',hit:{x:500,y:800,width:100,height:40},spawn:{x:700,y:830}}]};
+ const state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',mapId,revision:2,updatedAt:2,officialRequestId:mapId,graph:fresh};
+ const backgrounds=old.regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
+ const storage={getItem:k=>k.includes(mapId)?JSON.stringify({base:1,graph:old}):null,
+  setItem(){assert.fail('published play must not overwrite the draft');},removeItem(){assert.fail('must preserve draft');}};
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',storage,
+  request:async path=>path.includes('background')?{backgrounds}:path.includes('item=')?{map:state}:{maps:[]},
+  submit:async()=>assert.fail('playback must not submit')});
+ const find=text=>detail.descendants().find(n=>n.textContent===text);
+ assert.ok(find('현재 버전이 바뀌었습니다. 세션 초안은 유지되지만 이전 버전으로 적용할 수 없습니다.'));
+ find('워프 플레이').onclick();
+ assert.ok(find('게시 버전 2로 플레이 중 · 이전 편집 초안은 그대로 남아 있어요.'));
+ assert.ok(find('발 위치: 699, 850'));
+ find('플레이 닫기').onclick();
+ assert.ok(find('현재 버전이 바뀌었습니다. 세션 초안은 유지되지만 이전 버전으로 적용할 수 없습니다.'));
+});
+
 test('published map edits keep a separate start image and show both ends of each connection at once',async t=>{
  const {mountMapWorkspace,mapDraftKey,centerMapPortal}=await import('../build/map-workspace-ui.mjs');
  const dom=fakeDom(t),{Element}=dom,detail=new Element('div'),items=new Element('div'),tools=new Element('div');
