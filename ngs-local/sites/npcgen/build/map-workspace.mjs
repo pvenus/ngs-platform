@@ -28,7 +28,7 @@ async function readMapRevision(project,base,id,rev){
  // preceding complete revision visible without mixing any version's parts.
  if(parts.some(part=>part===null))return null;
  const [start,portals,collisions]=parts;
- if(!mapFields(start,['startRegionId'])||!mapFields(portals,['connections'])||
+ if(!(mapFields(start,['startRegionId'])||mapFields(start,['startRegionId','startPoint']))||!mapFields(portals,['connections'])||
     !(mapFields(collisions,['colliders'])||mapFields(collisions,[])))throw replicaUnavailable();
  const {projectId,mapId,revision,updatedAt,officialRequestId,title,regions}=stored;
  const composite={schemaVersion:'ngs.map-metadata.v1',projectId,mapId,revision,updatedAt,officialRequestId,

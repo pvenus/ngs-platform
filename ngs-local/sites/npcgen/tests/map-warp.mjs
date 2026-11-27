@@ -29,6 +29,9 @@ test('an overlapping destination portal only re-arms after leaving, never during
  assert.equal(p.move(700,240).warp,null);
  assert.equal(p.move(950,240).regionId,'r3');
 });
+test('the default warp initialization uses a published start footpoint when present',()=>{
+ assert.deepEqual(createMapWarp({...graph,startPoint:{x:700,y:420}}).snapshot(),{regionId:'r1',position:{x:700,y:420}});
+});
 test('a normal move outside the portal does not warp',()=>{
  const p=createMapWarp(graph,{start:{x:500,y:300}});
  assert.equal(p.move(960,300).warp,null);
@@ -264,4 +267,41 @@ test('colliders draw, move, resize and delete by region and only Apply queues th
  assert.equal(projectMapTab(next.graph,rebased.graph,'links').startRegionId,'r1');
  assert.equal(projectMapTab(next.graph,rebased.graph,'start').connections[0].label,graph.connections[0].label);
  assert.equal(chooseMapDraft(packed,{...next,officialRequestId:'request.official.'+'8'.repeat(64),graph:{...graph,startRegionId:'r5'}}).conflict,true);
+});
+
+test('new map form requires explicit start and collision policy and sends grouped notes',async t=>{
+ const {mountMapWorkspace}=await import('../build/map-workspace-ui.mjs');
+ const {validMapRequest}=await import('../build/map-contract.mjs');
+ const {Element,body}=fakeDom(t),items=new Element('ul'),detail=new Element('div'),tools=new Element('div');
+ const backgrounds=regions.slice(0,2).map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
+ const posts=[],saved=new Map(),signal=new AbortController();
+ t.after(()=>signal.abort());
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',enabled:true,navigate:()=>'/map',signal:signal.signal,storage:{
+  getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},
+  request:async path=>path.includes('background')?{backgrounds}:{maps:[]},
+  submit:async packet=>{posts.push(packet);return Response.json({status:'queued',queueId:'ngs.local.15d60410-3f24-480d-9072-cd51f3d2a006'},{status:202});}});
+ tools.children[0].onclick();
+ const find=label=>body.descendants().find(n=>n.textContent===label);
+ const field=label=>find(label).children[0];
+ const change=(label,value,event='onchange')=>{const input=field(label);input.value=value;input[event]();};
+ const send=()=>find('요청 보내기').onclick();
+ change('맵 이름','새 굿터','oninput');
+ for(const b of backgrounds){change('완성된 배경',b.backgroundId);find('선택 배경으로 구역 추가').onclick();}
+ find('배치 순서대로 단방향 연결').onclick();
+ change('맵 그룹 제작 의도 (필수)','선택한 배경과 동선 유지','oninput');
+ await send();assert.equal(posts.length,0);
+ change('시작 구역 (필수)',field('시작 구역 (필수)').children[1].value);
+ await send();assert.equal(posts.length,0);
+ change('충돌 방식 (필수)','suggest');
+ change('시작 맵 요청 사항 (선택)','문턱 안쪽','oninput');
+ change('포털 요청 사항 (선택)','통로의 가운데','oninput');
+ change('충돌 영역 요청 사항 (선택)','돌담만','oninput');
+ await send();
+ assert.equal(posts.length,1);
+ const {payload,requestType}=posts[0];
+ assert.equal(requestType,'map.generate');assert.equal(payload.schemaVersion,'ngs.map-generate.v2');
+ assert.equal(payload.graph.startRegionId,payload.graph.regions[0].id);
+ assert.deepEqual(payload.design,{startNotes:'문턱 안쪽',portalNotes:'통로의 가운데',collisionNotes:'돌담만',collisionMode:'suggest'});
+ assert.ok(validMapRequest(payload,requestType));
+ assert.ok(!validMapRequest({...payload,graph:{...payload.graph,startPoint:{x:300,y:400}}},requestType));
 });

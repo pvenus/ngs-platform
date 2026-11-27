@@ -16,7 +16,7 @@ function fixture(){
  const write=(path,data)=>{fs.set(path,raw(data));return sha(fs.get(path));};
  const add=(revision,officialRequestId,graph)=>{
   const path=base+'/'+revision;
-  const parts={start:write(path+'.start.json',{startRegionId:graph.startRegionId}),
+  const parts={start:write(path+'.start.json',{startRegionId:graph.startRegionId,...(graph.startPoint?{startPoint:graph.startPoint}:{})}),
    portals:write(path+'.portals.json',{connections:graph.connections}),
    collisions:write(path+'.collisions.json',Object.hasOwn(graph,'colliders')?{colliders:graph.colliders}:{})};
   write(path+'.json',{schemaVersion:'ngs.map-group.v1',projectId:'binari',mapId,revision,updatedAt:revision,officialRequestId,
@@ -33,7 +33,7 @@ function fixture(){
 test('legacy and completed split revisions provide the same validated consumer packet',async()=>{
  const f=fixture();f.write(base+'/1.json',state(1,mapId,graph));
  assert.deepEqual((await f.get()).json.map,state(1,mapId,graph));
- const rt={...graph,colliders:[wall]};f.add(2,oid('b'),rt);
+ const rt={...graph,startPoint:{x:211,y:712},colliders:[wall]};f.add(2,oid('b'),rt);
  assert.deepEqual((await f.get()).json.map,state(2,oid('b'),rt));
  assert.deepEqual((await f.get(null)).json.maps,[{mapId,title:graph.title,revision:2,officialRequestId:oid('b'),updatedAt:2}]);
 });

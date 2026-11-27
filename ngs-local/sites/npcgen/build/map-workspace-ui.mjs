@@ -1,13 +1,13 @@
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {createMapWarp,orderedMapChain} from './map-warp.mjs';
 import {hashBrowserMap} from './map-contract.mjs';
-import {mapTypes,mapSchemas,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation} from './map-contract.mjs';
+import {mapTypes,mapSchemas,mapGenerateDesignSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
 const empty=()=>({title:'',regions:[],startRegionId:null,connections:[]});
 const mapTabs=[['start','시작 맵'],['links','이동 연결'],['colliders','충돌 영역']];
-const tabFields={start:['startRegionId'],links:['regions','connections'],colliders:['colliders']};
+const tabFields={start:['startRegionId','startPoint'],links:['regions','connections'],colliders:['colliders']};
 const tabTitle=tab=>mapTabs.find(([key])=>key===tab)?.[1];
 export function projectMapTab(base,draft,tab){
  const graph={...base};
@@ -140,7 +140,7 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
   modal=el('dialog',undefined,'prop-workspace-dialog map-create-dialog');
   const dialog=modal,content=el('div'),heading=el('h3','새 맵 생성 요청'),id='map-create-'+crypto.randomUUID();
   heading.id=id;dialog.setAttribute('aria-labelledby',id);
-  dialog.append(heading,el('p','완성된 배경을 고르고 이동 순서를 정하세요. 문서 워커는 지정한 연결의 출입구와 도착점만 찾습니다.','meta'),content);
+  dialog.append(heading,el('p','배경을 그룹으로 묶고 시작 맵, 포털, 충돌 영역의 필수 선택과 요청 사항을 각각 지정하세요. 문서 작업은 세 단계로 진행돼요.','meta'),content);
   const abort=()=>dialog.close();
   const close=()=>dialog.close();
   const createEditor=mountMapEditor({detail:content,maps,assets,projectId,navigate,signal,storage,submit,enabled,onClose:close});
@@ -182,6 +182,8 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  try{saved=JSON.parse(storage.getItem(key)??'null');}catch{}
  const draft=chooseMapDraft(saved,published);
  let routeText=typeof saved?.routeText==='string'?saved.routeText:'';
+ const design={startNotes:'',portalNotes:'',collisionNotes:'',collisionMode:'',...saved?.design};
+ let startSelected=saved?.startSelected===true;
  let graph=structuredClone(draft.graph),intent=typeof saved?.intent==='string'?saved.intent:'',conflict=draft.conflict,pending=draft.done?null:saved?.pending??null,lastToken=draft.done?null:saved?.requestToken??null,lastBody=saved?.requestBody??null;
  if(published)graph.title=published.graph.title;
  let tab=tabTitle(saved?.tab)?saved.tab:'start',submission=draft.done?null:saved?.submission??null;
@@ -196,6 +198,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   mapCanonical((published.graph.colliders??[]).filter(c=>c.regionId===id));
  const store=()=>{try{storage.setItem(key,JSON.stringify({base:conflict?saved?.base:published?.revision??0,
   baseline:conflict?saved?.baseline:published?.graph,graph,intent,routeText,tab,pending,submission,
+  ...(!published?{design,startSelected}:{}),
   accepted:pending?.id??null,requestToken:lastToken,requestBody:lastBody}));}catch{}};
  if(draft.done&&published)store();
  const publishedRegion=id=>published?.graph.regions.find(r=>r.id===id);
@@ -219,8 +222,10 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   })){
    bark.textContent='바꿀 배경에 충돌 영역 초안이 있어요. 충돌 영역을 먼저 적용한 뒤 다시 시도해 주세요.';return;
   }
-  const payload={schemaVersion:mapSchemas[i],projectId,graph:structuredClone(scoped),
-   ...(published?{mapId:published.mapId,expectedRevision:published.revision}:{intent:intent.trim()})};
+  if(!published&&!startSelected){bark.textContent='시작 맵 구역을 먼저 선택해 주세요.';return;}
+  if(!published&&!['suggest','none'].includes(design.collisionMode)){bark.textContent='충돌 방식에서 자동 제안 또는 사용 안 함을 먼저 선택해 주세요.';return;}
+  const payload={schemaVersion:published?mapSchemas[i]:mapGenerateDesignSchema,projectId,graph:structuredClone(scoped),
+   ...(published?{mapId:published.mapId,expectedRevision:published.revision}:{intent:intent.trim(),design:Object.fromEntries(Object.entries(design).map(([key,value])=>[key,value.trim()]))})};
   if(!validMapRequest(payload,mapTypes[i])){
    bark.textContent=published?(currentTab==='links'?'모든 연결의 출입구와 도착점을 지정하고, 시작 구역과 충돌 영역이 있는 구역은 남겨 주세요.':'선택한 구역과 영역 좌표를 확인해 주세요. 새 구역은 이동 연결에서 먼저 적용해야 해요.'):'맵 이름, 배경 2개 이상, 시작 구역과 방향 연결을 확인하세요.';return;
   }
@@ -313,8 +318,8 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    node.setAttribute('aria-label',caption);node.append(heading);return node;
   };
   const setup=published?card('구역 구성','map-region-card'):side;
-  const start=published?card('시작 맵','map-start-card'):side;
-  const movement=published?card('이동 연결','map-connection-card'):side;
+  const start=card(published?'시작 맵':'1. 시작 맵','map-start-card');
+  const movement=card(published?'이동 연결':'2. 포털 · 이동 연결','map-connection-card');
   const collision=published?card('충돌 영역','map-collision-card'):null;
   function paintMarker(mark,r){
    mark.style.left=r.x/10+'%';mark.style.top=r.y/10+'%';
@@ -569,16 +574,29 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    }
    const chain=button('배치 순서대로 단방향 연결',()=>{
     if(graph.connections.length&&!globalThis.confirm('현재 연결을 배치 순서대로 다시 만들까요? 기존 포털 좌표도 초기화됩니다.'))return;
-    graph.connections=orderedMapChain(graph.regions);graph.startRegionId=graph.regions[0].id;
+    graph.connections=orderedMapChain(graph.regions);
     active=graph.startRegionId;edgeId=graph.connections[0].id;changed();
    });chain.disabled=graph.regions.length<2||locked;
    setup.append(el('h4','맵 배치 순서'),order);
    // On a published map topology creation remains an explicit edit; the
    // initial ordered chain uses the formal coordinate-authoring request.
-   if(!published)side.append(chain);
-   const cs=setOptions(published?publishedIds():regionIds(),graph.startRegionId,id=>published?publishedRegion(id)?.name:title(id));cs.disabled=locked;
-   cs.onchange=()=>{graph.startRegionId=cs.value;changed();};start.append(label('워프 플레이를 시작할 구역',cs));
-   if(published){const thumb=el('div',undefined,'map-start-thumbnail');preview(thumb,publishedRegion(graph.startRegionId));start.append(thumb);}
+   if(!published)movement.append(chain);
+   const startOptions=published?publishedIds():['',...regionIds()];
+   const cs=setOptions(startOptions,published||startSelected?graph.startRegionId:'',id=>!id?'시작 구역 선택':published?publishedRegion(id)?.name:title(id));
+   cs.disabled=locked;cs.required=!published;
+   cs.onchange=()=>{
+    if(!published)startSelected=Boolean(cs.value);
+    if(cs.value&&graph.startRegionId!==cs.value){graph.startRegionId=cs.value;delete graph.startPoint;}
+    changed();
+   };
+   start.append(label(published?'워프 플레이를 시작할 구역':'시작 구역 (필수)',cs));
+   if(published){
+    const thumb=el('div',undefined,'map-start-thumbnail'),point=graph.startPoint??{x:500,y:850};
+    const box=preview(thumb,publishedRegion(graph.startRegionId));
+    const savePoint=(next,aria)=>{graph.startPoint=next;changed();restoreControl(aria);};
+    if(box){if(locked)marker(box,point,'map-spawn','시작');else movableMarker(box,point,'spawn',savePoint);}
+    start.append(thumb,coordinates('시작 위치',['x','y'],point,()=>point,mapPoint,savePoint));
+   }
    const room=setOptions(regionIds(),active);room.onchange=()=>{active=room.value;render();};
    setup.append(label('편집할 구역',room));
    const current=region(active);
@@ -617,6 +635,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     }
     if(!published&&graph.colliders)graph.colliders=graph.colliders.filter(c=>c.regionId!==active);
     graph.regions=graph.regions.filter(x=>x.id!==active);if(graph.startRegionId===active)graph.startRegionId=graph.regions[0]?.id??null;
+    if(!graph.startRegionId)startSelected=false;
     active=graph.startRegionId;changed();
    });remove.disabled=!active||locked;setup.append(remove);
    const displayEdge=id=>{const e=graph.connections.find(x=>x.id===id);return title(e.from)+' → '+title(e.to)+' · '+e.label;};
@@ -683,9 +702,21 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
      try{graph.connections=parseMapRoutes(routeText,graph.regions);edgeId=graph.connections[0].id;changed();}
      catch{bark.textContent='구역 이름을 목록과 정확히 맞추고 방향은 → 또는 ->로 구분해 주세요.';}
     });use.disabled=locked;
-    side.append(label('동선 붙여넣기 (한 줄에 한 경로)',routes),use);
+    movement.append(label('방향 연결 목록 (필수) · 한 줄에 한 경로',routes),use);
     const memo=el('textarea');memo.value=intent;memo.maxLength=2000;memo.disabled=locked;memo.oninput=()=>{intent=memo.value;changed(false);};
-    side.append(label('배경 제작 의도와 좌표 힌트 (예: 대문에서 마당으로, 문턱 바로 안쪽에 도착)',memo));}
+    memo.required=true;
+    const noteField=(labelName,key,example)=>{
+     const input=el('textarea');input.rows=2;input.maxLength=1000;input.value=design[key];input.disabled=locked;input.placeholder=example;
+     input.oninput=()=>{design[key]=input.value;changed(false);};return label(labelName,input);
+    };
+    const collisionPrompt=card('3. 충돌 영역','map-collision-card');
+    const policy=setOptions(['','suggest','none'],design.collisionMode,value=>({suggest:'배경을 보고 충돌 영역 제안',none:'충돌 영역 없이 생성'})[value]??'충돌 방식 선택');
+    policy.required=true;policy.disabled=locked;policy.onchange=()=>{design.collisionMode=policy.value;changed(false);};
+    collisionPrompt.append(label('충돌 방식 (필수)',policy),noteField('충돌 영역 요청 사항 (선택)','collisionNotes','예: 돌담과 잠긴 문만 표시하고 통로는 남겨 주세요.'));
+    start.append(noteField('시작 맵 요청 사항 (선택)','startNotes','예: 대문 바로 안쪽의 평평하고 걸을 수 있는 곳에서 시작합니다.'));
+    movement.append(noteField('포털 요청 사항 (선택)','portalNotes','예: 앞마당으로 들어가는 문턱 안쪽에서 도착하게 해 주세요.'));
+    side.append(label('맵 그룹 제작 의도 (필수)',memo),start,movement,collisionPrompt);
+   }
   }
   const view=el('div',undefined,'map-preview');
   if(mode==='play'||!published){
