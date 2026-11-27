@@ -4,7 +4,7 @@ import {propSlug,propSha,propRevision} from './prop-workspace-contract.mjs';
 export const assemblyTypes=['assembly.generate','assembly.update'];
 export const assemblyPath='/api/assembly-workspace',assemblyRoot='cinematics/assemblies';
 export const assemblyPds='/v1/assemblies/ownership/workflow-assembly',assemblyCapability='workflow.assembly.v1';
-export const assemblyPuzzleType='binari.ritual-well-water-demo';
+export const assemblyPuzzleType='binari.ritual-well-water-demo',spiritPuzzleType='binari.ritual-spirit-manifestation';
 const coordinate=(p,lo,hi)=>['x','y'].every(k=>Number.isInteger(p[k])&&p[k]>=lo&&p[k]<=hi);
 const roleNames=['table','bowl','well','lid'];
 export const bowlStates=Object.freeze(['altar-empty','carried-empty','carried-filled','altar-filled']);
@@ -17,7 +17,14 @@ export function permitsAssemblyPortal(conditions,id,propState){
  const matches=(conditions??[]).filter(c=>c.portalId===id);
  return matches.every(c=>propState(c.propRole)===c.requiredState);
 }
+const validManifestation=p=>mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[])])&&
+ typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&
+ mapFields(p.layout,['spirit'])&&mapFields(p.layout.spirit,['regionId','x','y'])&&regionId(p.layout.spirit.regionId)&&coordinate(p.layout.spirit,10,90)&&
+ mapFields(p.attachments,[])&&mapFields(p.bindings,['spirit'])&&mapFields(p.bindings.spirit,['propId','revision','sha256'])&&
+ propSlug(p.bindings.spirit.propId)&&propRevision(p.bindings.spirit.revision)&&propSha(p.bindings.spirit.sha256)&&
+ (!Object.hasOwn(p,'scale')||mapFields(p.scale,['spirit'])&&exactScale(p.scale.spirit));
 export function validAssemblyPuzzle(p){
+ if(p?.type===spiritPuzzleType)return validManifestation(p);
  return mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'scale')?['scale']:[]),...(p&&Object.hasOwn(p,'portalConditions')?['portalConditions']:[])])&&
   (!Object.hasOwn(p,'portalConditions')||validPortalConditions(p.portalConditions))&&
   (!Object.hasOwn(p,'scale')||mapFields(p.scale,roleNames)&&roleNames.every(k=>exactScale(p.scale[k])))&&typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&p.type===assemblyPuzzleType&&
@@ -54,6 +61,7 @@ export function assemblyReachable(graph,puzzles){
   return false;
  };
  return puzzles.every(p=>{
+  if(p.type===spiritPuzzleType){const {regionId}=p.layout.spirit;return graph.regions.some(r=>r.id===regionId)&&reaches(graph.startRegionId,regionId);}
   const a=p.layout.altar.regionId,b=p.layout.well.regionId;
   return graph.regions.some(r=>r.id===a)&&graph.regions.some(r=>r.id===b)&&reaches(graph.startRegionId,a)&&reaches(a,b)&&reaches(b,a);
  });

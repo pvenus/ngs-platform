@@ -2,14 +2,15 @@ import {fileUpdateType,fileUpdateSchema,mapUpdateRoot,validFileUpdate} from './f
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {orderedMapChain} from './map-warp.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
+import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations} from './assembly-sprite-layout.mjs';
 import {hashBrowserMap} from './map-contract.mjs';
-import {mapTypes,mapGenerateDesignSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation} from './map-contract.mjs';
+import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
 const empty=()=>({title:'',regions:[],startRegionId:null,connections:[]});
-const mapTabs=[['start','시작 맵'],['links','이동 연결'],['colliders','충돌 영역']];
-const tabFields={start:['startRegionId','startPoint'],links:['regions','connections'],colliders:['colliders']};
+const mapTabs=[['start','시작 맵'],['links','이동 연결'],['colliders','충돌 영역'],['decorations','꾸미기']];
+const tabFields={start:['startRegionId','startPoint'],links:['regions','connections'],colliders:['colliders'],decorations:['decorations']};
 const tabTitle=tab=>mapTabs.find(([key])=>key===tab)?.[1];
 export function projectMapTab(base,draft,tab){
  const graph={...base};
@@ -25,7 +26,7 @@ export const mapDraftKey=(project,id)=>'ngs-map-draft:v1:'+project+':'+(id??'new
 function rebasePortalDraft(base,draft,current){
  if(!base||!draft||!current||!['regions','connections'].every(k=>Array.isArray(base[k])&&Array.isArray(draft[k])&&Array.isArray(current[k])))return null;
  if(mapCanonical(base.regions)!==mapCanonical(draft.regions)||mapCanonical(base.regions)!==mapCanonical(current.regions)||
-    ['start','colliders'].some(k=>tabChanged(base,draft,k)))return null;
+    ['start','colliders','decorations'].some(k=>tabChanged(base,draft,k)))return null;
  const index=g=>new Map(g.connections.map(row=>[row.id,row]));
  const before=index(base),local=index(draft),merged=index(current);
  const eq=(a,b)=>a===undefined||b===undefined?a===b:mapCanonical(a)===mapCanonical(b);
@@ -126,7 +127,7 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
  renderRoster(rosterState.top);
  function showDetail(){
   editorAbort?.abort();editorAbort=new AbortController();
-  if(published)editor=mountMapEditor({detail,maps,assets,projectId,navigate,signal:editorAbort.signal,storage,published,submit,enabled:updateEnabled});
+  if(published)editor=mountMapEditor({detail,maps,assets,request,projectId,navigate,signal:editorAbort.signal,storage,published,submit,enabled:updateEnabled});
   else detail.replaceChildren(el('h3','맵 제작'),el('p','배경을 먼저 제작하고, + 버튼으로 새 맵을 만들어 구역과 포털을 연결하세요.','meta'));
  }
  showDetail();
@@ -163,10 +164,10 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
   modal=el('dialog',undefined,'prop-workspace-dialog map-create-dialog');
   const dialog=modal,content=el('div'),heading=el('h3','새 맵 생성 요청'),id='map-create-'+crypto.randomUUID();
   heading.id=id;dialog.setAttribute('aria-labelledby',id);
-  dialog.append(heading,el('p','배경을 그룹으로 묶고 시작 맵, 포털, 충돌 영역의 필수 선택과 요청 사항을 각각 지정하세요. 문서 작업은 세 단계로 진행돼요.','meta'),content);
+  dialog.append(heading,el('p','배경을 그룹으로 묶고 시작 맵, 포털, 충돌 영역, 꾸미기 요청을 지정하세요. 꾸미기를 선택하면 선택한 프랍의 배치 제안 단계가 추가돼요.','meta'),content);
   const abort=()=>dialog.close();
   const close=()=>dialog.close();
-  const createEditor=mountMapEditor({detail:content,maps,assets,projectId,navigate,signal,storage,submit,enabled,onClose:close});
+  const createEditor=mountMapEditor({detail:content,maps,assets,request,projectId,navigate,signal,storage,submit,enabled,onClose:close});
   dialog.refreshMap=createEditor.refreshMap;
   dialog.addEventListener('cancel',ev=>{if(!createEditor.canRefresh())ev.preventDefault();});
   dialog.addEventListener('close',()=>{
@@ -197,13 +198,25 @@ export function resizeMapPortal(rect,corner,dx,dy){
  return {x:Math.min(x,oppositeX),y:Math.min(y,oppositeY),width:Math.abs(x-oppositeX),height:Math.abs(y-oppositeY)};
 }
 
-function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,published,submit,enabled,onClose}){
+function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,storage,published,submit,enabled,onClose}){
  const q=new URLSearchParams({projectId});
  const imageAligned=r=>!!r&&assets.get(r.backgroundId)?.sha256===r.imageSha256;
  const assetTitle=id=>assets.get(id)?.displayTitle??assets.get(id)?.title??(id?'누락된 배경 · '+id.slice(-8):'배경 미연결');
  const key=mapDraftKey(projectId,published?.mapId);let saved;
  try{saved=JSON.parse(storage.getItem(key)??'null');}catch{}
  const draft=chooseMapDraft(saved,published);
+ const decorationDesign={mode:'none',notes:'',candidates:[],...saved?.decorationDesign};
+ const decorArt=decorationsLoader(request,projectId);
+ let decorRegion=null,decorId=null,decorPreview=false,warpSight=false,propRows=null,propLoading=false,propLoadFailed=false,decorAdding=false;
+ const visibilityLabels={both:'능력 OFF / ON 모두','pixel':'능력 OFF · 픽셀만','cinematic':'능력 ON · 시네마틱만'};
+ const pinProp=p=>({propId:p.propId,revision:p.revision,sha256:p.sha256});
+ const loadPropRows=()=>{
+  if(propRows||propLoading||propLoadFailed)return;
+  propLoading=true;
+  request('/api/prop-workspace?'+q).then(v=>{if(!Array.isArray(v.props))throw Error('MISSING_PROP_LIST');
+   propRows=v.props.filter(p=>mapDecorPropPin(pinProp(p)));
+  }).catch(()=>{propLoadFailed=true;}).finally(()=>{propLoading=false;if(!signal?.aborted&&detail.isConnected!==false)render();});
+ };
  let routeText=typeof saved?.routeText==='string'?saved.routeText:'';
  const design={startNotes:'',portalNotes:'',collisionNotes:'',collisionMode:'',...saved?.design};
  let startSelected=saved?.startSelected===true;
@@ -217,11 +230,13 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  const aspectOf=r=>{const a=r&&assets.get(r.backgroundId);return a?.width>0&&a?.height>0?a.width/a.height:1;};
  const region=id=>graph.regions.find(r=>r.id===id), regionIds=()=>graph.regions.map(r=>r.id), title=id=>region(id)?.name??'구역 미선택';
  const dirty=key=>published&&tabChanged(published.graph,graph,key);
+ const decorRegionDirty=id=>published&&mapCanonical((graph.decorations??[]).filter(c=>c.regionId===id))!==
+  mapCanonical((published.graph.decorations??[]).filter(c=>c.regionId===id));
  const colliderRegionDirty=id=>published&&mapCanonical((graph.colliders??[]).filter(c=>c.regionId===id))!==
   mapCanonical((published.graph.colliders??[]).filter(c=>c.regionId===id));
  const store=()=>{try{storage.setItem(key,JSON.stringify({base:conflict?saved?.base:published?.revision??0,
   baseline:conflict?saved?.baseline:published?.graph,graph,intent,routeText,tab,pending,submission,
-  ...(!published?{design,startSelected}:{}),
+  ...(!published?{design,startSelected,decorationDesign}:{}),
   accepted:pending?.id??null,requestToken:lastToken,requestBody:lastBody}));}catch{}};
  if(draft.done&&published)store();
  const publishedRegion=id=>published?.graph.regions.find(r=>r.id===id);
@@ -234,15 +249,15 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  const imageUrl=b=>'/api/background-workspace?'+q+'&image='+b.sha256;
  const locate=(ev,box)=>{const r=box.getBoundingClientRect(),cap=v=>Math.max(0,Math.min(1000,Math.round(v)));return{x:cap((ev.clientX-r.left)*1000/r.width),y:cap((ev.clientY-r.top)*1000/r.height)};};
  async function apply(){
-  if(!enabled||!submit||busy||conflict||pending)return;
+  if(!enabled||!submit||busy||conflict||pending||decorAdding)return;
   const currentTab=tab;
   if(published&&!dirty(currentTab))return;
   const scoped=published?projectMapTab(published.graph,graph,currentTab):graph;
   if(published&&currentTab==='links'&&scoped.regions.some(r=>{
    const base=publishedRegion(r.id);
-   return base&&(base.backgroundId!==r.backgroundId||base.imageSha256!==r.imageSha256)&&colliderRegionDirty(r.id);
+   return base&&(base.backgroundId!==r.backgroundId||base.imageSha256!==r.imageSha256)&&(colliderRegionDirty(r.id)||decorRegionDirty(r.id));
   })){
-   bark.textContent='바꿀 배경에 충돌 영역 초안이 있어요. 충돌 영역을 먼저 적용한 뒤 다시 시도해 주세요.';return;
+   bark.textContent='바꿀 배경에 충돌 영역 또는 꾸미기 초안이 있어요. 해당 탭부터 적용해 주세요.';return;
   }
   if(!published&&!startSelected){bark.textContent='시작 맵 구역을 먼저 선택해 주세요.';return;}
   if(!published&&!['suggest','none'].includes(design.collisionMode)){bark.textContent='충돌 방식에서 자동 제안 또는 사용 안 함을 먼저 선택해 주세요.';return;}
@@ -250,10 +265,11 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   const payload=published?{
    schemaVersion:fileUpdateSchema,projectId,target:{root:mapUpdateRoot,path:published.mapId,kind:'metadata'},
    expected:{revision:published.revision,officialRequestId:published.officialRequestId},content:structuredClone(scoped),
-  }:{schemaVersion:mapGenerateDesignSchema,projectId,graph:structuredClone(scoped),
-   intent:intent.trim(),design:Object.fromEntries(Object.entries(design).map(([key,value])=>[key,value.trim()]))};
+  }:{schemaVersion:mapGenerateDecorSchema,projectId,graph:structuredClone(scoped),
+   intent:intent.trim(),design:Object.fromEntries(Object.entries(design).map(([key,value])=>[key,value.trim()])),
+   decorationDesign:{...decorationDesign,notes:decorationDesign.notes.trim()}};
   if(!(published?validFileUpdate(payload):validMapRequest(payload,requestType))){
-   bark.textContent=published?(currentTab==='links'?'모든 연결의 출입구와 도착점을 지정하고, 시작 구역과 충돌 영역이 있는 구역은 남겨 주세요.':'선택한 구역과 영역 좌표를 확인해 주세요. 새 구역은 이동 연결에서 먼저 적용해야 해요.'):'맵 이름, 배경 2개 이상, 시작 구역과 방향 연결을 확인하세요.';return;
+   bark.textContent=published?(currentTab==='links'?'모든 연결의 출입구와 도착점을 지정하고, 시작 구역과 충돌 영역이 있는 구역은 남겨 주세요.':'선택한 구역과 영역 좌표를 확인해 주세요. 새 구역은 이동 연결에서 먼저 적용해야 해요.'):'맵 이름, 배경 2개 이상, 시작 구역, 방향 연결과 꾸미기 후보를 확인하세요.';return;
   }
   if(scoped.regions.some(r=>!imageAligned(r))){bark.textContent='누락된 배경을 제거하거나 교체해 주세요.';return;}
   const body=mapCanonical(payload);
@@ -276,7 +292,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
  function startWarp(){
   if(!playable()||signal?.aborted)return;
   if(mode==='edit')returnRegion=active;
-  active=warpGraph().startRegionId;mode='play';
+  active=warpGraph().startRegionId;mode='play';warpSight=false;
   bark.textContent='';render();
  }
  function closeWarp(){
@@ -306,6 +322,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   const start=card(published?'시작 맵':'1. 시작 맵','map-start-card');
   const movement=card(published?'이동 연결':'2. 포털 · 이동 연결','map-connection-card');
   const collision=published?card('충돌 영역','map-collision-card'):null;
+  const decoration=published?card('꾸미기','map-decoration-card'):null;
   function paintMarker(mark,r){
    mark.style.left=r.x/10+'%';mark.style.top=r.y/10+'%';
    if(r.width){mark.style.width=r.width/10+'%';mark.style.height=r.height/10+'%';}
@@ -508,6 +525,136 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     remove.disabled=locked;collision.append(remove);
    }
   }
+
+  const namedProp=p=>propRows?.find(x=>x.propId===p.propId)?.title??p.propId;
+  function availableProps(host,excluded,onAdd){
+   loadPropRows();
+   if(propLoadFailed){host.append(button('프랍 목록 다시 불러오기',()=>{propLoadFailed=false;render();}));return;}
+   if(!propRows){host.append(el('p','프랍 목록 불러오는 중…','meta'));return;}
+   const rows=propRows.filter(p=>!excluded.has(p.propId));
+   const selector=setOptions(['',...rows.map(p=>p.propId)],'',id=>id?rows.find(p=>p.propId===id).title:'프랍 선택');
+   const vis=setOptions(Object.keys(visibilityLabels),'both',value=>visibilityLabels[value]);
+   const action=button('프랍 추가',()=>{if(locked||decorAdding||action.disabled)return;const row=rows.find(p=>p.propId===selector.value);if(row)void onAdd(pinProp(row),vis.value);});
+   action.disabled=true;selector.disabled=vis.disabled=locked||decorAdding||!rows.length;
+   selector.onchange=()=>{action.disabled=locked||decorAdding||!selector.value;};
+   const row=el('div',undefined,'map-row');
+   row.append(label('사용할 프랍',selector),label('표시 모드',vis),action);host.append(row);
+  }
+  const drawDecorArt=(host,placements,mapRegion,sight,dropSignal=signal)=>{
+   const area=mapRegion&&assets.get(mapRegion.backgroundId);
+   const size=area&&{id:mapRegion.id,width:area.width,height:area.height};
+   const here=placements.filter(p=>p.regionId===mapRegion?.id);
+   const paint=()=>{
+    if(host.isConnected===false||dropSignal?.aborted)return;
+    renderMapDecorations(host,here,decorArt.cache,size,sight,mapDecorPinKey);
+   };
+   paint();if(here.length)void decorArt.load(here).then(paint);
+  };
+  function renderDecorations(){
+   decoration.append(el('p','퍼즐과 상호작용이 없는 프랍을 지도에 배치해요. 그림 아래쪽 가운데가 위치 기준이며, 100%는 배치용 이미지 원래 크기예요.','meta'));
+   const rooms=publishedIds();if(!rooms.includes(decorRegion))decorRegion=published.graph.startRegionId??rooms[0];
+   const room=setOptions(rooms,decorRegion,id=>publishedRegion(id)?.name??id);
+   room.onchange=()=>{decorRegion=room.value;decorId=null;render();};
+   const toggle=button(decorPreview?'서진 능력 · ON':'서진 능력 · OFF',()=>{decorPreview=!decorPreview;render();});
+   toggle.setAttribute('aria-label','꾸미기 서진 능력 미리보기');toggle.setAttribute('aria-pressed',String(decorPreview));
+   const controls=el('div',undefined,'map-row');controls.append(label('꾸밀 구역',room),toggle);decoration.append(controls);
+   const rows=graph.decorations??[], here=rows.filter(p=>p.regionId===decorRegion),chosen=here.find(p=>p.id===decorId);
+   if(rows.length<maxMapDecorations)availableProps(decoration,new Set(),async(prop,visibility)=>{
+    if(decorAdding||locked)return;
+    const regionId=decorRegion;
+    decorAdding=true;render();
+    const id='d-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
+    const row={id,regionId,prop,anchor:{x:500,y:650},scale:100,visibility};
+    const art=(await decorArt.load([row])).get(mapDecorPinKey(prop));decorAdding=false;
+    if(signal?.aborted)return;
+    if(!art||(visibility==='both'?!(art.pixel&&art.cinematic):!art[visibility])){
+     bark.textContent='선택한 프랍에 표시 모드에 필요한 이미지가 없어요.';render();return;
+    }
+    graph.decorations=[...(graph.decorations??[]),row];decorRegion=regionId;decorId=id;changed();
+   });else decoration.append(el('p','맵 하나에 꾸미기 프랍을 최대 '+maxMapDecorations+'개까지 배치할 수 있어요.','meta'));
+   const current=publishedRegion(decorRegion),box=preview(decoration,current);
+   if(box){
+    box.className+=' map-decoration-canvas';
+    const img=box.querySelector('img'),back=assets.get(current.backgroundId);
+    if(decorPreview&&back?.cinematic?.sha256)img.src=imageUrl(back.cinematic);
+    const markers=el('div',undefined,'map-decoration-layer');box.append(markers);
+    const size={id:current.id,width:back.width,height:back.height};
+    const paint=()=>{
+     if(box.isConnected===false||signal?.aborted)return;
+     markers.replaceChildren();
+     for(const row of here){
+      const art=decorArt.cache.get(mapDecorPinKey(row.prop)),visual=decorationBox(row,art,size,decorPreview);
+      const icon=el('img',undefined,'map-decor-sprite');icon.alt='';icon.draggable=false;paintDecoration(icon,visual);markers.append(icon);
+      if(!visual&&row!==chosen)continue;
+      const selected=row===chosen, caption=namedProp(row.prop)+' 위치';
+      const pick=button(selected?'●':'○',()=>{decorId=row.id;render();},'map-decoration-anchor');
+      pick.title=caption;pick.setAttribute('aria-label',caption);paintMarker(pick,row.anchor);markers.append(pick);
+      if(!locked&&selected)dragControl(pick,box,row.anchor,(point,dx,dy)=>({x:Math.min(1000,Math.max(0,point.x+dx)),y:Math.min(1000,Math.max(0,point.y+dy))}),
+       anchor=>{paintMarker(pick,anchor);paintDecoration(icon,decorationBox({...row,anchor},art,size,decorPreview));},
+       anchor=>{row.anchor=anchor;changed();restoreControl(caption);});
+     }
+    };
+    if(here.length){
+     const missing=el('p',undefined,'meta');missing.hidden=true;decoration.append(missing);
+     const report=()=>{const count=here.filter(row=>{
+      const art=decorArt.cache.get(mapDecorPinKey(row.prop));
+      return !art||(row.visibility==='both'?!(art.pixel&&art.cinematic):!art[row.visibility]);
+     }).length;missing.hidden=count===0;missing.textContent=count?'배치 이미지 '+count+'개를 읽을 수 없어요. 프랍의 게시 버전과 표시 모드를 확인해 주세요.':'';};
+     queueMicrotask(paint);void decorArt.load(here).then(()=>{paint();report();});
+    }
+   }
+   const list=setOptions(['',...here.map(p=>p.id)],decorId,id=>id?namedProp(here.find(p=>p.id===id).prop):'배치한 프랍 선택');
+   list.onchange=()=>{decorId=list.value||null;render();};
+   if(here.length)decoration.append(label('배치한 프랍',list));else decoration.append(el('p','이 구역에는 배치한 꾸미기 프랍이 없어요.','meta'));
+   if(!chosen)return;
+   const visibility=setOptions(Object.keys(visibilityLabels),chosen.visibility,value=>visibilityLabels[value]);visibility.disabled=locked;
+   visibility.onchange=async()=>{
+    const next=visibility.value;
+    const art=(await decorArt.load([chosen])).get(mapDecorPinKey(chosen.prop));
+    if(signal?.aborted)return;
+    if(!art||(next==='both'?!(art.pixel&&art.cinematic):!art[next])){
+     visibility.value=chosen.visibility;bark.textContent='이 표시 모드에 필요한 배치 이미지가 없어요.';return;
+    }
+    chosen.visibility=next;changed();
+   };
+   const scale=el('input');scale.type='number';scale.min='10';scale.max='300';scale.step='1';scale.value=chosen.scale;scale.disabled=locked;
+   scale.onchange=()=>{
+    if(!Number.isInteger(scale.valueAsNumber)||scale.valueAsNumber<10||scale.valueAsNumber>300){scale.value=chosen.scale;return;}
+    chosen.scale=scale.valueAsNumber;changed();
+   };
+   const remove=button('선택 프랍 배치 삭제',()=>{graph.decorations=rows.filter(r=>r.id!==chosen.id);decorId=null;changed();});remove.disabled=locked;
+   const form=el('div',undefined,'map-row');form.append(label('표시 모드',visibility),label('크기 (%)',scale),remove);
+   decoration.append(form,coordinates('꾸미기 프랍 위치',['x','y'],chosen.anchor,()=>chosen.anchor,mapPoint,anchor=>{chosen.anchor=anchor;changed();}));
+  }
+  function createDecorationPrompt(){
+   const prompt=card('4. 꾸미기','map-decoration-card');
+   const policy=setOptions(['none','suggest'],decorationDesign.mode,v=>v==='suggest'?'선택한 프랍 자동 배치':'꾸미기 없이 생성');
+   policy.disabled=locked;
+   policy.onchange=()=>{decorationDesign.mode=policy.value;if(policy.value==='none')decorationDesign.candidates=[];changed();};
+   prompt.append(label('꾸미기 방식',policy));
+   if(policy.value==='none')return prompt;
+   const memo=el('textarea');memo.maxLength=1000;memo.rows=2;memo.value=decorationDesign.notes;memo.disabled=locked;
+   memo.placeholder='예: 돌담길 가장자리에 등불을 놓고, 포털과 움직이는 길은 가리지 않게 배치해 주세요.';
+   memo.oninput=()=>{decorationDesign.notes=memo.value;changed(false);};
+   prompt.append(label('꾸미기 배치 요청 사항',memo));
+   const rows=decorationDesign.candidates;
+   if(rows.length<maxMapDecorationCandidates)availableProps(prompt,new Set(rows.map(x=>x.prop.propId)),async(prop,visibility)=>{
+    decorAdding=true;render();const art=(await decorArt.load([{prop}])).get(mapDecorPinKey(prop));decorAdding=false;
+    if(signal?.aborted||detail.isConnected===false||decorationDesign.mode!=='suggest'){render();return;}
+    if(!art||(visibility==='both'?!(art.pixel&&art.cinematic):!art[visibility])){
+     bark.textContent='선택한 후보에 이 모드의 배치 이미지가 없어요.';render();return;
+    }
+    rows.push({prop,visibility});changed();
+   });
+   const list=el('ul',undefined,'map-order');
+   for(const [i,c] of rows.entries()){
+    const item=el('li',namedProp(c.prop)+' · '+visibilityLabels[c.visibility]+' ');
+    const remove=button('빼기',()=>{rows.splice(i,1);changed();});remove.disabled=locked;
+    remove.setAttribute('aria-label',namedProp(c.prop)+' 후보에서 빼기');item.append(remove);list.append(item);
+   }
+   prompt.append(list,el('p','후보는 최소 1개, 최대 '+maxMapDecorationCandidates+'개예요. 워커는 여기서 고른 프랍과 표시 모드만 사용해요.','meta'));
+   return prompt;
+  }
   const tabs=el('nav',undefined,'npc-detail-tabs');
   if(published&&mode==='edit'){
    tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','맵 상세 영역');
@@ -534,7 +681,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    const regionDetails=el('details',undefined,'prop-surface map-region-details');regionDetails.open=setupExpanded;
    regionDetails.append(el('summary','구역 구성 · '+graph.regions.length+'개'),setup);
    regionDetails.ontoggle=()=>{setupExpanded=regionDetails.open;};
-   if(tab==='start')sections.append(start);else if(tab==='links')sections.append(movement,regionDetails);else sections.append(collision);
+   if(tab==='start')sections.append(start);else if(tab==='links')sections.append(movement,regionDetails);else if(tab==='colliders')sections.append(collision);else{renderDecorations();sections.append(decoration);}
   }
   if(conflict){side.append(el('p','현재 버전이 바뀌었습니다. 세션 초안은 유지되지만 이전 버전으로 적용할 수 없습니다.'),button('초안 버리고 최신 버전 열기',()=>{
    if(!globalThis.confirm('세션에만 저장된 초안을 버리고 최신 버전을 열까요?'))return;
@@ -599,8 +746,8 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     const rebind=()=>{
      const bg=assets.get(linked.value);
      if(!bg||current.backgroundId===linked.value&&current.imageSha256===bg.sha256)return;
-     if(published&&colliderRegionDirty(current.id)){
-      linked.value=current.backgroundId;bark.textContent='이 구역의 충돌 영역 초안을 먼저 적용하거나 지운 뒤 배경을 바꿔 주세요.';return;
+     if(published&&(colliderRegionDirty(current.id)||decorRegionDirty(current.id))){
+      linked.value=current.backgroundId;bark.textContent='이 구역의 충돌 또는 꾸미기 초안을 먼저 적용하거나 지운 뒤 배경을 바꿔 주세요.';return;
      }
      current.backgroundId=linked.value;current.imageSha256=bg.sha256;
      for(const e of graph.connections){if(e.from===current.id)e.hit=null;if(e.to===current.id)e.spawn=null;}
@@ -619,7 +766,10 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     if(published&&(active===published.graph.startRegionId||active===graph.startRegionId)){
      bark.textContent='시작 맵 탭에서 다른 구역을 먼저 적용해 주세요.';return;
     }
-    if(published&&(graph.colliders??[]).concat(published.graph.colliders??[]).some(c=>c.regionId===active)){
+    if(published&&(graph.decorations??[]).concat(published.graph.decorations??[]).some(c=>c.regionId===active)){
+    bark.textContent='꾸미기 탭에서 이 구역의 프랍 배치를 먼저 삭제하고 적용해 주세요.';return;
+   }
+   if(published&&(graph.colliders??[]).concat(published.graph.colliders??[]).some(c=>c.regionId===active)){
      bark.textContent='충돌 영역 탭에서 이 구역의 영역을 먼저 삭제하고 적용해 주세요.';return;
     }
     if(!published&&graph.colliders)graph.colliders=graph.colliders.filter(c=>c.regionId!==active);
@@ -713,7 +863,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
     collisionPrompt.append(label('충돌 방식 (필수)',policy),noteField('충돌 영역 요청 사항 (선택)','collisionNotes','예: 돌담과 잠긴 문만 표시하고 통로는 남겨 주세요.'));
     start.append(noteField('시작 맵 요청 사항 (선택)','startNotes','예: 대문 바로 안쪽의 평평하고 걸을 수 있는 곳에서 시작합니다.'));
     movement.append(noteField('포털 요청 사항 (선택)','portalNotes','예: 앞마당으로 들어가는 문턱 안쪽에서 도착하게 해 주세요.'));
-    side.append(label('맵 그룹 제작 의도 (필수)',memo),start,movement,collisionPrompt);
+    side.append(label('맵 그룹 제작 의도 (필수)',memo),start,movement,collisionPrompt,createDecorationPrompt());
    }
   }
   const view=el('div',undefined,'map-preview');
@@ -724,13 +874,18 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
    if(mode==='play'&&conflict&&published)view.append(el('p','게시 버전 '+published.revision+'로 플레이 중 · 이전 편집 초안은 그대로 남아 있어요.','meta'));
    const box=preview(view,playRegion(active));
    if(box&&mode==='play'){
-    const picture=box.querySelector('img'),overlay=el('div'),pos=el('p',undefined,'map-position'),hint=el('p');
-    overlay.style.cssText='position:absolute;inset:0;pointer-events:none';box.append(overlay);view.append(hint,pos);
+    const picture=box.querySelector('img'),overlay=el('div'),decorLayer=el('div',undefined,'map-decoration-layer'),pos=el('p',undefined,'map-position'),hint=el('p');
+    overlay.style.cssText='position:absolute;inset:0;pointer-events:none';box.append(decorLayer,overlay);view.append(hint,pos);
+    if((plan.decorations??[]).length){
+     const sight=button('서진 능력 · OFF',()=>{warpSight=!warpSight;sight.textContent='서진 능력 · '+(warpSight?'ON':'OFF');sight.setAttribute('aria-pressed',String(warpSight));show(active);box.focus({preventScroll:true});});
+     sight.setAttribute('aria-pressed','false');head.append(sight);
+    }
     const draw=({position})=>{pos.textContent='발 위치: '+Math.round(position.x)+', '+Math.round(position.y);};
     const show=(id,edge)=>{
      active=id;box.dataset.regionId=id;
      const r=playRegion(id),asset=assets.get(r.backgroundId);
-     picture.src=imageUrl(asset);picture.alt=r.name;picture.width=asset.width;picture.height=asset.height;
+     picture.src=imageUrl(warpSight&&asset.cinematic?.sha256?asset.cinematic:asset);
+     drawDecorArt(decorLayer,plan.decorations??[],r,warpSight);picture.alt=r.name;picture.width=asset.width;picture.height=asset.height;
      heading.textContent=(plan.regions.findIndex(r=>r.id===id)+1)+' / '+plan.regions.length+' · '+title(id);
      box.setAttribute('aria-label',r.name+' 워프 플레이 · WASD로 이동');
      overlay.replaceChildren();
@@ -759,7 +914,7 @@ function mountMapEditor({detail,maps,assets,projectId,navigate,signal,storage,pu
   if(mode==='edit'){
    const action=button(busy?'접수 중…':published?tabTitle(tab)+' 적용':'요청 보내기',apply,'prop-control prop-primary-control');
    refreshAction=()=>{
-    action.disabled=!enabled||!submit||locked||conflict||Boolean(published&&!dirty(tab));
+    action.disabled=!enabled||!submit||locked||conflict||decorAdding||Boolean(published&&!dirty(tab));
     for(const [i,[key,caption]] of mapTabs.entries()){
      const link=tabs.children[i];if(!link)continue;
      const changed=dirty(key);link.textContent=caption+(changed?' •':'');

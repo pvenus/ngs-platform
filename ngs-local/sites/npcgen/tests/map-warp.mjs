@@ -334,7 +334,8 @@ test('new map form requires explicit start and collision policy and sends groupe
  await send();
  assert.equal(posts.length,1);
  const {payload,requestType}=posts[0];
- assert.equal(requestType,'map.generate');assert.equal(payload.schemaVersion,'ngs.map-generate.v2');
+ assert.equal(requestType,'map.generate');assert.equal(payload.schemaVersion,'ngs.map-generate.v3');
+ assert.deepEqual(payload.decorationDesign,{mode:'none',notes:'',candidates:[]});
  assert.equal(payload.graph.startRegionId,payload.graph.regions[0].id);
  assert.deepEqual(payload.design,{startNotes:'문턱 안쪽',portalNotes:'통로의 가운데',collisionNotes:'돌담만',collisionMode:'suggest'});
  assert.ok(validMapRequest(payload,requestType));
@@ -394,4 +395,38 @@ test('a direction condition checks the current combined bowl state, without lock
  actor.move(500,240);
  assert.equal(puzzle.dispatch({type:'drop',target:'altar-socket',item}).ok,true);
  assert.equal(actor.move(900,240).regionId,'r1');
+});
+
+
+test('map decoration tab adds a cinematic-only pin, moves it, and uses one formal map save',async t=>{
+ const {mountMapWorkspace,mapDraftKey}=await import('../build/map-workspace-ui.mjs');
+ const {Element}=fakeDom(t),detail=new Element('div'),items=new Element('div'),tools=new Element('div'),memory=new Map(),posts=[];
+ const mapId='request.official.'+'d'.repeat(64),state={schemaVersion:'ngs.map-metadata.v1',projectId:'binari',
+  mapId,revision:1,updatedAt:1,officialRequestId:mapId,graph:{...graph}};
+ const backgrounds=regions.map(r=>({backgroundId:r.backgroundId,sha256:r.imageSha256,title:r.name,width:1000,height:1000}));
+ const pin={propId:'lantern-art',revision:1,sha256:'a'.repeat(64)},row={...pin,title:'등불'};
+ const art={propId:pin.propId,source:{revision:pin.revision,sha256:pin.sha256},media:{
+  spirit:{mediaType:'image/png',url:'/api/prop-workspace?spirit',width:200,height:100}}};
+ await mountMapWorkspace({items,detail,tools,projectId:'binari',item:mapId,enabled:true,navigate:()=>'/map',
+  storage:{getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v)},
+  request:async url=>url.includes('background')?{backgrounds}:url.includes('propId=')?{prop:art}:url.includes('prop-workspace')?{props:[row]}:
+  url.includes('item=')?{map:state}:{maps:[]},
+  submit:async p=>{posts.push(p);return Response.json({status:'queued',queueId:'ngs.local.99fb3aa4-b8c6-4d64-91ae-70908d6ee614'},{status:202});}});
+ const parts=()=>detail.descendants(),find=text=>parts().find(x=>x.textContent===text);
+ const field=name=>parts().find(x=>x.tag==='label'&&x.textContent===name).children[0];
+ const settle=()=>new Promise(r=>setImmediate(r));
+ parts().find(e=>e.id==='map-tab-decorations').onclick();await settle();
+ const prop=field('사용할 프랍');prop.value=pin.propId;prop.onchange();
+ field('표시 모드').value='cinematic';find('프랍 추가').onclick();await settle();
+ const current=()=>JSON.parse(memory.get(mapDraftKey('binari',mapId))).graph;
+ assert.equal(current().decorations.length,1);
+ assert.deepEqual(current().decorations[0].prop,pin);assert.equal(current().decorations[0].visibility,'cinematic');
+ assert.ok(!parts().some(n=>n.tag==='img'&&n.className==='map-decor-sprite'&&!n.hidden));
+ find('서진 능력 · OFF').onclick();await settle();
+ assert.ok(parts().some(n=>n.tag==='img'&&n.className==='map-decor-sprite'&&!n.hidden&&n.src==='/api/prop-workspace?spirit'));
+ const mark=parts().find(n=>n.attrs['aria-label']==='등불 위치');
+ mark.onkeydown({key:'ArrowRight',shiftKey:true,preventDefault(){}});await settle();
+ assert.equal(current().decorations[0].anchor.x,510);
+ assert.equal(posts.length,0);await find('꾸미기 적용').onclick();assert.equal(posts.length,1);
+ assert.equal(posts[0].requestType,'file.update');assert.deepEqual(posts[0].payload.content,current());
 });

@@ -568,3 +568,16 @@ ul{padding:0;list-style:none}
 .well-demo-map-bg[data-sight-art=spirit],
 .well-world-sprite[data-sight-art=spirit],
 .well-demo-sprite[data-sight-art=spirit]{image-rendering:auto}
+
+.map-decoration-layer{position:absolute;inset:0;pointer-events:none;z-index:1}
+.map-decoration-layer .map-decor-sprite{position:absolute;transform:translate(-50%,-100%);pointer-events:none;object-fit:contain;max-width:none}
+.map-decoration-layer .map-decor-sprite[hidden]{display:none}
+.map-decoration-anchor{position:absolute;z-index:2;transform:translate(-50%,-50%);cursor:grab;touch-action:none;pointer-events:auto;
+ width:1.5rem;height:1.5rem;padding:0;border:1px solid #fbda9d;border-radius:50%;background:#261b15;color:#f9db9a;font-size:.85rem;line-height:1}
+.map-decoration-anchor:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.map-decoration-canvas{max-width:70rem}
+.well-demo-scene>.map-decoration-layer{z-index:1}
+
+.well-assembly-role[hidden],.well-assembly-inspector fieldset[hidden]{display:none}
+.spirit-manifestation-prop:not(img){font-size:3rem;color:#c4e9ff;text-shadow:0 0 1rem #82cde8;line-height:1}
+.spirit-manifestation-demo .well-demo-scene[data-spirit=on]:not(.well-demo-map){background:#191d2e}

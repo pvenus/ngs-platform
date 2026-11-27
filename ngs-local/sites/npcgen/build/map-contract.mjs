@@ -1,7 +1,11 @@
 // Map topology is independent of background render revisions. Coordinates are
 // integer thousandths of the natural canvas, with the origin at top left.
 export const mapTypes=['map.generate','map.update'];
-export const mapSchemas=['ngs.map-generate.v1','ngs.map-update.v1'];
+export const mapSchemas=['ngs.map-generate.v1','ngs.map-update.v1','ngs.map-generate.v2','ngs.map-generate.v3'];
+export const mapGenerateStages=['map_start','map_portals','map_collisions'];
+export const mapDecorationStage='map_decorations';
+export const mapStagesFor=p=>p.schemaVersion===mapSchemas[3]&&p.decorationDesign?.mode==='suggest'?
+ [...mapGenerateStages,mapDecorationStage]:mapSchemas.slice(2).includes(p.schemaVersion)?mapGenerateStages:[mapStage];
 export const mapStage='map_metadata',mapRoot='cinematics/maps';
 export const mapPds='/v1/maps/ownership/workflow-map',mapCapability='workflow.map-metadata.v1';
 export const officialId=v=>typeof v==='string'&&/^request\.official\.[a-f0-9]{64}$/.test(v);
@@ -19,42 +23,88 @@ const mapCollider=c=>(mapFields(c,['id','regionId','rect'])||
  (mapFields(c,['id','regionId','rect','shape','rotation'])&&['rect','ellipse'].includes(c.shape)&&
   Number.isInteger(c.rotation)&&c.rotation>=0&&c.rotation<360))&&mapRect(c.rect);
 export const regionId=v=>typeof v==='string'&&/^[a-z][a-z0-9-]{0,31}$/.test(v);
+const note=v=>v===''||mapText(v,1000);
+const visibility=v=>['both','pixel','cinematic'].includes(v);
+export const mapPropPin=v=>mapFields(v,['propId','revision','sha256'])&&typeof v.propId==='string'&&v.propId.length>=2&&v.propId.length<=80&&
+ /^[a-z0-9]+(?:[-._][a-z0-9]+)*$/.test(v.propId)&&Number.isSafeInteger(v.revision)&&v.revision>=1&&
+ v.revision<Number.MAX_SAFE_INTEGER&&typeof v.sha256==='string'&&/^[a-f0-9]{64}$/.test(v.sha256);
+export const validDecorations=(v,ids)=>Array.isArray(v)&&v.length<=48&&new Set(v.map(x=>x?.id)).size===v.length&&v.every(r=>
+ mapFields(r,['id','regionId','prop','anchor','scale','visibility'])&&regionId(r.id)&&ids.has(r.regionId)&&mapPropPin(r.prop)&&
+ mapPoint(r.anchor)&&Number.isInteger(r.scale)&&10<=r.scale&&r.scale<=300&&visibility(r.visibility));
+export const validDecorationDesign=v=>mapFields(v,['mode','notes','candidates'])&&['none','suggest'].includes(v.mode)&&note(v.notes)&&
+ Array.isArray(v.candidates)&&(v.mode==='none'?v.candidates.length===0:1<=v.candidates.length&&v.candidates.length<=12)&&
+ v.candidates.every(c=>mapFields(c,['prop','visibility'])&&mapPropPin(c.prop)&&visibility(c.visibility))&&
+ new Set(v.candidates.map(c=>c.prop.propId)).size===v.candidates.length;
 export const mapBackgroundIds=graph=>[...new Set(graph.regions.map(r=>r.backgroundId).filter(Boolean))];
-export const maxMapColliders=96;
-const graphFields=['title','startRegionId','regions','connections'];
-const edgeFields=Object.keys({id:null,from:null,to:null,hit:null,spawn:null,label:null});
 export function validMapGraph(v,{partial=false}={}){
- const optional=['colliders','startPoint'].filter(key=>v&&Object.hasOwn(v,key));
- if(!mapFields(v,[...graphFields,...optional])||(optional.includes('startPoint')&&!mapPoint(v.startPoint))||!mapText(v.title,100)||!Array.isArray(v.regions)||
+ const fields=['title','startRegionId','regions','connections'];
+ const withStartPoint=v!==null&&typeof v==='object'&&Object.hasOwn(v,'startPoint');
+ if(withStartPoint&& (partial||!mapPoint(v.startPoint)))return false;
+ if(withStartPoint)fields.push('startPoint');
+ if(v!==null&&typeof v==='object'&&Object.hasOwn(v,'decorations')){
+  if(partial)return false;
+  fields.push('decorations');
+ }
+ const withColliders=v!==null&&typeof v==='object'&&Object.hasOwn(v,'colliders');
+ if(!mapFields(v,withColliders?[...fields,'colliders']:fields)||!mapText(v.title,100)||!Array.isArray(v.regions)||
     v.regions.length<1||v.regions.length>24||!v.regions.every(r=>mapFields(r,['id','name','description','backgroundId','imageSha256'])&&
       regionId(r.id)&&mapText(r.name,100)&&mapText(r.description,1000)&&backgroundId(r.backgroundId)&&typeof r.imageSha256==='string'&&/^[a-f0-9]{64}$/.test(r.imageSha256)))return false;
  const ids=new Set(v.regions.map(r=>r.id));
+ if(Object.hasOwn(v,'decorations')&&!validDecorations(v.decorations,ids))return false;
  if(ids.size!==v.regions.length||!ids.has(v.startRegionId)||!Array.isArray(v.connections)||v.connections.length>96)return false;
- if(Object.hasOwn(v,'colliders')){
+ if(withColliders){
   const colliderIds=new Set();
-  if(!Array.isArray(v.colliders)||v.colliders.length>maxMapColliders||!v.colliders.every(c=>{
-   if(!mapCollider(c)||!regionId(c.id)||colliderIds.has(c.id)||!ids.has(c.regionId))return false;
+  if(!Array.isArray(v.colliders)||v.colliders.length>96||!v.colliders.every(c=>{
+   if(!mapCollider(c)||!regionId(c.id)||colliderIds.has(c.id)||
+      !ids.has(c.regionId))return false;
    colliderIds.add(c.id);return true;
   }))return false;
  }
  const unique=new Set();
  return v.connections.every(e=>{
-  if(!mapFields(e,edgeFields)||typeof e.id!=='string'||!/^[a-z][a-z0-9-]{0,31}$/.test(e.id)||
+  if(!mapFields(e,Object.keys({id:null,from:null,to:null,hit:null,spawn:null,label:null}))||typeof e.id!=='string'||!/^[a-z][a-z0-9-]{0,31}$/.test(e.id)||
      unique.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||e.from===e.to||!mapText(e.label,100)||
      !(mapRect(e.hit)||(partial&&e.hit===null))||!(mapPoint(e.spawn)||(partial&&e.spawn===null)))return false;
   unique.add(e.id);return true;
  });
 }
-export const mapGenerateDesignSchema='ngs.map-generate.v2';
-export const mapDocumentStages=['map_start','map_portals','map_collisions'];
-const note=v=>typeof v==='string'&&v===v.trim()&&v.length<=1000&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v);
-export const validMapDesign=v=>mapFields(v,['startNotes','portalNotes','collisionNotes','collisionMode'])&&
- ['startNotes','portalNotes','collisionNotes'].every(k=>note(v[k]))&&['suggest','none'].includes(v.collisionMode);
+// Advertise the same request families to MCP clients. Cross-field graph
+// and normalized rectangle checks are enforced by validMapRequest.
+const obj=(properties,required=Object.keys(properties))=>({type:'object',properties,required,additionalProperties:false});
+const key={type:'string',pattern:'^[a-z][a-z0-9-]{0,31}$'};
+const title={type:'string',minLength:1,maxLength:100};
+const count=(minimum,maximum)=>({type:'integer',minimum,maximum});
+const pointSchema=obj({x:count(0,1000),y:count(0,1000)});
+const rectangleSchema=obj({...pointSchema.properties,width:count(1,1000),height:count(1,1000)});
+const regionSchema=obj({id:key,name:title,description:{type:'string',minLength:1,maxLength:1000},
+ backgroundId:{type:'string',pattern:'^background\\.[a-f0-9]{64}$'},imageSha256:{type:'string',pattern:'^[a-f0-9]{64}$'}});
+const propPinSchema=obj({propId:{type:'string',minLength:2,maxLength:80,pattern:'^[a-z0-9]+(?:[-._][a-z0-9]+)*$'},
+  revision:count(1,Number.MAX_SAFE_INTEGER-1),sha256:{type:'string',pattern:'^[a-f0-9]{64}$'}});
+const visibilitySchema={enum:['both','pixel','cinematic']};
+const decorationSchema=obj({id:key,regionId:key,prop:propPinSchema,anchor:pointSchema,scale:count(10,300),visibility:visibilitySchema});
+const graphSchema=(generate)=>obj({title,startRegionId:key,...(generate?{}:{startPoint:pointSchema,decorations:{type:'array',maxItems:48,items:decorationSchema}}),
+ regions:{type:'array',minItems:generate?2:1,maxItems:generate?12:24,items:regionSchema},
+ connections:{type:'array',minItems:generate?1:0,maxItems:96,items:obj({id:key,from:key,to:key,
+  hit:generate?{type:'null'}:rectangleSchema,spawn:generate?{type:'null'}:pointSchema,label:title})},
+ colliders:{type:'array',maxItems:generate?0:96,items:{oneOf:[obj({id:key,regionId:key,rect:rectangleSchema}),obj({id:key,regionId:key,rect:rectangleSchema,shape:{enum:['rect','ellipse']},rotation:count(0,359)})]}}},
+ ['title','startRegionId','regions','connections']);
+const notesSchema={type:'string',maxLength:1000};
+const designSchema=obj({startNotes:notesSchema,portalNotes:notesSchema,collisionNotes:notesSchema,collisionMode:{enum:['suggest','none']}});
+const decorationDesignSchema={oneOf:['none','suggest'].map(mode=>obj({mode:{const:mode},notes:notesSchema,
+ candidates:{type:'array',minItems:mode==='none'?0:1,maxItems:mode==='none'?0:12,items:obj({prop:propPinSchema,visibility:visibilitySchema})}}))};
+export const mapPayloadSchemas=mapSchemas.map((id,i)=>obj({schemaVersion:{const:id},projectId:{const:'binari'},
+ graph:graphSchema(i!==1),...(i!==1?{intent:{type:'string',minLength:1,maxLength:2000},...(i>=2?{design:designSchema}:{}),...(i===3?{decorationDesign:decorationDesignSchema}:{})}:{
+  mapId:{type:'string',pattern:'^request\\.official\\.[a-f0-9]{64}$'},
+  expectedRevision:count(1,Number.MAX_SAFE_INTEGER-1),
+ })}));
 export function validMapRequest(v,type){
- const generate=type===mapTypes[0], i=generate?0:1, split=generate&&v?.schemaVersion===mapGenerateDesignSchema;
- return (generate||type===mapTypes[1])&&mapFields(v,generate?['schemaVersion','projectId','graph','intent',...(split?['design']:[])]:
- ['schemaVersion','projectId','graph','mapId','expectedRevision'])&&v.schemaVersion===(split?mapGenerateDesignSchema:mapSchemas[i])&&(!split||validMapDesign(v.design))&&v.projectId==='binari'&&
- validMapGraph(v.graph,{partial:generate})&&(generate?(!Object.hasOwn(v.graph,'startPoint')&&(v.graph.colliders?.length??0)===0&&v.graph.regions.length>=2&&v.graph.regions.length<=12&&v.graph.connections.length>0&&v.graph.connections.every(e=>e.hit===null&&e.spawn===null)&&mapText(v.intent,2000)):officialId(v.mapId)&&
+ const generate=type===mapTypes[0], v3=generate&&v?.schemaVersion===mapSchemas[3],
+  staged=generate&&mapSchemas.slice(2).includes(v?.schemaVersion),i=generate?(v3?3:staged?2:0):1;
+ return (generate||type===mapTypes[1])&&mapFields(v,generate?['schemaVersion','projectId','graph','intent',...(staged?['design']:[]),...(v3?['decorationDesign']:[])]:
+ ['schemaVersion','projectId','graph','mapId','expectedRevision'])&&v.schemaVersion===mapSchemas[i]&&v.projectId==='binari'&&
+ (!staged||(mapFields(v.design,['startNotes','portalNotes','collisionNotes','collisionMode'])&&
+  [v.design.startNotes,v.design.portalNotes,v.design.collisionNotes].every(note)&&['suggest','none'].includes(v.design.collisionMode)))&&
+ (!v3||validDecorationDesign(v.decorationDesign))&&validMapGraph(v.graph,{partial:generate})&&(generate?(v.graph.regions.length>=2&&v.graph.regions.length<=12&&v.graph.connections.length>0&&(v.graph.colliders?.length??0)===0&&v.graph.connections.every(e=>e.hit===null&&e.spawn===null)&&mapText(v.intent,2000)):officialId(v.mapId)&&
  Number.isSafeInteger(v.expectedRevision)&&v.expectedRevision>=1&&v.expectedRevision<Number.MAX_SAFE_INTEGER);
 }
 export function validMapState(v){
@@ -89,3 +139,9 @@ export async function hashBrowserMap(project,queueId){
  const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',data));
  return 'request.official.'+Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('');
 }
+
+// Editor labels and limits do not change the canonical request fields.
+export const mapGenerateDesignSchema=mapSchemas[2],mapGenerateDecorSchema=mapSchemas[3],mapDocumentStages=mapGenerateStages;
+export const maxMapColliders=96,maxMapDecorations=48,maxMapDecorationCandidates=12;
+export const mapDecorPropPin=mapPropPin;
+export const mapDecorPinKey=p=>JSON.stringify([p.propId,p.revision,p.sha256]);

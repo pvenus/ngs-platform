@@ -733,19 +733,20 @@ async function loadWorkspace(search){
    const id='binari.empty-veranda',title='빈 마루에 바람이 앉으면';
    const demo=document.documentElement.dataset.wellPuzzleDemo==='enabled'?await import('./well-puzzle-demo.mjs'):null;
    if(signal.aborted)return;
-   const wellDemoId=demo?.wellDemoId,wellDemoTitle=demo?.wellDemoTitle;
+   const wellDemoId=demo?.wellDemoId,wellDemoTitle=demo?.wellDemoTitle,spiritDemoId=demo?.spiritDemoId;
    const choices=[];
    if(document.documentElement.dataset.puzzleWorkspace==='enabled')choices.push([id,title]);
-   if(demo)choices.push([wellDemoId,wellDemoTitle+' · 테스트']);
+   if(demo)choices.push([wellDemoId,wellDemoTitle+' · 테스트'],[spiritDemoId,demo.spiritDemoTitle+' · 테스트']);
    const entries=choices.map(([key,label])=>{
     const entry=nodeOf('a','workspace-nav-item',label);entry.href=next({item:key});
     if(item===key)entry.setAttribute('aria-current','page');return entry;
    });
    items.replaceChildren(...entries);
-   const heading=nodeOf('h3','',item===wellDemoId?wellDemoTitle:item===id?title:'퍼즐 설계');
-   const description=nodeOf('p','meta',item===wellDemoId?'독립 플레이테스트 · 테스트 배경과 프랍으로 상태 및 상호작용을 검증합니다.':item===id?'별도의 이야기 연결 없이 이 퍼즐을 플레이할 수 있습니다.':'퍼즐을 선택하세요.');
+   const heading=nodeOf('h3','',item===wellDemoId?wellDemoTitle:item===spiritDemoId?demo?.spiritDemoTitle:item===id?title:'퍼즐 설계');
+   const description=nodeOf('p','meta',item===spiritDemoId?'독립 플레이테스트 · 능력 ON에서 발견하고 한 번 현현시키면 OFF에서도 보입니다.':item===wellDemoId?'독립 플레이테스트 · 테스트 배경과 프랍으로 상태 및 상호작용을 검증합니다.':item===id?'별도의 이야기 연결 없이 이 퍼즐을 플레이할 수 있습니다.':'퍼즐을 선택하세요.');
    detail.replaceChildren(heading,description);
    if(item===wellDemoId)demo.mountWellPuzzleDemo(detail,{signal});
+   if(item===spiritDemoId)demo.mountSpiritManifestation(detail,{signal});
    if(item===id){
     const frame=nodeOf('iframe','local-puzzle-frame');
     frame.title=title+' 플레이테스트';

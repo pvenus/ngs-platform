@@ -15,9 +15,10 @@ async function readMapRevision(project,base,id,rev){
   if(!validMapState(stored))throw replicaUnavailable();
   return stored;
  }
- if(!mapFields(stored,groupFields)||!mapFields(stored.parts,componentNames)||!componentNames.every(key=>hash(stored.parts[key])))
+ const names=stored.parts&&Object.hasOwn(stored.parts,'decorations')?[...componentNames,'decorations']:componentNames;
+ if(!mapFields(stored,groupFields)||!mapFields(stored.parts,names)||!names.every(key=>hash(stored.parts[key])))
   throw replicaUnavailable();
- const parts=await Promise.all(componentNames.map(async key=>{
+ const parts=await Promise.all(names.map(async key=>{
   const bytes=await project.readBytes(prefix+'.'+key+'.json',maxMapMetadataBytes);
   if(bytes===null)return null;
   if(!(bytes instanceof Uint8Array)||bytes.length>maxMapMetadataBytes||await hashReplicaBytes(bytes)!==stored.parts[key])throw replicaUnavailable();
@@ -27,12 +28,13 @@ async function readMapRevision(project,base,id,rev){
  // Sync might copy the group manifest before a referenced part. Keep the
  // preceding complete revision visible without mixing any version's parts.
  if(parts.some(part=>part===null))return null;
- const [start,portals,collisions]=parts;
+ const [start,portals,collisions,decorations]=parts;
  if(!(mapFields(start,['startRegionId'])||mapFields(start,['startRegionId','startPoint']))||!mapFields(portals,['connections'])||
-    !(mapFields(collisions,['colliders'])||mapFields(collisions,[])))throw replicaUnavailable();
+    !(mapFields(collisions,['colliders'])||mapFields(collisions,[]))||
+    (names.length===4&&!mapFields(decorations,['decorations'])))throw replicaUnavailable();
  const {projectId,mapId,revision,updatedAt,officialRequestId,title,regions}=stored;
  const composite={schemaVersion:'ngs.map-metadata.v1',projectId,mapId,revision,updatedAt,officialRequestId,
-  graph:{title,regions,...start,...portals,...collisions}};
+  graph:{title,regions,...start,...portals,...collisions,...decorations}};
  if(!validMapState(composite))throw replicaUnavailable();
  return composite;
 }

@@ -1,13 +1,17 @@
 import {fileUpdateType,fileUpdateSchema,assemblyUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
-import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize} from './assembly-sprite-layout.mjs';
+import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,decorationArt,decorationsLoader} from './assembly-sprite-layout.mjs';
 import {assemblyReachable,bowlStates,validPortalConditions} from './assembly-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {validMapState} from './map-contract.mjs';
-import {wellDemoId,wellDemoTitle,wellAssemblySlots,mountWellPuzzleDemo} from './well-puzzle-demo.mjs';
+import {wellDemoId,wellDemoTitle,wellAssemblySlots,mountWellPuzzleDemo,spiritDemoId,spiritDemoTitle,mountSpiritManifestation} from './well-puzzle-demo.mjs';
 
-const slots=Object.entries(wellAssemblySlots);
+const slots=Object.entries(wellAssemblySlots),spiritSlots=[['spirit','영물']],allSlots=[...slots,...spiritSlots];
+const usesSpirit=p=>p?.type===spiritDemoId;
+const slotsFor=p=>usesSpirit(p)?spiritSlots:slots;
+const roleTitle=role=>role==='spirit'?'영물':wellAssemblySlots[role];
+const applicable=(p,key)=>usesSpirit(p)=== (key==='spirit');
 const stateLabels=['제상의 빈 그릇','들고 있는 빈 그릇','들고 있는 물그릇','제상에 올린 물그릇'];
-const suggestions={table:/^ritual-seal-altar-/,bowl:/(?:water-bowl|ritual-seal-ash-catcher-)/,well:/^ritual-seal-well-v/,lid:/^ritual-seal-well-cover-/};
+const suggestions={table:/^ritual-seal-altar-/,bowl:/(?:water-bowl|ritual-seal-ash-catcher-)/,well:/^ritual-seal-well-v/,lid:/^ritual-seal-well-cover-/,spirit:/(?:talisman|bell|lantern|charm|thread|hanji)/};
 const el=(tag,value,cls)=>{const n=document.createElement(tag);if(value)n.textContent=value;if(cls)n.className=cls;return n;};
 const field=(title,input)=>{const row=el('label',title,'prop-form-field');row.append(input);return row;};
 const option=(id,title)=>{const n=el('option',title);n.value=id;return n;};
@@ -18,7 +22,7 @@ const viewPoint=p=>['x','y'].every(axis=>Number.isInteger(p?.[axis])&&p[axis]>=1
 const stateKey='ngs:map-rehearsal:v2:';
 
 const attachmentParent={bowl:'altar',lid:'well'};
-const roleParent={table:'altar',well:'well'};
+const roleParent={table:'altar',well:'well',spirit:'spirit'};
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,Math.round(n)));
 const offsetOk=p=>['x','y'].every(k=>Number.isInteger(p?.[k])&&Math.abs(p[k])<=12);
 
@@ -90,7 +94,15 @@ export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bin
  return {initialRegion:map.graph.startRegionId,regions,connections:map.graph.connections,positions:layout,attachments,scale,art,spiritArt,artSizes,graph:map.graph,portalConditions};
 }
 
+export function buildSpiritRehearsal(map,backgrounds,point,scale,prop,pin,decorArt){
+ const media=pin?decorationArt(prop,pin):null;
+ if(!media?.pixel||!media.cinematic||!viewPoint(point)||!map.graph.regions.some(r=>r.id===point.regionId)||!exactScale(scale))
+  throw Error('SPIRIT_PLACEMENT_OR_ART_INVALID');
+ return {graph:map.graph,regions:mapRehearsalRegions(map,backgrounds),point,scale,media,decorArt};
+}
+
 export async function mountWellAssembly({items,detail,request,projectId,signal,published,submit,updateEnabled=true}){
+ const loadDecor=decorationsLoader(request,projectId);
  const api=(resource,query={})=>'/api/'+resource+'-workspace?'+new URLSearchParams({projectId,...query});
  const [{maps},{props},{backgrounds}]=await Promise.all(['map','prop','background'].map(name=>request(api(name))));
  if(signal.aborted)return;
@@ -101,12 +113,12 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  const draftKey=published?'ngs:assembly-draft:'+published.assemblyId+':'+published.revision:stateKey+projectId;
  const feedback=el('p',null,'meta');feedback.setAttribute('role','status');
  const mapSelect=el('select'),puzzle=el('select');
- puzzle.append(option(wellDemoId,wellDemoTitle));
+ puzzle.append(option(wellDemoId,wellDemoTitle),option(spiritDemoId,spiritDemoTitle));
  const inputs=el('div',null,'well-assembly-grid');inputs.append(field('맵',mapSelect));
- const positionInputs={},propInputs={},offsetInputs={},scaleInputs={},sizeLabels={},retryArt={};
+ const positionInputs={},propInputs={},offsetInputs={},scaleInputs={},sizeLabels={},retryArt={},bindingGroups={},positionGroups={},offsetGroups={};
  const placement=el('div',null,'well-assembly-grid');
  const bindingFields=el('div',null,'well-assembly-grid');
- for(const [role,label] of slots){
+ for(const [role,label] of allSlots){
   const pattern=suggestions[role];
   const select=el('select');select.append(option('','프랍 선택'));
   const candidates=props.filter(row=>pattern.test(row.propId));
@@ -125,19 +137,19 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   dimensions.setAttribute('aria-live','polite');
   const retry=control('이미지 다시 불러오기');retry.hidden=true;retryArt[role]=retry;
   retry.addEventListener('click',()=>{if(selected)void paintArt(selected,role);},{signal});
-  group.append(field(label,select),scaleLine,dimensions,retry);bindingFields.append(group);
+  group.append(field(label,select),scaleLine,dimensions,retry);bindingGroups[role]=group;bindingFields.append(group);
  }
- for(const [key,title] of [['altar','제상 위치 · 그릇 자리 포함'],['well','우물 위치 · 뚜껑 포함']]){
+ for(const [key,title] of [['altar','제상 위치 · 그릇 자리 포함'],['well','우물 위치 · 뚜껑 포함'],['spirit','영물 위치']]){
   const group=el('fieldset'),legend=el('legend',title),region=el('select'),coords=el('div',null,'well-assembly-grid');
   const number=()=>{const n=el('input');n.type='number';n.required=true;n.min='10';n.max='90';n.step='1';return n;};
   const x=number(),y=number();group.append(legend,field('구역',region),coords);coords.append(field('가로 위치 (%)',x),field('세로 위치 (%)',y));
-  positionInputs[key]={region,x,y};placement.append(group);
+  positionInputs[key]={region,x,y};positionGroups[key]=group;placement.append(group);
  }
  for(const [key,title] of [['bowl','물그릇 위치 · 제상 기준'],['lid','뚜껑 위치 · 우물 기준']]){
   const group=el('fieldset'),coords=el('div',null,'well-assembly-grid');
   const number=()=>{const n=el('input');n.type='number';n.required=true;n.min='-12';n.max='12';n.step='1';return n;};
   const x=number(),y=number();group.append(el('legend',title),coords);
-  coords.append(field('가로 오프셋 (%)',x),field('세로 오프셋 (%)',y));offsetInputs[key]={x,y};placement.append(group);
+  coords.append(field('가로 오프셋 (%)',x),field('세로 오프셋 (%)',y));offsetInputs[key]={x,y};offsetGroups[key]=group;placement.append(group);
  }
  const gates=el('fieldset'),gateList=el('ul',null,'well-assembly-list'),gateEdge=el('select'),gateState=el('select');
  gateState.append(...bowlStates.map((id,i)=>option(id,stateLabels[i])));
@@ -179,10 +191,10 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  mapSelect.append(option('','맵 선택'),...maps.map(x=>option(x.mapId,x.title)));
  if(published&&!maps.some(x=>x.mapId===published.map.mapId))mapSelect.append(option(published.map.mapId,'기존 게시 맵'));
  mapSelect.value=published?.map.mapId??(maps.some(x=>x.mapId===lastMap)?lastMap:maps[0]?.mapId??'');mapSelect.disabled=Boolean(published);
- const layout=()=>Object.fromEntries(Object.entries(positionInputs).map(([key,v])=>[key,{regionId:v.region.value,x:Number(v.x.value),y:Number(v.y.value)}]));
- const attachments=()=>Object.fromEntries(Object.entries(offsetInputs).map(([key,v])=>[key,{x:Number(v.x.value),y:Number(v.y.value)}]));
- const scale=()=>Object.fromEntries(Object.entries(scaleInputs).map(([key,v])=>[key,Number(v.value)]));
- const bindings=()=>Object.fromEntries(Object.entries(propInputs).map(([key,v])=>[key,v.value]));
+ const layout=()=>Object.fromEntries(Object.entries(positionInputs).filter(([k])=>applicable(selected,k)).map(([key,v])=>[key,{regionId:v.region.value,x:Number(v.x.value),y:Number(v.y.value)}]));
+ const attachments=()=>Object.fromEntries(Object.entries(offsetInputs).filter(()=>!usesSpirit(selected)).map(([key,v])=>[key,{x:Number(v.x.value),y:Number(v.y.value)}]));
+ const scale=()=>Object.fromEntries(Object.entries(scaleInputs).filter(([k])=>applicable(selected,k)).map(([key,v])=>[key,Number(v.value)]));
+ const bindings=()=>Object.fromEntries(Object.entries(propInputs).filter(([k])=>applicable(selected,k)).map(([key,v])=>[key,v.value]));
  const setStatus=s=>{feedback.textContent=s;};
  async function latestMap(id){
   const {map:next}=await request(api('map',{item:id}));
@@ -194,7 +206,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    latestMap(id),request(api('background')),loadMedia,
   ]);
   if(!Array.isArray(art))throw Error('MAP_ART_MISSING');
-  return {latest,art,media:Object.fromEntries(entries)};
+  return {latest,art,media:Object.fromEntries(entries),decorArt:await loadDecor.load(latest.graph.decorations??[])};
  }
 
  function remember(){
@@ -217,18 +229,19 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  }
  function newPreset(){
   const regions=map.graph.regions,shift=(instances.length%5)*5;
+  if(puzzle.value===spiritDemoId)return {id:crypto.randomUUID(),type:spiritDemoId,layout:{spirit:{regionId:map.graph.startRegionId,x:55+shift,y:65}},attachments:{},bindings:{spirit:''}};
   return {id:crypto.randomUUID(),type:wellDemoId,
    layout:{altar:{regionId:regions.find(x=>x.id==='zone-2')?.id??regions[0].id,x:43+shift,y:70},
            well:{regionId:regions.find(x=>x.id==='zone-4')?.id??regions.at(-1).id,x:53+shift,y:70}},
    attachments:{bowl:{x:5,y:-10},lid:{x:5,y:-10}},bindings:Object.fromEntries(slots.map(([key])=>[key,'']))};
  }
- function presetName(preset){return wellDemoTitle+' '+(instances.indexOf(preset)+1);}
+ function presetName(preset){return (usesSpirit(preset)?spiritDemoTitle:wellDemoTitle)+' '+(instances.indexOf(preset)+1);}
  function showList(){
   const term=search.value.trim().normalize('NFC').toLocaleLowerCase();
   list.replaceChildren(...instances.filter(p=>presetName(p).normalize('NFC').toLocaleLowerCase().includes(term)).map(preset=>{
    const li=el('li'),label=control(presetName(preset)),count=Object.values(preset.bindings).filter(Boolean).length;
    label.dataset.preset=preset.id;label.setAttribute('aria-pressed',String(selected===preset&&!inspector.hidden));
-   label.classList.add('request-item','npc-roster-entry');li.append(label,el('small',count+'/'+slots.length+' 연결','meta'));return li;
+   label.classList.add('request-item','npc-roster-entry');li.append(label,el('small',count+'/'+slotsFor(preset).length+' 연결','meta'));return li;
   }));
   if(term&&!list.children.length)list.append(el('li','검색 결과가 없습니다.','meta'));
  }
@@ -270,19 +283,23 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(selected!==preset){stopPlay();selected=preset;}
   inspector.hidden=false;inspectorTitle.textContent=presetName(preset)+' 수정';
   for(const [key,entry] of Object.entries(positionInputs)){
+   positionGroups[key].hidden=!applicable(preset,key);if(positionGroups[key].hidden)continue;
    const point=preset.layout[key];entry.region.value=point.regionId;entry.x.value=point.x;entry.y.value=point.y;
   }
   for(const [key,entry] of Object.entries(offsetInputs)){
+   offsetGroups[key].hidden=usesSpirit(preset);if(usesSpirit(preset))continue;
    entry.x.value=preset.attachments[key].x;entry.y.value=preset.attachments[key].y;
   }
   for(const [key,entry] of Object.entries(propInputs)){
+   bindingGroups[key].hidden=!applicable(preset,key);if(bindingGroups[key].hidden)continue;
    const id=preset.bindings[key]??'';
    if(id&&!Array.from(entry.options).some(o=>o.value===id))entry.append(option(id,id+' (게시본 참조)'));
    entry.value=id;scaleInputs[key].value=scaleOf(preset.scale,key);
   }
-  for(const [role] of slots)showDimensions(preset,role);
+  gates.hidden=usesSpirit(preset);
+  for(const [role] of slotsFor(preset))showDimensions(preset,role);
   for(const pin of pins.values())pin.classList.toggle('active',pin.dataset.instance===preset.id);
-  showList();renderGates();refresh();if(focusRole)propInputs[focusRole].focus({preventScroll:true});
+  showList();if(!usesSpirit(preset))renderGates();refresh();if(focusRole)propInputs[focusRole].focus({preventScroll:true});
  }
  list.addEventListener('click',e=>{
   const id=e.target.closest('[data-preset]')?.dataset.preset;
@@ -368,7 +385,8 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
     job=loadProp(preset,role,id).then(({prop})=>{
      if(prop?.propId!==id||prop.source?.revision!==row.revision||prop.source?.sha256!==row.sha256)
       throw Error('ASSEMBLY_PROP_PIN_INACTIVE');
-     const pixel=prop.media?.pixel;
+     const pixel=role==='spirit'?prop.media?.spirit:prop.media?.pixel;
+     if(role==='spirit'&&!decorationArt(prop,{propId:id,revision:row.revision,sha256:row.sha256})?.pixel)throw Error('PROP_ART_MISSING_OR_STALE');
      if(pixel?.mediaType!=='image/png'||!imageSize(pixel)||!safeMedia(pixel.url))throw Error('PROP_ART_MISSING_OR_STALE');
      return pixel;
     });
@@ -411,7 +429,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  }
  function renderPins(){
   for(const pin of pins.values())pin.remove();pins.clear();for(const view of spriteViews.values())view.img.remove();spriteViews.clear();
-  for(const preset of instances)for(const [role,title] of slots){
+  for(const preset of instances)for(const [role,title] of slotsFor(preset)){
    const pin=control('');pin.className='well-assembly-pin';pin.dataset.role=role;pin.dataset.instance=preset.id;
    pin.classList.toggle('active',selected===preset);pin.classList.toggle('unbound',!preset.bindings[role]);
    pin.setAttribute('aria-label',presetName(preset)+' · '+title+' 위치 조정');pin.title=pin.getAttribute('aria-label');
@@ -441,7 +459,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(!pin||!e.isPrimary||e.button!==0||dragging)return;
   const preset=instances.find(x=>x.id===pin.dataset.instance);if(!preset)return;
   e.preventDefault();pin.focus();
-  const ghost=el('span',wellAssemblySlots[pin.dataset.role],'well-assembly-ghost');
+  const ghost=el('span',roleTitle(pin.dataset.role),'well-assembly-ghost');
   overview.append(ghost);dragging={id:e.pointerId,role:pin.dataset.role,preset,ghost,x:e.clientX,y:e.clientY};
   overview.setPointerCapture(e.pointerId);setGhost(e);
  },{signal});
@@ -457,7 +475,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    return;
   }
   preset.layout=result.layout;preset.attachments=result.attachments;
-  stopPlay();for(const [key] of slots)movePin(preset,key);selectPreset(preset);remember();setStatus(wellAssemblySlots[role]+' 위치를 바꿨어요.');
+  stopPlay();for(const [key] of slotsFor(preset))movePin(preset,key);selectPreset(preset);remember();setStatus(roleTitle(role)+' 위치를 바꿨어요.');
  },{signal});
  for(const type of ['pointercancel','lostpointercapture'])overview.addEventListener(type,e=>{if(dragging?.id===e.pointerId)cancelDrag();},{signal});
   overview.addEventListener('keydown',e=>{
@@ -483,9 +501,10 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
     saved=[{id:crypto.randomUUID(),type:wellDemoId,layout:previous.layout,bindings:previous.bindings,
       attachments:previous.attachments??{bowl:{x:5,y:-10},lid:{x:5,y:-10}}}];
    if(Array.isArray(saved)){
-    instances=saved.slice(0,16).filter(p=>typeof p?.id==='string'&&p.type===wellDemoId&&['altar','well'].every(k=>viewPoint(p.layout?.[k])&&targets.some(r=>r.id===p.layout[k].regionId))&&
-     ['bowl','lid'].every(k=>offsetOk(p.attachments?.[k]))&&p.bindings&&typeof p.bindings==='object');
-    for(const preset of instances)for(const [role] of slots)if(!preset.pinned?.[role]&&!props.some(row=>row.propId===preset.bindings[role]))preset.bindings[role]='';
+    instances=saved.slice(0,16).filter(p=>typeof p?.id==='string'&&[wellDemoId,spiritDemoId].includes(p.type)&&
+     (usesSpirit(p)?['spirit']:['altar','well']).every(k=>viewPoint(p.layout?.[k])&&targets.some(r=>r.id===p.layout[k].regionId))&&
+     (usesSpirit(p)||['bowl','lid'].every(k=>offsetOk(p.attachments?.[k])))&&p.bindings&&typeof p.bindings==='object');
+    for(const preset of instances)for(const [role] of slotsFor(preset))if(!preset.pinned?.[role]&&!props.some(row=>row.propId===preset.bindings[role]))preset.bindings[role]='';
    }
    renderBoard();showList();remember();setStatus(instances.length?'목록이나 맵의 프랍 자리를 눌러 수정하세요.':'퍼즐을 추가하면 필요한 빈 프랍 자리가 맵에 표시돼요.');
   }catch{if(!signal.aborted&&ticket===generation)setStatus('선택한 맵을 읽지 못했어요.');}
@@ -494,10 +513,10 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  zoom.addEventListener('change',()=>{renderBoard();boardNotice.textContent=markMode()==='상세 배치'?'확대 보기 · 놓을 위치로 프랍을 드래그하세요.':'전체 구역 · 제상과 우물을 다른 구역으로도 옮길 수 있어요.';},{signal});
  mapSelect.addEventListener('change',()=>void readMap(),{signal});
  for(const input of [...Object.values(propInputs),...[...Object.values(positionInputs),...Object.values(offsetInputs)].flatMap(x=>Object.values(x))])
-  input.addEventListener('change',()=>{if(run){stopPlay();setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');}snapshotSelected();if(selected)for(const [role] of slots)movePin(selected,role);showList();remember();refresh();},{signal});
+  input.addEventListener('change',()=>{if(run){stopPlay();setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');}snapshotSelected();if(selected)for(const [role] of slotsFor(selected))movePin(selected,role);showList();remember();refresh();},{signal});
  for(const [role,input] of Object.entries(scaleInputs))input.addEventListener('input',()=>{
-  if(!selected||!exactScale(Number(input.value))){refresh();return;}
-  selected.scale={...Object.fromEntries(slots.map(([k])=>[k,scaleOf(selected.scale,k)])),[role]:Number(input.value)};
+  if(!selected||!applicable(selected,role)||!exactScale(Number(input.value))){refresh();return;}
+  selected.scale={...Object.fromEntries(slotsFor(selected).map(([k])=>[k,scaleOf(selected.scale,k)])),[role]:Number(input.value)};
   movePin(selected,role);showDimensions(selected,role);if(run)stopPlay();remember();refresh();
  },{signal});
  for(const [role,input] of Object.entries(propInputs))input.addEventListener('change',()=>{if(selected)void paintArt(selected,role);},{signal});
@@ -507,11 +526,18 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   const which=map, instance=selected, coords=layout(), offsets=attachments(), sizes=scale(), chosen=bindings(), ticket=++generation;
   stopPlay();busy=true;refresh();setStatus('연결한 프랍과 맵 이미지를 확인하고 있어요.');
   try{
-   const {latest,art,media}=await playInputs(which.mapId,Promise.all(
+   const {latest,art,media,decorArt}=await playInputs(which.mapId,Promise.all(
     Object.entries(chosen).map(async([role,id])=>[role,(await loadProp(instance,role,id)).prop])));
    if(signal.aborted||ticket!==generation)return;
    if(selected!==instance||JSON.stringify(chosen)!==JSON.stringify(bindings())||JSON.stringify(coords)!==JSON.stringify(layout())||JSON.stringify(offsets)!==JSON.stringify(attachments())||JSON.stringify(sizes)!==JSON.stringify(scale())){setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');return;}
+   if(usesSpirit(instance)){
+    const pin=instance.pinned?.spirit??props.find(p=>p.propId===chosen.spirit);
+    const config=buildSpiritRehearsal(latest,art,coords.spirit,sizes.spirit,media.spirit,pin,decorArt);
+    run=new AbortController();mountSpiritManifestation(stage,{signal:run.signal,rehearsal:config});stop.hidden=false;
+    setStatus('영물 현현 테스트 중이에요.');return;
+   }
    const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned,portalConditions:instance.portalConditions});
+   rehearsal.decorArt=decorArt;
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal});stop.hidden=false;
    setStatus('테스트 중이에요. WASD로 움직이고, 표시된 포털 영역에 걸어 들어가면 이동해요.');
    stage.querySelector('.well-demo-scene')?.focus();
@@ -525,7 +551,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   snapshotSelected();
   const puzzles=instances.map(p=>({id:p.id,type:p.type,layout:p.layout,attachments:p.attachments,...(p.scale?{scale:p.scale}:{}),
    ...(p.portalConditions?.length?{portalConditions:p.portalConditions}:{}),
-   bindings:Object.fromEntries(slots.map(([role])=>{
+   bindings:Object.fromEntries(slotsFor(p).map(([role])=>{
     const row=p.pinned?.[role]??props.find(x=>x.propId===p.bindings[role]);
     return [role,row?{propId:row.propId,revision:row.revision,sha256:row.sha256}:null];
    }))}));
@@ -540,7 +566,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    const current=await latestMap(map.mapId);
    if(signal.aborted)return;
    if(!assemblyReachable(current.graph,puzzles)){
-    setStatus('최신 맵에서 제상과 우물 사이를 왕복할 수 없어요. 이동 연결을 확인해 주세요.');return;
+    setStatus('최신 맵에서 퍼즐 위치에 도달할 수 없어요. 영물까지의 연결과 제상·우물 왕복 경로를 확인해 주세요.');return;
    }
    const res=await submit({requestType:fileUpdateType,idempotencyKey:lastApply.key,payload}),value=await res.json().catch(()=>null);
    if(!isQueuedRequest(res,value)){setStatus(assemblyApplyFailure(value?.error,res.status));return;}
@@ -552,13 +578,31 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(!published||busy||!map)return;
   stopPlay();busy=true;refresh();
   try{
-   const selectedId=selected?.id,original=published.puzzles.find(p=>p.id===selectedId)??published.puzzles[0];
-   if(!original)return;
-   const {latest,art,media}=await playInputs(published.map.mapId,Promise.all(
-    Object.entries(original.bindings).map(async([role,pin])=>[role,(await pinnedRead(pin)).prop])));
+   const selectedId=selected?.id,ordinary=published.puzzles.filter(p=>!usesSpirit(p)),reveals=published.puzzles.filter(usesSpirit);
+   const original=ordinary.find(p=>p.id===selectedId)??ordinary[0];
+   if(!original&&!reveals.length)return;
+   const {latest,art,media,decorArt}=await playInputs(published.map.mapId,Promise.all(
+    Object.entries(original?.bindings??{}).map(async([role,pin])=>[role,(await pinnedRead(pin)).prop])));
    if(signal.aborted)return;
+   const revealConfigs=await Promise.all(reveals.map(async puzzle=>{
+    const pin=puzzle.bindings.spirit,{prop}=await pinnedRead(pin);
+    const config=buildSpiritRehearsal(latest,art,puzzle.layout.spirit,puzzle.scale?.spirit??100,prop,pin,decorArt);
+    return {...config,id:puzzle.id,onReveal:change=>{
+     detail.dispatchEvent(new CustomEvent('ngs:prop-changed',{bubbles:true,detail:{type:'prop.changed',assemblyId:published.assemblyId,
+      presetId:puzzle.id,asset:pin,role:'spirit',regionId:puzzle.layout.spirit.regionId,...change}}));
+     detail.dispatchEvent(new CustomEvent('ngs:puzzle-completed',{bubbles:true,detail:{type:'puzzle.completed',
+      assemblyId:published.assemblyId,presetId:puzzle.id,puzzleType:puzzle.type}}));
+    }};
+   }));
+   if(signal.aborted)return;
+   if(!original){
+    const config={...revealConfigs[0],manifestations:revealConfigs};
+    run=new AbortController();mountSpiritManifestation(stage,{signal:run.signal,rehearsal:config});stop.hidden=false;
+    setStatus('게시 리비전 '+published.revision+'로 플레이 중이에요.');return;
+   }
    const config=buildWellRehearsal({map:latest,backgrounds:art,props,layout:original.layout,attachments:original.attachments,scale:original.scale,bindings:Object.fromEntries(Object.entries(original.bindings).map(([k,v])=>[k,v.propId])),pins:original.bindings,media,portalConditions:original.portalConditions});
-   config.formal=true;config.onPropChanged=change=>{
+   config.manifestations=revealConfigs;
+   config.decorArt=decorArt;config.formal=true;config.onPropChanged=change=>{
     const event={type:'prop.changed',assemblyId:published.assemblyId,presetId:original.id,asset:original.bindings[change.role],...change};
     detail.dispatchEvent(new CustomEvent('ngs:prop-changed',{detail:event,bubbles:true}));
    };

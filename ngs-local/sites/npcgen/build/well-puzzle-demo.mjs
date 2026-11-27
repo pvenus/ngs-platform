@@ -1,10 +1,12 @@
-import {bowlStates,permitsAssemblyPortal} from './assembly-contract.mjs';
-import {assemblySpriteBox,applyAssemblySpriteBox} from './assembly-sprite-layout.mjs';
+import {bowlStates,permitsAssemblyPortal,spiritPuzzleType} from './assembly-contract.mjs';
+import {assemblySpriteBox,applyAssemblySpriteBox,decorationBox,paintDecoration,renderMapDecorations} from './assembly-sprite-layout.mjs';
+import {mapDecorPinKey} from './map-contract.mjs';
 import {mountAssemblyActor} from './assembly-actor.mjs';
 import {createPuzzleRuntime,advancePressMeter} from './puzzle-state-runtime.mjs';
 
 export const wellDemoId='binari.ritual-well-water-demo';
 export const wellDemoTitle='굿상에 물 올리기';
+export const spiritDemoId=spiritPuzzleType,spiritDemoTitle='영물 현현';
 export const wellAssemblySlots=Object.freeze({table:'제상',bowl:'물그릇',well:'우물 몸체',lid:'우물 뚜껑'});
 const has=(ref,field,value)=>({ref,field,value});
 const state=(ref,value)=>has(ref,'state',value);
@@ -40,10 +42,12 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  const ids=assembly.bindings,points=rehearsal?.positions??assembly.positions,worldSized=Boolean(rehearsal?.artSizes),useActor=Boolean(rehearsal?.graph);
  let actor=null,spirit=false;
  const root=el('section',null,'well-demo'),instructions=el('p',useActor?'WASD로 8방향 이동 · 포털에 걸어 들어가기 · 프랍 가까이에서 F 또는 그릇 드롭':'제상이나 우물을 클릭해 대상 선택 · F로 상호작용 시작 · 인벤토리 그릇을 우물이나 제상에 드래그','meta');
+ const decorLayer=el('div',null,'map-decoration-layer');
  const scene=el('div',null,'well-demo-scene');scene.tabIndex=0;scene.setAttribute('aria-label','앞마당과 뒤뜰이 있는 테스트 배경');
  const altar=el('div',null,'well-demo-station well-demo-altar'),well=el('div',null,'well-demo-station well-demo-well');
  const socket=button('', 'well-demo-target well-demo-socket'),water=button('', 'well-demo-target well-demo-water');
  const artImages=[];
+ const spirits=spiritManifestationLayer(scene,rehearsal?.manifestations??[],rehearsal?.regions??[]);
  const addArt=(role,host)=>{const asset=rehearsal?.art?.[role];if(!asset)return null;
   const img=el('img',null,'well-demo-sprite well-demo-sprite-'+role);img.src=asset;img.alt='';img.draggable=false;host.append(img);artImages.push([role,img]);return img;
  };
@@ -65,9 +69,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  inventory.append(inventoryLabel,carried);controls.append(startButton,inventory,resetButton);
  const spiritToggle=button('서진 능력 · OFF','prop-control well-spirit-toggle');
  spiritToggle.setAttribute('aria-label','서진 능력');spiritToggle.setAttribute('aria-pressed','false');
- const hasSpirit=rehearsal?.regions.some(r=>r.spiritSrc&&r.spiritSrc!==(r.pixelSrc??r.src))||
-  Object.entries(rehearsal?.spiritArt??{}).some(([role,src])=>src!==rehearsal.art?.[role]);
- if(hasSpirit)controls.append(spiritToggle);
+ controls.append(spiritToggle);
  const status=el('p',null,'well-demo-status');status.setAttribute('role','status');
  const meterView=el('section',null,'well-demo-meter');meterView.hidden=true;
  const title=el('strong','뚜껑 열기'),meterHelp=el('span','스페이스 연타');
@@ -77,7 +79,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  let currentRegion=rehearsal?.initialRegion;
  const bg=el('img',null,'well-demo-map-bg'),route=el('nav',null,'well-demo-route'),jump=el('select'),portals=el('div',null,'well-play-portals');
  if(rehearsal){
-  scene.classList.add('well-demo-map');bg.alt='';bg.draggable=false;scene.prepend(bg);if(useActor)scene.append(portals);
+  scene.classList.add('well-demo-map');bg.alt='';bg.draggable=false;scene.prepend(bg,decorLayer);if(useActor)scene.append(portals);
   const label=el('label','테스트 구역 바로가기');jump.setAttribute('aria-label','테스트 구역 바로가기');
   for(const region of rehearsal.regions){const option=el('option',region.name);option.value=region.id;jump.append(option);}
   label.append(jump);if(!useActor)root.append(label);root.append(route);
@@ -102,8 +104,16 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   };
   const region=rehearsal?.regions.find(r=>r.id===currentRegion);
   if(region)repaint(bg,region.pixelSrc??region.src,region.spiritSrc);
+  if(rehearsal?.decorArt)renderMapDecorations(decorLayer,rehearsal.graph?.decorations??[],rehearsal.decorArt,region,spirit,mapDecorPinKey);
+  spirits.paint(currentRegion,spirit);
   for(const [role,img] of artImages)repaint(img,rehearsal.art[role],rehearsal.spiritArt?.[role]);
  }
+ root.addEventListener('keydown',ev=>{
+  if(ev.code!=='KeyF'&&ev.key?.toLowerCase()!=='f'||ev.repeat||!actor)return;
+  if(spirits.activate(currentRegion,spirit,point=>actor.isNear(point.regionId,point.x,point.y))){
+   ev.preventDefault();ev.stopImmediatePropagation();paintSight();
+  }
+ },{capture:true,signal});
  spiritToggle.addEventListener('click',()=>{
   spirit=!spirit;spiritToggle.textContent=spirit?'서진 능력 · ON':'서진 능력 · OFF';
   spiritToggle.setAttribute('aria-pressed',String(spirit));paintSight();
@@ -241,4 +251,90 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
    canTraverse:edge=>permitsAssemblyPortal(rehearsal.portalConditions,edge.id,role=>runtime.get(ids[role])?.state)});
   showRegion(actor.snapshot().regionId);
  }else if(rehearsal)showRegion(currentRegion);else render();
+}
+
+// Shared one-way switch, independent of view mode, map movement and presentation.
+export function createSpiritManifestation(){
+ const id='spirit';
+ const runtime=createPuzzleRuntime({bindings:{spirit:id},entities:[{id,states:['veiled','manifested'],initial:'veiled',location:'scene'}],
+  rules:[{event:'manifest',target:'spirit',require:[has('spirit','state','veiled')],effects:[has('spirit','state','manifested')]}]});
+ return {
+  state:()=>runtime.get(id).state,
+  visible:sight=>Boolean(sight||runtime.get(id).state==='manifested'),
+  activate:({sight,near})=>{
+   if(!sight||!near)return null;
+   const before=runtime.get(id);if(before.state!=='veiled')return null;
+   const result=runtime.dispatch({type:'manifest',target:id});
+   return result.ok?{before,after:runtime.get(id)}:null;
+  },
+ };
+}
+function spiritManifestationLayer(scene,configs,regions){
+ if(!configs.length)return {paint(){},activate(){return false;}};
+ const layer=el('div',null,'map-decoration-layer spirit-manifestation-layer');
+ scene.append(layer);
+ const targets=configs.map(cfg=>{
+  const badge=el(cfg.media?'img':'span',cfg.media?null:'✦','map-decor-sprite spirit-manifestation-prop');
+  badge.dataset.manifestationId=cfg.id??'preview';badge.hidden=true;
+  if(cfg.media){badge.alt='';badge.draggable=false;}
+  layer.append(badge);return {cfg,badge,model:createSpiritManifestation()};
+ });
+ function paint(regionId,sight){
+  const region=regions.find(r=>r.id===regionId);
+  for(const {cfg,badge,model} of targets){
+   const visible=cfg.point.regionId===regionId&&model.visible(sight);
+   badge.dataset.state=model.state();badge.dataset.view=sight?'cinematic':'pixel';
+   if(cfg.media){
+    const row={visibility:'both',anchor:{x:cfg.point.x*10,y:cfg.point.y*10},scale:cfg.scale};
+    paintDecoration(badge,visible?decorationBox(row,cfg.media,region,sight):null);
+   }else{
+    badge.hidden=!visible;badge.style.left=cfg.point.x+'%';badge.style.top=cfg.point.y+'%';
+   }
+  }
+ }
+ function activate(regionId,sight,near){
+  for(const {cfg,model} of targets){
+   if(cfg.point.regionId!==regionId)continue;
+   const result=model.activate({sight,near:near(cfg.point)});
+   if(result){cfg.onReveal?.(result);paint(regionId,sight);return true;}
+  }
+  return false;
+ }
+ return {paint,activate};
+}
+export function mountSpiritManifestation(host,{signal,rehearsal}){
+ if(signal?.aborted)return;
+ const root=el('section',null,'well-demo spirit-manifestation-demo');
+ const scene=el('div',null,'well-demo-scene'),regionArt=el('img',null,'well-demo-map-bg'),decor=el('div',null,'map-decoration-layer');
+ const controls=el('div',null,'well-demo-controls'),switchSight=button('서진 능력 · OFF','prop-control well-spirit-toggle');
+ const engage=button('상호작용 (F)','prop-control'),story=el('p',null,'well-demo-status');
+ scene.tabIndex=0;scene.setAttribute('aria-label','영물 현현 플레이');
+ story.setAttribute('role','status');if(!rehearsal)story.textContent='서진 능력을 켜고 F로 상호작용한 뒤, 능력을 꺼서 결과를 확인하세요.';
+ if(rehearsal){scene.classList.add('well-demo-map');regionArt.alt='';regionArt.draggable=false;scene.append(regionArt,decor);}
+ const point=rehearsal?.point??{regionId:'test',x:50,y:56};
+ const layers=spiritManifestationLayer(scene,rehearsal?.manifestations??[{...rehearsal,point}],rehearsal?.regions??[]);
+ let sight=false,actor,regionId=rehearsal?.graph.startRegionId??'test';
+ const display=()=>{
+  switchSight.textContent='서진 능력 · '+(sight?'ON':'OFF');switchSight.setAttribute('aria-pressed',String(sight));
+  scene.dataset.region=regionId;
+  const region=rehearsal?.regions.find(r=>r.id===regionId);
+  if(region){
+   const url=sight?region.spiritSrc??region.src:region.pixelSrc??region.src;
+   if(regionArt.getAttribute('src')!==url)regionArt.src=url;
+   regionArt.dataset.sightArt=sight?'spirit':'normal';scene.style.aspectRatio=String(region.width/region.height);
+   if(rehearsal.decorArt)renderMapDecorations(decor,rehearsal.graph.decorations??[],rehearsal.decorArt,region,sight,mapDecorPinKey);
+  }
+  scene.dataset.spirit=sight?'on':'off';layers.paint(regionId,sight);
+ };
+ const activate=()=>{
+  if(layers.activate(regionId,sight,p=>!actor||actor.isNear(p.regionId,p.x,p.y)))story.textContent='영물이 모습을 드러냈어요.';
+ };
+ switchSight.setAttribute('aria-label','서진 능력');switchSight.addEventListener('click',()=>{sight=!sight;display();scene.focus({preventScroll:true});},{signal});
+ engage.addEventListener('click',()=>{activate();scene.focus({preventScroll:true});},{signal});
+ root.addEventListener('keydown',ev=>{
+  if(!ev.repeat&&(ev.code==='KeyF'||ev.key?.toLowerCase()==='f')){ev.preventDefault();activate();}
+ },{signal});
+ controls.append(switchSight,engage);root.append(scene,controls,story);host.append(root);
+ if(rehearsal)actor=mountAssemblyActor(scene,{graph:rehearsal.graph,root,signal,onRegion:id=>{regionId=id;display();}});
+ display();signal?.addEventListener('abort',()=>root.remove(),{once:true});scene.focus({preventScroll:true});
 }

@@ -41,3 +41,20 @@ ID를 고정한 공용 `file.delete` 한 건을 접수한다. 대상은 맵 폴�
 ## 파일 수정
 
 새 맵 제작은 기존 생성 워크플로를 사용합니다. 게시된 맵 편집은 공용 `file.update` 한 건으로 처리합니다. 현재 탭의 변경을 게시본 위에 적용한 뒤, 시작 위치·구역·포털·충돌을 포함한 완성된 메타 전체를 전달합니다. 다른 탭의 임시 편집은 보내지 않습니다. 대상 ID와 기존 리비전 및 작성 요청 ID가 맞지 않으면 저장하지 않습니다. 파일 워커는 모델을 호출하지 않으며 세 파트와 매니페스트는 하나의 리비전으로 게시됩니다. 출범 시에는 이미 큐에 있는 구형 맵 수정 요청을 계속 처리할 수 있습니다.
+
+### Map decoration metadata
+
+The fourth editor tab applies a complete map snapshot using the existing
+`file.update` pipeline. Its placement draft is independent from start, portal
+and collision drafts. Each placement pins a published prop revision, uses a
+bottom-center anchor in natural-canvas thousandths, and scales the reduced prop
+relative to natural map pixels. `both` swaps pixel and cinematic variants with
+the ability switch; `pixel` (OFF) and `cinematic` (ON) are absent in the other
+mode. Decorations never register a puzzle interaction, collision, or portal.
+Warp and assembled puzzle playback read these map-level placements.
+
+New-map `ngs.map-generate.v3` adds a separate `decorationDesign` choice.
+`none` keeps the three existing document steps. `suggest` adds a fourth that
+uses only the selected pinned prop candidates, visibility settings, and
+placement notes. The saved placement list is an independently hashed optional
+map group part, not a duplicate assembly or background.

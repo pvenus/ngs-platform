@@ -33,3 +33,15 @@ The embedded view and bounded GET/HEAD media routes share the existing
 loopback origin. The exact v28 pointer collector is byte reused; scene hit
 behavior is a JS port of the historical C# kernel. The historical runtime and
 v19 API are not deployed.
+
+### 영물 현현
+
+Compose the single `spirit` prop slot with a reachable map anchor and a published
+prop that has both reduced image variants. The puzzle starts `veiled` and is
+visible only with Seojin's ability ON. Interacting nearby with F at that moment
+sets `manifested` once; both OFF and ON subsequently show their own art. The
+normal ability button is present in both isolated and assembled puzzle play.
+Turning it OFF never resets the puzzle. A new play session resets it. Presses
+outside the actor's interaction range or while veiled in OFF do nothing. The
+published assembly uses the ordinary `file.update` request and can place this
+puzzle alongside a well puzzle without changing the map or prop definitions.
