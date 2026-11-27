@@ -478,13 +478,17 @@ test('file deletes and map/assembly rights use the native Binari roster, never q
   assert.equal(s.assemblyEnabled,['owner','editor'].includes(who)?true:undefined);
   assert.equal(s.mapDeleteEnabled,who==='owner'?true:undefined);
   assert.equal(s.assemblyDeleteEnabled,who==='owner'?true:undefined);
-  for(const cap of ['npcFolderDeleteEnabled','propFolderDeleteEnabled','backgroundDeleteEnabled'])
+  assert.equal(s.npcFolderDeleteEnabled,['owner','editor'].includes(who)?true:undefined);
+  for(const cap of ['propFolderDeleteEnabled','backgroundDeleteEnabled'])
    assert.equal(s[cap],who==='owner'?true:undefined);
   for(const cmd of [map,mapUpdate,fileUpdate,assembly,assemblyUpdate]){
    const out=await post(who,s,cmd);
    assert.equal(out.status,['owner','editor'].includes(who)?202:403,JSON.stringify(await out.json()));
   }
-  for(const cmd of deletes)assert.equal((await post(who,s,cmd)).status,who==='owner'?202:403);
+  for(const cmd of deletes){
+   const permitted=who==='owner'||(who==='editor'&&cmd.payload.target.root==='canonical-files/binari/npcs');
+   assert.equal((await post(who,s,cmd)).status,permitted?202:403);
+  }
  }
  const owner=await session('owner');
  assert.equal((await post('owner',owner,deletes[0],{'X-NPCGen-Csrf':'wrong'})).status,403);
