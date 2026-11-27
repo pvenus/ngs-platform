@@ -1,6 +1,7 @@
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
-import {assemblyPath,assemblyPuzzleType,validAssemblyRequest} from './assembly-contract.mjs';
+import {assemblyPath,assemblyPuzzleType,spiritPuzzleType,validAssemblyRequest} from './assembly-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
+import {decorationArt} from './assembly-sprite-layout.mjs';
 import {mountWellAssembly} from './well-assembly-ui.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(cls)n.className=cls;return n;};
 const field=(label,node)=>{const n=el('label',label,'prop-form-field');n.append(node);return n;};
@@ -43,14 +44,38 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
    intent.maxLength=2000;intent.rows=3;intent.placeholder='배치 의도가 있으면 남겨 주세요.';
    for(const row of maps){const o=el('option',row.title);o.value=row.mapId;map.append(o);}
    const puzzleFields=el('div',null,'assembly-request-puzzles'),newPuzzle=el('button','퍼즐 추가','prop-control');newPuzzle.type='button';
-   const entries=[];
+   const entries=[];let props=null,catalogJob=null;
+   const loadProps=()=>catalogJob??=request('/api/prop-workspace?'+q).then(v=>{
+    if(!Array.isArray(v.props))throw Error('ASSEMBLY_PROP_CATALOG_MISSING');
+    return props=v.props;
+   }).catch(e=>{catalogJob=null;throw e;});
+   const pin=row=>({propId:row.propId,revision:row.revision,sha256:row.sha256});
    function addPuzzle(){
     if(entries.length>=8)return;
     const group=el('fieldset'),legend=el('legend'),type=el('select'),note=el('textarea'),drop=el('button','이 퍼즐 빼기','prop-control');
-    const o=el('option','굿상에 물 올리기');o.value=assemblyPuzzleType;type.append(o);
+    for(const [label,value] of [['굿상에 물 올리기',assemblyPuzzleType],['영물 현현',spiritPuzzleType]]){
+     const o=el('option',label);o.value=value;type.append(o);
+    }
+    const art=el('select'),artWrap=field('영물로 쓸 프랍 (필수)',art),tip=el('p','능력 ON으로 발견하고 F로 활성화하면 OFF에서도 보이는 고정 퍼즐이에요. 위치와 크기는 요청을 보고 배치해요.','meta');
+    const choose=caption=>{const first=el('option',caption);first.value='';art.replaceChildren(first);};
+    choose('프랍 선택');artWrap.hidden=tip.hidden=true;
+    const refreshSpirit=async()=>{
+     const spirit=type.value===spiritPuzzleType;
+     artWrap.hidden=tip.hidden=!spirit;art.required=spirit;
+     if(!spirit||art.options.length>1)return;
+     choose('프랍 목록 불러오는 중…');
+     try{
+      const list=await loadProps();if(signal.aborted||!group.isConnected)return;
+      choose('프랍 선택');
+      for(const p of [...list].sort((a,b)=>Number(/부적|방울|종/.test(b.title))-Number(/부적|방울|종/.test(a.title)))){
+       const o=el('option',p.title);o.value=p.propId;art.append(o);
+      }
+     }catch{choose('프랍 목록을 읽지 못했어요');error.textContent='퍼즐 종류를 다시 선택하면 프랍 목록을 다시 불러와요.';}
+    };
+    type.addEventListener('change',()=>{error.textContent='';void refreshSpirit();},{signal});
     note.rows=2;note.maxLength=1000;note.placeholder='이 퍼즐의 구역·배치·연결 요청';
-    drop.type='button';group.append(legend,field('퍼즐 종류',type),field('퍼즐별 요청 사항',note),drop);
-    const row={id:'puzzle-'+crypto.randomUUID(),type,note,drop,group,legend};entries.push(row);puzzleFields.append(group);
+    drop.type='button';group.append(legend,field('퍼즐 종류',type),artWrap,field('퍼즐별 요청 사항',note),tip,drop);
+    const row={id:'puzzle-'+crypto.randomUUID(),type,note,art,drop,group,legend};entries.push(row);puzzleFields.append(group);
     function counts(){
      entries.forEach((entry,i)=>{entry.legend.textContent='퍼즐 '+(i+1);entry.drop.disabled=entries.length===1;});
      newPuzzle.disabled=entries.length>=8;
@@ -70,13 +95,24 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
    let last;
    form.addEventListener('submit',async e=>{
     e.preventDefault();if(send.disabled)return;
-    const payload={schemaVersion:'ngs.assembly-generate.v2',projectId,title:title.value.trim(),mapId:map.value,
-     intent:intent.value.trim()||'선택한 맵에서 퍼즐별 필수 프랍을 연결해 플레이 가능한 배치를 구성해 주세요.',
-     puzzles:entries.map(({id,type,note})=>({id,type:type.value,intent:note.value.trim()}))};
-    if(!validAssemblyRequest(payload,'assembly.generate')){error.textContent='조립 이름과 필수 선택을 확인하세요.';return;}
+    const generateSpirit=entries.some(x=>x.type.value===spiritPuzzleType);
+    const selected=entries.map(({id,type,note,art})=>{
+     const row=type.value===spiritPuzzleType&&props?.find(p=>p.propId===art.value);
+     return {id,type:type.value,intent:note.value.trim(),...(row?{prop:pin(row)}:{})};
+    });
+    const payload={schemaVersion:generateSpirit?'ngs.assembly-generate.v3':'ngs.assembly-generate.v2',projectId,title:title.value.trim(),mapId:map.value,
+     intent:intent.value.trim()||'선택한 맵에서 퍼즐별 필수 프랍을 연결해 플레이 가능한 배치를 구성해 주세요.',puzzles:selected};
+    if(!validAssemblyRequest(payload,'assembly.generate')){error.textContent='조립 이름과 맵, 영물 퍼즐마다 사용할 프랍을 선택하세요.';return;}
     const body=JSON.stringify(payload);if(last?.body!==body)last={body,key:crypto.randomUUID()};
     send.disabled=close.disabled=true;
     try{
+     const candidates=[...new Map(selected.filter(p=>p.prop).map(p=>[p.prop.propId,p.prop])).values()];
+     const paired=await Promise.all(candidates.map(async p=>{
+      const {prop}=await request('/api/prop-workspace?'+new URLSearchParams({projectId,propId:p.propId}));
+      const a=decorationArt(prop,p);return Boolean(a?.pixel&&a.cinematic);
+     }));
+     if(!paired.every(Boolean)){error.textContent='영물에는 픽셀과 시네마틱 배치 이미지가 모두 있는 최신 프랍이 필요해요.';return;}
+     if(signal.aborted)return;
      const r=await submit({requestType:'assembly.generate',idempotencyKey:last.key,payload}),v=await r.json();
      if(!isQueuedRequest(r,v))throw Error('ASSEMBLY_QUEUE_FAILED');
      error.textContent='정식 생성 요청이 접수됐어요. 게시되는 대로 조립 목록을 새로 열어 확인하세요.';

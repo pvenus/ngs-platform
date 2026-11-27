@@ -497,9 +497,9 @@ async function loadWorkspace(search){
  let conceptActions=null,motionSubmit;
  const supported=(area,enabled)=>enabled&&(!['audio','production','assembly','props','cinematic'].includes(area)||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
- document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':tab==='cinematic'?'장면':tab==='resources'?'배경':tab==='maps'?'맵':'항목';
+ document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':tab==='cinematic'?'장면':tab==='resources'?'배경':tab==='maps'?'맵':tab==='production'?'퍼즐':'항목';
  document.querySelector('#app').classList.remove('project-home');
- workspace.classList.toggle('npc-folder-workspace',['npcs','props','cinematic','resources','maps'].includes(tab));
+ workspace.classList.toggle('npc-folder-workspace',['npcs','props','cinematic','resources','maps','production'].includes(tab));
  document.querySelector('#project-home').hidden=true;
  for(const id of ['#project-workspace','#workspace-identity','#workspace-tools'])document.querySelector(id).hidden=false;
  document.querySelector('#workspace-title').textContent=projectId;
@@ -735,23 +735,46 @@ async function loadWorkspace(search){
    if(signal.aborted)return;
    const wellDemoId=demo?.wellDemoId,wellDemoTitle=demo?.wellDemoTitle,spiritDemoId=demo?.spiritDemoId;
    const choices=[];
-   if(document.documentElement.dataset.puzzleWorkspace==='enabled')choices.push([id,title]);
-   if(demo)choices.push([wellDemoId,wellDemoTitle+' · 테스트'],[spiritDemoId,demo.spiritDemoTitle+' · 테스트']);
-   const entries=choices.map(([key,label])=>{
-    const entry=nodeOf('a','workspace-nav-item',label);entry.href=next({item:key});
-    if(item===key)entry.setAttribute('aria-current','page');return entry;
-   });
-   items.replaceChildren(...entries);
-   const heading=nodeOf('h3','',item===wellDemoId?wellDemoTitle:item===spiritDemoId?demo?.spiritDemoTitle:item===id?title:'퍼즐 설계');
-   const description=nodeOf('p','meta',item===spiritDemoId?'독립 플레이테스트 · 능력 ON에서 발견하고 한 번 현현시키면 OFF에서도 보입니다.':item===wellDemoId?'독립 플레이테스트 · 테스트 배경과 프랍으로 상태 및 상호작용을 검증합니다.':item===id?'별도의 이야기 연결 없이 이 퍼즐을 플레이할 수 있습니다.':'퍼즐을 선택하세요.');
-   detail.replaceChildren(heading,description);
-   if(item===wellDemoId)demo.mountWellPuzzleDemo(detail,{signal});
-   if(item===spiritDemoId)demo.mountSpiritManifestation(detail,{signal});
-   if(item===id){
-    const frame=nodeOf('iframe','local-puzzle-frame');
-    frame.title=title+' 플레이테스트';
-    frame.src='/local-puzzle/binari-empty-veranda/';
-    detail.append(frame);
+   if(document.documentElement.dataset.puzzleWorkspace==='enabled')choices.push([id,title,'독립 시나리오']);
+   if(demo)choices.push([wellDemoId,wellDemoTitle,'상태 전환 · 플레이테스트'],[spiritDemoId,demo.spiritDemoTitle,'단방향 스위치 · 플레이테스트']);
+   items.parentElement.classList.add('npc-roster-list');
+   detail.classList.add('npc-detail','puzzle-detail');
+   const search=nodeOf('input','npc-search');search.id='puzzle-search';search.type='search';search.placeholder='퍼즐 이름 검색';search.maxLength=120;
+   const searchLabel=nodeOf('label','npc-search-label','퍼즐 검색');searchLabel.htmlFor=search.id;
+   const searchKey='ngs:puzzle-search:'+projectId;
+   try{search.value=sessionStorage.getItem(searchKey)??'';}catch{}
+   items.before(searchLabel,search);
+   const draw=()=>{
+    const term=search.value.trim().normalize('NFC').toLocaleLowerCase();
+    const rows=choices.filter(([,title])=>title.normalize('NFC').toLocaleLowerCase().includes(term)).map(([key,name,badge])=>{
+     const row=nodeOf('li'),entry=nodeOf('a','request-item npc-roster-entry');entry.href=next({item:key});
+     if(item===key)entry.setAttribute('aria-current','page');
+     entry.append(nodeOf('strong','',name),nodeOf('span','meta',badge));row.append(entry);return row;
+    });
+    items.replaceChildren(...(rows.length?rows:[nodeOf('li','meta',term?'검색 결과가 없습니다.':'등록된 퍼즐이 없어요.')]));
+   };
+   search.addEventListener('input',()=>{try{sessionStorage.setItem(searchKey,search.value);}catch{}draw();},{signal});
+   signal.addEventListener('abort',()=>{search.remove();searchLabel.remove();},{once:true});draw();
+   const current=choices.find(([key])=>key===item);
+   const header=nodeOf('header','npc-detail-heading'),identity=nodeOf('div','prop-identity');
+   identity.append(nodeOf('h3','',current?.[1]??'퍼즐 설계'));
+   if(current){const badges=nodeOf('div','npc-character-badges');badges.append(nodeOf('span','',current[2]));identity.append(badges);}
+   header.append(identity);
+   const panel=nodeOf('section','npc-tab-panel');
+   detail.replaceChildren(header,panel);
+   if(!current)panel.append(nodeOf('p','meta','왼쪽 목록에서 퍼즐을 선택하세요.'));
+   else{
+    const surface=nodeOf('section','prop-surface puzzle-play-surface');
+    const subheading=nodeOf('h4','npc-media-heading','플레이테스트');
+    surface.append(subheading);panel.append(surface);
+    if(item===wellDemoId)demo.mountWellPuzzleDemo(surface,{signal});
+    if(item===spiritDemoId)demo.mountSpiritManifestation(surface,{signal});
+    if(item===id){
+     const frame=nodeOf('iframe','local-puzzle-frame');
+     frame.title=title+' 플레이테스트';
+     frame.src='/local-puzzle/binari-empty-veranda/';
+     surface.append(frame);
+    }
    }
    note('');
    return;

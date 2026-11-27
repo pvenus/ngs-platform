@@ -39,9 +39,14 @@ export function validAssemblyRequest(p,type){
   const shared=officialId(p.mapId)&&mapText(p.title,100)&&mapText(p.intent,2000);
   if(p.schemaVersion==='ngs.assembly-generate.v1')
    return shared&&mapFields(p,['schemaVersion','projectId','title','mapId','puzzleType','intent'])&&p.puzzleType===assemblyPuzzleType;
-  return shared&&p.schemaVersion==='ngs.assembly-generate.v2'&&mapFields(p,['schemaVersion','projectId','title','mapId','intent','puzzles'])&&
-   Array.isArray(p.puzzles)&&p.puzzles.length>=1&&p.puzzles.length<=8&&p.puzzles.every(q=>mapFields(q,['id','type','intent'])&&
-    /^[a-z0-9][a-z0-9-]{0,63}$/u.test(q.id)&&typeof q.id==='string'&&q.type===assemblyPuzzleType&&(q.intent===''||mapText(q.intent,1000)))&&
+  const v3=p.schemaVersion==='ngs.assembly-generate.v3';
+  return shared&&(v3||p.schemaVersion==='ngs.assembly-generate.v2')&&mapFields(p,['schemaVersion','projectId','title','mapId','intent','puzzles'])&&
+   Array.isArray(p.puzzles)&&p.puzzles.length>=1&&p.puzzles.length<=8&&p.puzzles.every(q=>{
+    const spirit=v3&&q?.type===spiritPuzzleType;
+    return mapFields(q,['id','type','intent',...(spirit?['prop']:[])])&&typeof q.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(q.id)&&
+     (spirit?mapFields(q.prop,['propId','revision','sha256'])&&propSlug(q.prop.propId)&&propRevision(q.prop.revision)&&propSha(q.prop.sha256):q.type===assemblyPuzzleType)&&
+     (q.intent===''||mapText(q.intent,1000));
+   })&&
    new Set(p.puzzles.map(q=>q.id)).size===p.puzzles.length;
  }
  return mapFields(p,['schemaVersion','projectId','assemblyId','expectedRevision','puzzles'])&&p.schemaVersion==='ngs.assembly-update.v1'&&

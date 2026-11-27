@@ -48,3 +48,13 @@ test('Optional v3 decoration generation sends only validated mode, notes and can
  assert.equal(validMapGraph(complete),true);
  assert.equal(validMapGraph({...complete,decorations:[{...row,regionId:'orphan'}]}),false);
 });
+
+test('Formal assembly generation v3 takes direction and a pinned prop, never a placement or executable logic',async()=>{
+ const {validAssemblyRequest,assemblyPuzzleType,spiritPuzzleType}=await import('../build/assembly-contract.mjs');
+ const p={schemaVersion:'ngs.assembly-generate.v3',projectId:'binari',title:'굿터',mapId:'request.official.'+'f'.repeat(64),intent:'뒤뜰을 돌며 단서를 찾는다',
+  puzzles:[{id:'well',type:assemblyPuzzleType,intent:'굿상에 물 올리기'},{id:'spirit',type:spiritPuzzleType,prop:pin,intent:'나무 옆 부적을 보이게'}]};
+ assert.ok(validAssemblyRequest(p,'assembly.generate'));
+ assert.ok(!validAssemblyRequest({...p,schemaVersion:'ngs.assembly-generate.v2'},'assembly.generate'));
+ assert.ok(!validAssemblyRequest({...p,puzzles:[{...p.puzzles[1],point:anchor}]},'assembly.generate'));
+ assert.ok(!validAssemblyRequest({...p,puzzles:[{id:'spirit',type:spiritPuzzleType,intent:''}]},'assembly.generate'));
+});

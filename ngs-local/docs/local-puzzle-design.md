@@ -45,3 +45,14 @@ Turning it OFF never resets the puzzle. A new play session resets it. Presses
 outside the actor's interaction range or while veiled in OFF do nothing. The
 published assembly uses the ordinary `file.update` request and can place this
 puzzle alongside a well puzzle without changing the map or prop definitions.
+
+#### Formal generation instead of hand-authoring
+
+The assembly creation dialog accepts a set of known puzzle runtime types and
+one request per puzzle. When an 영물 현현 puzzle is selected it also requires the
+exact published prop, with both image lanes. The v3 request contains intent and
+pins, not positions or executable code. The existing document worker proposes
+positions and scale from those inputs and the selected map. The existing
+assembly publication route validates reachability and the pinned media. The
+manual Apply interaction remains a `file.update` for intentional edits to an
+already published assembly. Legacy well-only creation stays on v2.
