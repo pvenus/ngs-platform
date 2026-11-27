@@ -515,3 +515,4 @@ ul{padding:0;list-style:none}
 
 .well-demo-map .well-demo-meter{position:absolute;top:100%;z-index:2}
 .well-demo-map .well-demo-well:has(.well-demo-meter:not([hidden])){z-index:2}
+.well-demo-map .well-demo-well[data-meter-side=above] .well-demo-meter{top:auto;bottom:100%}

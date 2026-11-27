@@ -73,6 +73,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  const tell=msg=>{status.textContent=msg;};
  function placeNode(node,p){node.style.left=p.x+'%';node.style.top=p.y+'%';}
  placeNode(altar,points.altar);placeNode(well,points.well);
+ if(rehearsal&&points.well.y>=50)well.dataset.meterSide='above';
  function showRegion(id){
   if(!rehearsal)return;
   const region=rehearsal.regions.find(r=>r.id===id);if(!region)return;
