@@ -73,7 +73,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  const mapSelect=el('select'),puzzle=el('select');
  puzzle.append(option(wellDemoId,wellDemoTitle));
  const inputs=el('div',null,'well-assembly-grid');inputs.append(field('맵',mapSelect));
- const positionInputs={},propInputs={},offsetInputs={},scaleInputs={},sizeLabels={};
+ const positionInputs={},propInputs={},offsetInputs={},scaleInputs={},sizeLabels={},retryArt={};
  const placement=el('div',null,'well-assembly-grid');
  const bindingFields=el('div',null,'well-assembly-grid');
  for(const [role,label] of slots){
@@ -92,7 +92,10 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   size.setAttribute('aria-label',label+' 크기 (%)');scaleInputs[role]=size;sizeLabels[role]=dimensions;
   const reset=control('100%로');reset.addEventListener('click',()=>{size.value='100';size.dispatchEvent(new Event('input',{bubbles:true}));},{signal});
   const scaleLine=el('div',null,'well-assembly-scale');scaleLine.append(field('크기 (%)',size),reset);
-  group.append(field(label,select),scaleLine,dimensions);bindingFields.append(group);
+  dimensions.setAttribute('aria-live','polite');
+  const retry=control('이미지 다시 불러오기');retry.hidden=true;retryArt[role]=retry;
+  retry.addEventListener('click',()=>{if(selected)void paintArt(selected,role);},{signal});
+  group.append(field(label,select),scaleLine,dimensions,retry);bindingFields.append(group);
  }
  for(const [key,title] of [['altar','제상 위치 · 그릇 자리 포함'],['well','우물 위치 · 뚜껑 포함']]){
   const group=el('fieldset'),legend=el('legend',title),region=el('select'),coords=el('div',null,'well-assembly-grid');
@@ -253,8 +256,9 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  }
  function showDimensions(preset,role){
   if(selected!==preset)return;
-  const asset=spriteViews.get(preset.id+':'+role)?.asset,pct=scaleOf(preset.scale,role);
-  sizeLabels[role].textContent=asset?
+  const view=spriteViews.get(preset.id+':'+role),asset=view?.asset,pct=scaleOf(preset.scale,role);
+  retryArt[role].hidden=view?.state!=='error';
+  sizeLabels[role].textContent=view?.state==='loading'?'이미지 불러오는 중…':view?.state==='error'?view.message:asset?
    '원래 '+asset.width+' × '+asset.height+' px · 배치 '+Math.round(asset.width*pct/100)+' × '+Math.round(asset.height*pct/100)+' px':
    '100% = 원래 픽셀 크기';
  }
@@ -268,20 +272,43 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   const key=preset.id+':'+role,pin=pins.get(key),id=preset.bindings[role];
   if(!pin)return;
   pin.classList.toggle('unbound',!id);
-  const view=spriteViews.get(key),img=view.img;
-  img.removeAttribute('src');img.hidden=true;view.asset=null;showDimensions(preset,role);
+  const view=spriteViews.get(key),img=view.img,token=Symbol();
+  const current=()=>!signal.aborted&&spriteViews.get(key)===view&&view.token===token&&preset.bindings[role]===id;
+  view.token=token;view.asset=null;view.state=id?'loading':'empty';
+  img.hidden=true;img.removeAttribute('src');showDimensions(preset,role);
   if(!id)return;
   const row=preset.pinned?.[role]??props.find(p=>p.propId===id);
-  if(!row)return;
-  const requestKey=id+':'+row.revision+':'+row.sha256;
-  if(!artCache.has(requestKey)){
-   const job=loadProp(preset,role,id).then(({prop})=>prop?.source?.revision===row.revision&&prop?.source?.sha256===row.sha256&&
-    prop.media?.pixel?.mediaType==='image/png'&&imageSize(prop.media.pixel)&&safeMedia(prop.media.pixel.url)?prop.media.pixel:null).catch(()=>null);
-   artCache.set(requestKey,job);
+  const requestKey=row?id+':'+row.revision+':'+row.sha256:null;
+  let job;
+  try{
+   if(!row)throw Error('ASSEMBLY_PROP_PIN_INACTIVE');
+   job=artCache.get(requestKey);
+   if(!job){
+    job=loadProp(preset,role,id).then(({prop})=>{
+     if(prop?.propId!==id||prop.source?.revision!==row.revision||prop.source?.sha256!==row.sha256)
+      throw Error('ASSEMBLY_PROP_PIN_INACTIVE');
+     const pixel=prop.media?.pixel;
+     if(pixel?.mediaType!=='image/png'||!imageSize(pixel)||!safeMedia(pixel.url))throw Error('PROP_ART_MISSING_OR_STALE');
+     return pixel;
+    });
+    artCache.set(requestKey,job);
+   }
+   const src=await job;
+   if(!current())return;
+   img.src=src.url;
+   // A valid manifest does not prove that the actual PNG loaded.
+   await img.decode();
+   if(!current())return;
+   view.asset=src;view.state='ready';movePin(preset,role);showDimensions(preset,role);
+  }catch(err){
+   if(!current())return;
+   if(job&&artCache.get(requestKey)===job)artCache.delete(requestKey);
+   img.removeAttribute('src');view.state='error';
+   view.message=err.message==='ASSEMBLY_PROP_PIN_INACTIVE'
+    ?'연결한 프랍 버전을 읽을 수 없어요. 새로고침 후 현재 프랍을 다시 선택해 주세요.'
+    :'프랍 이미지를 읽지 못했어요. 다시 불러오거나 다른 프랍을 선택해 주세요.';
+   showDimensions(preset,role);
   }
-  const src=await artCache.get(requestKey);
-  if(!src){artCache.delete(requestKey);return;}
-  if(!signal.aborted&&pins.get(key)===pin&&preset.bindings[role]===id){img.src=src.url;view.asset=src;movePin(preset,role);showDimensions(preset,role);}
  }
  function renderBoard(){
   cancelDrag();

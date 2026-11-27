@@ -106,7 +106,7 @@
     "sites/npcgen/build/space-catalog-owner-mcp.mjs": "cc91e596f50f0b2368e069b52a5ba6a0bd8d52b3a395d0f16203b9e4fd60b25b",
     "sites/npcgen/build/space-catalog-worker.mjs": "84306defc2ec73a57cd19977138a65e0babdb4407f7ed0e0779e33955dccd132",
     "sites/npcgen/build/space-machine-mcp.mjs": "c4476d46d01632066b101535cbfaee1f03fd6bdac37f874c4f4a47d6de5ee1df",
-    "sites/npcgen/build/well-assembly-ui.mjs": "64037fdee69a95c09f97b8c8d3e01293856ae365590685ad5fa77014118296d8",
+    "sites/npcgen/build/well-assembly-ui.mjs": "0d3f46824f7c7a734223e3441458d77f11fcc270b04c7ed5a908d188cf6688c8",
     "sites/npcgen/build/well-puzzle-demo.mjs": "1f8166d26765286b84b89b173dcf03e932d0b94168ff6eba430e6f16cdefa7ff",
     "sites/npcgen/build/workspace-read-registry.mjs": "dd3ee2c7189ae76b3412b86ca7118204b933e8f6424d8a0d1e4d50134c1fe374",
     "sites/npcgen/build/workspace-read-storage.mjs": "3939889d63eb5b912fe61cd4c719cb5770a1477c9dfd22842eea5d121ef2c9fd",
