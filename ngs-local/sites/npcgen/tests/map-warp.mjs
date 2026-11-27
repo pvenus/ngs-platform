@@ -468,6 +468,9 @@ test('decoration roster and map share selection, including hidden props, and del
  parts().find(e=>e.id==='map-tab-decorations').onclick();await settle();
  assert.equal(byAria('꾸미기 서진 능력 미리보기').parent.className,'map-decoration-view');
  assert.equal(byAria('꾸미기 서진 능력 미리보기').attrs['aria-pressed'],'false');
+ const layout=parts().find(n=>n.className==='map-decoration-editor');
+ assert.equal(layout.children[0].attrs['aria-label'],'배치한 프랍');
+ assert.equal(layout.children[1].className,'map-preview map-decoration-map');
  assert.ok(find('배치한 프랍 (2)'));assert.ok(find('능력 ON · 시네마틱만 · 현재 숨김'));
  assert.equal(find('선택한 프랍 배치 삭제').disabled,true);
  assert.equal(find('선택한 프랍 복제').disabled,true);
@@ -482,6 +485,8 @@ test('decoration roster and map share selection, including hidden props, and del
  assert.equal(byAria('배치 2 · 등불').attrs['aria-pressed'],'true');
  const draft=()=>JSON.parse(memory.get(mapDraftKey('binari',mapId))).graph.decorations;
  const scale=parts().find(n=>n.tag==='label'&&n.textContent==='크기 (%)').children[0];
+ assert.deepEqual(parts().filter(n=>n.tag==='input'&&n.type==='number'),[scale]);
+ assert.equal(scale.parent.parent.className,'map-decoration-size');
  scale.valueAsNumber=185;scale.onchange();await settle();
  assert.equal(draft()[1].scale,185);
  find('선택한 프랍 복제').onclick();await settle();

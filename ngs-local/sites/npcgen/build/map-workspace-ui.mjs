@@ -559,7 +559,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    paint();if(here.length)void decorArt.load(here).then(paint);
   };
   function renderDecorations(){
-   decoration.append(el('p','퍼즐과 상호작용이 없는 프랍을 지도에 배치해요. 그림 아래쪽 가운데가 위치 기준이며, 100%는 배치용 이미지 원래 크기예요.','meta'));
+   decoration.append(el('p','퍼즐과 상호작용이 없는 프랍을 지도에 배치해요. 프랍을 고른 뒤 지도에서 위치 점을 드래그하세요. 크기 100%는 배치용 이미지의 원래 크기예요.','meta'));
    const rooms=publishedIds();if(!rooms.includes(decorRegion))decorRegion=published.graph.startRegionId??rooms[0];
    const room=setOptions(rooms,decorRegion,id=>publishedRegion(id)?.name??id);
    room.onchange=()=>{decorRegion=room.value;decorId=null;decorListScroll=0;render();};
@@ -623,7 +623,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     const actions=el('div',undefined,'map-decoration-actions');
     actions.append(duplicate,remove);roster.append(actions);
    }
-   workspace.append(mapPane,roster);decoration.append(workspace);
+   workspace.append(roster,mapPane);decoration.append(workspace);
    const current=publishedRegion(decorRegion),box=preview(mapPane,current);
    if(box){
     box.className+=' map-decoration-canvas';
@@ -677,9 +677,8 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     if(!Number.isInteger(scale.valueAsNumber)||scale.valueAsNumber<10||scale.valueAsNumber>300){scale.value=chosen.scale;return;}
     chosen.scale=scale.valueAsNumber;changed();
    };
-   const form=el('div',undefined,'map-row');form.append(label('표시 모드',visibility),label('크기 (%)',scale));
-   roster.append(form);
-   decoration.append(coordinates('꾸미기 프랍 위치',['x','y'],chosen.anchor,()=>chosen.anchor,mapPoint,anchor=>{chosen.anchor=anchor;changed();}));
+   roster.append(label('표시 모드',visibility));
+   const sizeField=el('div',undefined,'map-decoration-size');sizeField.append(label('크기 (%)',scale));decoration.append(sizeField);
   }
   function createDecorationPrompt(){
    const prompt=card('4. 꾸미기','map-decoration-card');
