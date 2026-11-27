@@ -47,12 +47,15 @@ test('explicit disconnected seam grants no local session and never falls back to
 test('hosted bundling uses the single authored Local source tree, with no parallel assets',()=>{
  const imports=readFileSync(new URL('../build/shared-ngs-assets.ts',import.meta.url),'utf8');
  const paths=[...imports.matchAll(/from "\.\.\/ngs-local\/sites\/npcgen\/(.+?)\?(?:raw|inline)";/g)].map(m=>m[1]);
- assert.deepEqual(paths,[
+ assert.deepEqual(paths.toSorted(),[
+  'build/map-warp.mjs','build/map-contract.mjs','build/map-workspace-ui.mjs',
+  'build/assembly-catalog-ui.mjs','build/assembly-contract.mjs','build/well-assembly-ui.mjs','build/well-puzzle-demo.mjs',
+  'build/puzzle-state-runtime.mjs','build/assembly-sprite-layout.mjs','build/assembly-actor.mjs',
   'build/local-project-page.html','build/local-project-page.css','build/local-project-page.js','build/prop-package-contract.mjs','build/cinematic-sequence-contract.mjs','build/cinematic-timeline.mjs','build/cinematic-player.mjs','build/background-playback.mjs','build/cinematic-workspace-ui.mjs','build/catalog-roster-edit.mjs','build/prop-folder-delete-contract.mjs','build/cinematic-contract.mjs','build/prop-workspace-ui.mjs','build/prop-workspace-contract.mjs','build/local-npc-workspace-ui.mjs',
   'build/local-npc-one-stop-ui.mjs','build/npc-motion-selection.mjs','build/local-concept-category-ui.mjs','build/local-concept-category-contract.mjs',
   'build/local-npc-planning-ui.mjs','build/local-audio-workspace.mjs','build/local-request-queue-browser.mjs',
   'build/motion-preset-convert-2d.mjs',
- ]);
+ ].sort());
  const exactAssets=new Set(paths);
  for(const path of paths.filter(path=>/\.m?js$/.test(path))){
   const source=readFileSync(new URL('../ngs-local/sites/npcgen/'+path,import.meta.url),'utf8');
