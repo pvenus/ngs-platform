@@ -94,7 +94,7 @@
     "sites/npcgen/build/replica-sync-progress.d.mts": "6980a118166b45fe2a3ff4cf4b1a11da09e3951c4fe8a7b0958a3d632f84ec3a",
     "sites/npcgen/build/replica-sync-progress.mjs": "1aa313975a4815f16ba4256cb3845656cfdcc2306f643d209dfde1c946f85e54",
     "sites/npcgen/build/replica-whole-file-wire.mjs": "a08c5ffec5fdabecc849f5113bdf821727293362bb92c5bd56b268096f9f05eb",
-    "sites/npcgen/build/rs-mcp.mjs": "7e28795b8c3d2d66fe8a2cc84128af9cefb01ab331e702a0d9c4f076e77a3945",
+    "sites/npcgen/build/rs-mcp.mjs": "b928262c9d2cdf674a4d668325cab40bed500f5673ded49dd7d39179c1ce5c0b",
     "sites/npcgen/build/rs-ops-ngs-health.mjs": "94ef987ce3bfb086084cb153bdfbdf32f1263816dbb7880667fc2d8207fb97ff",
     "sites/npcgen/build/space-catalog-owner-mcp.mjs": "cc91e596f50f0b2368e069b52a5ba6a0bd8d52b3a395d0f16203b9e4fd60b25b",
     "sites/npcgen/build/space-catalog-worker.mjs": "84306defc2ec73a57cd19977138a65e0babdb4407f7ed0e0779e33955dccd132",

@@ -14,6 +14,8 @@ const storedStatuses=new Set(['registered','planned','completed','failed','cance
 import {cinematicNewTypes,backgroundSourceType,backgroundPixelType,backgroundAnimationType,backgroundAnimationSchema,validBackgroundAnimation,validBackgroundPixelRequest,validBackgroundRequest} from './cinematic-sequence-contract.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {propTypes} from './prop-workspace-contract.mjs';
+// Release together with map-contract.mjs: this relay validates optional rect/ellipse
+// geometry and rotation before queue handoff, including existing rectangle-only drafts.
 import {mapTypes,validMapRequest} from './map-contract.mjs';
 const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),...mapTypes,fileDeleteType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
