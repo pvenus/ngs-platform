@@ -448,7 +448,7 @@ async function load(){
 
 const areas=[
  ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',false],
- ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',document.documentElement?.dataset.puzzleWorkspace==='enabled'],
+ ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',['puzzleWorkspace','wellPuzzleDemo'].some(key=>document.documentElement?.dataset[key]==='enabled')],
  ['cinematic','시네마틱 영상',true],['resources','배경 설계',true],['maps','맵 제작',true],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
 ];
 const iconPaths={
@@ -722,13 +722,21 @@ async function loadWorkspace(search){
    // An independent Local puzzle, never an episode link or a legacy API.
    if(hosted)return;
    const id='binari.empty-veranda',title='빈 마루에 바람이 앉으면';
-   const entry=nodeOf('a','workspace-nav-item',title);
-   entry.href=next({item:id});
-   if(item===id)entry.setAttribute('aria-current','page');
-   items.replaceChildren(entry);
-   const heading=nodeOf('h3','',item===id?title:'퍼즐 설계');
-   const description=nodeOf('p','meta',item===id?'별도의 이야기 연결 없이 이 퍼즐을 플레이할 수 있습니다.':'퍼즐을 선택하세요.');
+   const demo=document.documentElement.dataset.wellPuzzleDemo==='enabled'?await import('./well-puzzle-demo.mjs'):null;
+   if(signal.aborted)return;
+   const wellDemoId=demo?.wellDemoId,wellDemoTitle=demo?.wellDemoTitle;
+   const choices=[];
+   if(document.documentElement.dataset.puzzleWorkspace==='enabled')choices.push([id,title]);
+   if(demo)choices.push([wellDemoId,wellDemoTitle+' · 테스트']);
+   const entries=choices.map(([key,label])=>{
+    const entry=nodeOf('a','workspace-nav-item',label);entry.href=next({item:key});
+    if(item===key)entry.setAttribute('aria-current','page');return entry;
+   });
+   items.replaceChildren(...entries);
+   const heading=nodeOf('h3','',item===wellDemoId?wellDemoTitle:item===id?title:'퍼즐 설계');
+   const description=nodeOf('p','meta',item===wellDemoId?'독립 플레이테스트 · 테스트 배경과 프랍으로 상태 및 상호작용을 검증합니다.':item===id?'별도의 이야기 연결 없이 이 퍼즐을 플레이할 수 있습니다.':'퍼즐을 선택하세요.');
    detail.replaceChildren(heading,description);
+   if(item===wellDemoId)demo.mountWellPuzzleDemo(detail,{signal});
    if(item===id){
     const frame=nodeOf('iframe','local-puzzle-frame');
     frame.title=title+' 플레이테스트';

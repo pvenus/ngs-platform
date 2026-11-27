@@ -49,6 +49,10 @@ test('absent or invalid private root does not open the puzzle or change audio ma
   const html=await (await from(origin,'/')).text();
   assert.match(html,/data-audio-workspace="enabled"/);
   assert.doesNotMatch(html,/data-puzzle-workspace/);
+  assert.match(html,/data-well-puzzle-demo="enabled"/);
+  for(const path of ['/well-puzzle-demo.mjs','/puzzle-state-runtime.mjs'])
+   assert.equal((await from(origin,path)).status,200);
+
   assert.equal((await from(origin,puzzlePrefix)).status,404);
  }
 });
