@@ -2,7 +2,7 @@ import {fileUpdateType,assemblyUpdateRoot,validFileUpdate} from '../ngs-local/si
 /** Read/write policies for the explicitly hosted map and assembly families only. */
 import {mapTypes,validMapRequest} from '../ngs-local/sites/npcgen/build/map-contract.mjs';
 import {assemblyTypes,validAssemblyRequest,assemblyReachable} from '../ngs-local/sites/npcgen/build/assembly-contract.mjs';
-import {fileDeleteType,validMapFolderDelete,validAssemblyFolderDelete} from '../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs';
+import {fileDeleteType,validMapFolderDelete,validAssemblyFolderDelete,validHostedRosterDelete,validNpcFolderDelete,validPropFolderDelete,validBackgroundFileDelete} from '../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs';
 
 export function mapAssemblyAction(type,payload){
  if(type===fileUpdateType)return 'fileUpdateEnabled';
@@ -11,6 +11,9 @@ export function mapAssemblyAction(type,payload){
  if(type===fileDeleteType){
   if(validMapFolderDelete(payload))return 'mapDeleteEnabled';
   if(validAssemblyFolderDelete(payload))return 'assemblyDeleteEnabled';
+  if(validNpcFolderDelete(payload))return 'npcFolderDeleteEnabled';
+  if(validPropFolderDelete(payload))return 'propFolderDeleteEnabled';
+  if(validBackgroundFileDelete(payload))return 'backgroundDeleteEnabled';
  }
  return null;
 }
@@ -19,14 +22,14 @@ export function validSpaceMapAssemblyCommand(type,payload){
  if(type===fileUpdateType)return validFileUpdate(payload);
  if(mapTypes.includes(type))return validMapRequest(payload,type);
  if(assemblyTypes.includes(type))return payload?.schemaVersion!=='ngs.assembly-generate.v4'&&validAssemblyRequest(payload,type);
- return type===fileDeleteType&&(validMapFolderDelete(payload)||validAssemblyFolderDelete(payload));
+ return type===fileDeleteType&&(validMapFolderDelete(payload)||validAssemblyFolderDelete(payload)||validHostedRosterDelete(payload));
 }
 
 export function spaceMapAssemblyCapabilities(grant,writable){
  if(grant?.projectId!=='binari'||!['owner','editor','viewer'].includes(grant.role))return {};
  return {mapReadEnabled:true,assemblyReadEnabled:true,
   ...(writable&&['owner','editor'].includes(grant.role)?{mapEnabled:true,assemblyEnabled:true,fileUpdateEnabled:true}:{}),
-  ...(writable&&grant.role==='owner'?{mapDeleteEnabled:true,assemblyDeleteEnabled:true}:{})};
+  ...(writable&&grant.role==='owner'?{mapDeleteEnabled:true,assemblyDeleteEnabled:true,npcFolderDeleteEnabled:true,propFolderDeleteEnabled:true,backgroundDeleteEnabled:true}:{})};
 }
 
 const need=(okay,status,code)=>{if(!okay)throw Object.assign(Error(code),{status});};

@@ -217,9 +217,9 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,...session}=value??{};
+ const {npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
  if([mapReadEnabled,assemblyReadEnabled].some(v=>v!==undefined&&(v!==true||session.workspaceReady!==true)))return false;
- if([fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
+ if([fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
  if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
  return session?.state==='authenticated'&&session.backend==='space'&&
@@ -683,7 +683,7 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='resources'){
-   const deleteItem=!hosted&&session.backgroundDeleteEnabled===true&&submit?async row=>{
+   const deleteItem=session.backgroundDeleteEnabled===true&&submit?async row=>{
     // Each accepted request owns one physical object. Stable idempotency keys
     // let the user retry a lost second intake without duplicating the first.
     for(const payload of backgroundDeletePayloads(row))await submitFolderDelete(submit,payload);
@@ -714,7 +714,7 @@ async function loadWorkspace(search){
     if(!isQueuedRequest(response,value))throw Error(value?.error??'PROP_ANIMATION_REMOVE_NOT_ACCEPTED');
     return {accepted:true};
    }:undefined;
-   const deleteItem=!hosted&&session.propFolderDeleteEnabled===true&&submit?
+   const deleteItem=session.propFolderDeleteEnabled===true&&submit?
     row=>submitFolderDelete(submit,propFolderDeletePayload(row)):undefined;
    await mountPropWorkspace({items,detail,tools:listToolbar,item,propTab:search.get('propTab'),propAnimation:search.get('propAnimation'),navigate:next,request,submit,removeAnimations,deleteItem,actions:session.propActions??[],signal});
    if(!signal.aborted)note('');
@@ -823,7 +823,7 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='npcs'){
-   const deleteItem=!hosted&&session.npcFolderDeleteEnabled===true&&submit?
+   const deleteItem=session.npcFolderDeleteEnabled===true&&submit?
     row=>submitFolderDelete(submit,npcFolderDeletePayload(row)):undefined;
    await loadNpcFolder({search,projectId,signal,request,post,submitOneStop:submit,submitPlanning:submit,note,items,detail,workspace,deleteItem,listTools:listToolbar,poseSelectionV2Enabled:session.poseSelectionV2Enabled===true,basicPortraitRequests:session.npcBasicPortraitEnabled===true,scopedPortraitRequests:!hosted&&session.npcScopedPortraitEnabled===true});
    return;

@@ -1,7 +1,7 @@
 import {fileUpdateType,validFileUpdate} from './file-update-envelope.mjs';
 import {assemblyTypes,validAssemblyRequest} from './assembly-contract.mjs';
 // Accept the reference-rendered spirit-v2 pipeline as well as frozen spirit-v1 queue rows.
-import {fileDeleteType,validPropFolderDelete,validNpcFolderDelete,validBackgroundFileDelete,validCinematicFileDelete,validMapFolderDelete,validAssemblyFolderDelete} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,validCinematicFileDelete,validMapFolderDelete,validAssemblyFolderDelete,validHostedRosterDelete} from './prop-folder-delete-contract.mjs';
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
 import {createNgsHealthRelay} from './rs-ops-ngs-health.mjs';
 import {startOpsHealthReport} from './local-ops-health-report.mjs';
@@ -108,8 +108,8 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
       // Validate the full graph, including optional prop rotation, flips and depth, before relaying a map edit.
       // The validator agrees with the file worker and still accepts legacy no-rotation maps.
       (row.requestType===fileUpdateType&&!validFileUpdate(row.payload))||
-      (row.requestType===fileDeleteType&&!(validMapFolderDelete(row.payload)||validAssemblyFolderDelete(row.payload)||
-       local&&(validPropFolderDelete(row.payload)||validNpcFolderDelete(row.payload)||validBackgroundFileDelete(row.payload)||validCinematicFileDelete(row.payload))))){result.rejected++;continue;}
+      (row.requestType===fileDeleteType&&!(validMapFolderDelete(row.payload)||validAssemblyFolderDelete(row.payload)||validHostedRosterDelete(row.payload)||
+       local&&validCinematicFileDelete(row.payload)))){result.rejected++;continue;}
    // Background media v2 has real scheduler stages; relay the contract unchanged,
    // just as for already-queued v1 compatibility rows.
    const stamp=fingerprint(row);

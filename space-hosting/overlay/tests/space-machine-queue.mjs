@@ -430,7 +430,7 @@ test('Space Basic NPC uses the same browser payload contract and relays it uncha
  assert.equal((await queue.pending({})).requests.length,2);
 });
 
-test('map and assembly queue rights use the native Binari roster, never queue-only write',async t=>{
+test('file deletes and map/assembly rights use the native Binari roster, never queue-only write',async t=>{
  const grants=Object.fromEntries(['owner','editor','viewer'].map(role=>[role,{role,projectId:'binari'}]));
  const options={db:store(t),secret:token,replicaReads:true,workspaceReady:true,
   authorize:async u=>u.userId!=='revoked',authorizeWrite:async()=>true,
@@ -459,6 +459,15 @@ test('map and assembly queue rights use the native Binari roster, never queue-on
  const deletes=['maps','assemblies'].map(kind=>({requestType:'file.delete',idempotencyKey:'delete-'+kind,payload:{
   schemaVersion:'ngs.file-delete.v1',projectId:'binari',target:{root:'canonical-files/binari/cinematics/'+kind,path:fixtureId,kind:'directory'},
   expected:{revision:1,officialRequestId:fixtureId}}}));
+ const deletesWithPin=[
+  ['npcs','character.fixture','directory',{creationTaskId:'workflow.task.'+'d'.repeat(64)}],
+  ['props','test-prop','directory',{revision:1,sha256:'a'.repeat(64)}],
+  ['cinematics/backgrounds','b'.repeat(64)+'.png','file',{sourceRequestId:fixtureId}],
+ ];
+ for(const [root,path,kind,expected] of deletesWithPin)deletes.push({
+  requestType:'file.delete',idempotencyKey:'roster-delete-'+root.replace('/','-'),
+  payload:{schemaVersion:'ngs.file-delete.v1',projectId:'binari',target:{root:'canonical-files/binari/'+root,path,kind},expected}});
+
  for(const who of ['owner','editor','viewer','queue-only']){
   const s=await session(who);
   assert.equal(s.requestWritable,true);
@@ -469,6 +478,8 @@ test('map and assembly queue rights use the native Binari roster, never queue-on
   assert.equal(s.assemblyEnabled,['owner','editor'].includes(who)?true:undefined);
   assert.equal(s.mapDeleteEnabled,who==='owner'?true:undefined);
   assert.equal(s.assemblyDeleteEnabled,who==='owner'?true:undefined);
+  for(const cap of ['npcFolderDeleteEnabled','propFolderDeleteEnabled','backgroundDeleteEnabled'])
+   assert.equal(s[cap],who==='owner'?true:undefined);
   for(const cmd of [map,mapUpdate,fileUpdate,assembly,assemblyUpdate]){
    const out=await post(who,s,cmd);
    assert.equal(out.status,['owner','editor'].includes(who)?202:403,JSON.stringify(await out.json()));

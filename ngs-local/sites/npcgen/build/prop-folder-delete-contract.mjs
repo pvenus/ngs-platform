@@ -88,3 +88,6 @@ export function assemblyFolderDeletePayload({id,expected}){
  if(!validAssemblyFolderDelete(payload))throw Error('NGS_ASSEMBLY_DELETE_PAYLOAD_INVALID');
  return payload;
 }
+
+/** Only the existing protected, single-target queue families are allowed on Space. */
+export const validHostedRosterDelete=p=>validNpcFolderDelete(p)||validPropFolderDelete(p)||validBackgroundFileDelete(p);
