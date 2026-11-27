@@ -405,7 +405,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    if(selected!==instance||JSON.stringify(chosen)!==JSON.stringify(bindings())||JSON.stringify(coords)!==JSON.stringify(layout())||JSON.stringify(offsets)!==JSON.stringify(attachments())||JSON.stringify(sizes)!==JSON.stringify(scale())){setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');return;}
    const rehearsal=buildWellRehearsal({map:which,backgrounds,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media:Object.fromEntries(entries),pins:instance.pinned});
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal});stop.hidden=false;
-   setStatus('테스트 중이에요. 구역은 맵 이동 버튼으로 이동하거나, 테스트 구역 바로가기로 골라 볼 수 있어요.');
+   setStatus('테스트 중이에요. WASD로 움직이고, 표시된 포털 영역에 걸어 들어가면 이동해요.');
    stage.querySelector('.well-demo-scene')?.focus();
   }catch{if(!signal.aborted&&ticket===generation)setStatus('맵 이미지나 선택한 프랍 버전을 읽지 못했어요. 새로고침 후 다시 연결해 주세요.');}
   finally{if(!signal.aborted&&ticket===generation){busy=false;refresh();}}

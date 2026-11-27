@@ -71,12 +71,13 @@ test('scoped marker, movement callbacks, reset, near guard and teardown',()=>{
  assert.equal(scene.getAttribute('tabindex'),'0');
  assert.equal(scene.children[0].style.left,'50%');
  assert.equal(a.isNear('r1',50,54),true);assert.equal(a.isNear('r2',50,54),false);
- const event=(type,key)=>{const e=new Event(type,{cancelable:true});Object.defineProperty(e,'key',{value:key});root.dispatchEvent(e);return e;};
+ const event=(type,key,code)=>{const e=new Event(type,{cancelable:true});Object.defineProperties(e,{key:{value:key},code:{value:code}});root.dispatchEvent(e);return e;};
  const tick=t=>{const batch=[...frames.values()];frames.clear();batch.forEach(f=>f(t));};
  doc.activeElement=control;assert.equal(event('keydown','d').defaultPrevented,false);assert.equal(frames.size,0);
- doc.activeElement=scene;assert.equal(event('keydown','D').defaultPrevented,true);tick(0);tick(50);tick(100);
+ doc.activeElement=scene;assert.equal(event('keydown','d','KeyL').defaultPrevented,false);assert.equal(event('keydown','ㅇ','KeyD').defaultPrevented,true);tick(0);tick(50);tick(100);
  assert.deepEqual(regions,['r2']);assert.equal(scene.children[0].style.left,'34%');
  tick(150);assert.deepEqual(a.snapshot().position,point(390,230));
+ event('keyup','ㅇ','KeyD');assert.equal(frames.size,0);
  a.setEnabled(false);assert.equal(frames.size,0);assert.equal(event('keydown','w').defaultPrevented,false);
  assert.equal(a.reset().regionId,'r1');assert.deepEqual(regions,['r2','r1']);assert.equal(moves.at(-1).regionId,'r1');
  a.setEnabled(true);event('keydown','w');assert.equal(frames.size,1);

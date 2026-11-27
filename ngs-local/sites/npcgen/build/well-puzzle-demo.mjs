@@ -37,7 +37,7 @@ const button=(label,cls)=>{const b=el('button',label,cls);b.type='button';return
 
 export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  if(signal.aborted)return;
- const ids=assembly.bindings,points=rehearsal?.positions??assembly.positions,worldSized=Boolean(rehearsal?.artSizes),useActor=Boolean(rehearsal?.formal&&rehearsal.graph);
+ const ids=assembly.bindings,points=rehearsal?.positions??assembly.positions,worldSized=Boolean(rehearsal?.artSizes),useActor=Boolean(rehearsal?.graph);
  let actor=null;
  const root=el('section',null,'well-demo'),instructions=el('p',useActor?'WASD로 8방향 이동 · 포털에 걸어 들어가기 · 프랍 가까이에서 F 또는 그릇 드롭':'제상이나 우물을 클릭해 대상 선택 · F로 상호작용 시작 · 인벤토리 그릇을 우물이나 제상에 드래그','meta');
  const scene=el('div',null,'well-demo-scene');scene.tabIndex=0;scene.setAttribute('aria-label','앞마당과 뒤뜰이 있는 테스트 배경');
@@ -74,7 +74,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   scene.classList.add('well-demo-map');bg.alt='';bg.draggable=false;scene.prepend(bg);if(useActor)scene.append(portals);
   const label=el('label','테스트 구역 바로가기');jump.setAttribute('aria-label','테스트 구역 바로가기');
   for(const region of rehearsal.regions){const option=el('option',region.name);option.value=region.id;jump.append(option);}
-  label.append(jump);if(!rehearsal.formal)root.append(label);root.append(route);
+  label.append(jump);if(!useActor)root.append(label);root.append(route);
  }
  root.append(instructions,scene,controls,status);host.append(root);
  let runtime=makeWellPuzzle(),selected=null,held=false,dragged=false,progress=0,lastTick,raf=null,pressing=false;

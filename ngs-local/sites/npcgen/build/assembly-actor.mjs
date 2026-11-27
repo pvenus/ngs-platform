@@ -3,6 +3,8 @@ import {mapColliderRotation,mapColliderShape} from './map-contract.mjs';
 
 const clamp=n=>Math.min(1000,Math.max(0,n));
 const movementKeys=new Set(['w','a','s','d']);
+const physicalMovement=new Map([['KeyW','w'],['KeyA','a'],['KeyS','s'],['KeyD','d']]);
+const movementKey=event=>!event.code||event.code==='Unidentified'?event.key?.toLowerCase():physicalMovement.get(event.code);
 export function assemblyDirection(keys){
  const x=Number(keys.has('d'))-Number(keys.has('a')),y=Number(keys.has('s'))-Number(keys.has('w'));
  const length=Math.hypot(x,y)||1;
@@ -107,7 +109,7 @@ export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegio
   if(enabled&&keys.size&&frame===null)frame=requestFrame?.(tick)??null;
  }
  function down(event){
-  const key=event.key?.toLowerCase();
+  const key=movementKey(event);
   if(!enabled||!movementKeys.has(key)||event.defaultPrevented||event.isComposing||
      event.altKey||event.ctrlKey||event.metaKey||isControl(event.target)||!inScope())return;
   event.preventDefault();
@@ -115,16 +117,20 @@ export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegio
   if(frame===null)frame=requestFrame?.(tick)??null;
  }
  function up(event){
-  if(keys.delete(event.key?.toLowerCase())&&!keys.size)stop();
+  if(keys.delete(movementKey(event))&&!keys.size)stop();
  }
  function focusOut(event){
   const next=event.relatedTarget;
   if(!next||!(next===root||root.contains(next))||isControl(next))stop();
  }
+ function focusScene(event){
+  if(event.button===0&&!isControl(event.target))scene.focus({preventScroll:true});
+ }
  function dispose(){
   disposed=true;enabled=false;stop();
   root.removeEventListener('keydown',down);root.removeEventListener('keyup',up);
   root.removeEventListener('focusout',focusOut);
+  scene.removeEventListener('pointerdown',focusScene);
   document.defaultView?.removeEventListener('blur',stop);
   signal?.removeEventListener('abort',dispose);
   marker.remove();
@@ -132,6 +138,7 @@ export function mountAssemblyActor(scene,{graph,root=scene,signal,onMove,onRegio
  }
  if(!disposed){
   root.addEventListener('keydown',down);root.addEventListener('keyup',up);root.addEventListener('focusout',focusOut);
+  scene.addEventListener('pointerdown',focusScene);
   document.defaultView?.addEventListener('blur',stop);
   signal?.addEventListener('abort',dispose,{once:true});
   draw(actor.snapshot());
