@@ -563,3 +563,8 @@ ul{padding:0;list-style:none}
 .well-play-portal{position:absolute;border:1px dashed #ffe0a788;background:#efd09024;box-sizing:border-box}
 .assembly-actor{position:absolute;transform:translate(-50%,-100%);width:18px;height:27px;background:#e5bc66;border:2px solid #1d2b26;border-radius:55% 55% 30% 30%;box-shadow:0 2px 0 1px #241e17aa;z-index:3;pointer-events:none;box-sizing:border-box}
 .assembly-actor::after{content:'';position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:9px;height:9px;border-radius:1px;background:#334a60}
+
+/* Sight changes only the image lane, not the map layout or hit areas. */
+.well-demo-map-bg[data-sight-art=spirit],
+.well-world-sprite[data-sight-art=spirit],
+.well-demo-sprite[data-sight-art=spirit]{image-rendering:auto}

@@ -38,13 +38,14 @@ const button=(label,cls)=>{const b=el('button',label,cls);b.type='button';return
 export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  if(signal.aborted)return;
  const ids=assembly.bindings,points=rehearsal?.positions??assembly.positions,worldSized=Boolean(rehearsal?.artSizes),useActor=Boolean(rehearsal?.graph);
- let actor=null;
+ let actor=null,spirit=false;
  const root=el('section',null,'well-demo'),instructions=el('p',useActor?'WASD로 8방향 이동 · 포털에 걸어 들어가기 · 프랍 가까이에서 F 또는 그릇 드롭':'제상이나 우물을 클릭해 대상 선택 · F로 상호작용 시작 · 인벤토리 그릇을 우물이나 제상에 드래그','meta');
  const scene=el('div',null,'well-demo-scene');scene.tabIndex=0;scene.setAttribute('aria-label','앞마당과 뒤뜰이 있는 테스트 배경');
  const altar=el('div',null,'well-demo-station well-demo-altar'),well=el('div',null,'well-demo-station well-demo-well');
  const socket=button('', 'well-demo-target well-demo-socket'),water=button('', 'well-demo-target well-demo-water');
+ const artImages=[];
  const addArt=(role,host)=>{const asset=rehearsal?.art?.[role];if(!asset)return null;
-  const img=el('img',null,'well-demo-sprite well-demo-sprite-'+role);img.src=asset;img.alt='';img.draggable=false;host.append(img);return img;
+  const img=el('img',null,'well-demo-sprite well-demo-sprite-'+role);img.src=asset;img.alt='';img.draggable=false;host.append(img);artImages.push([role,img]);return img;
  };
  const socketText=el('span'),wellText=el('span'),carriedText=el('span');
  const altarArt=el('div',null,'well-demo-sprite-stack'),rimArt=el('div',null,'well-demo-sprite-stack');
@@ -62,6 +63,11 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  const inventory=el('section',null,'well-demo-inventory'),inventoryLabel=el('strong','인벤토리'),carried=button('빈 물그릇','prop-control well-demo-item');
  addArt('bowl',carried);carried.append(carriedText);carried.draggable=true;carried.setAttribute('aria-pressed','false');
  inventory.append(inventoryLabel,carried);controls.append(startButton,inventory,resetButton);
+ const spiritToggle=button('서진 능력 · OFF','prop-control well-spirit-toggle');
+ spiritToggle.setAttribute('aria-label','서진 능력');spiritToggle.setAttribute('aria-pressed','false');
+ const hasSpirit=rehearsal?.regions.some(r=>r.spiritSrc&&r.spiritSrc!==(r.pixelSrc??r.src))||
+  Object.entries(rehearsal?.spiritArt??{}).some(([role,src])=>src!==rehearsal.art?.[role]);
+ if(hasSpirit)controls.append(spiritToggle);
  const status=el('p',null,'well-demo-status');status.setAttribute('role','status');
  const meterView=el('section',null,'well-demo-meter');meterView.hidden=true;
  const title=el('strong','뚜껑 열기'),meterHelp=el('span','스페이스 연타');
@@ -87,11 +93,27 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
  function box(role,region){
   return assemblySpriteBox({role,layout:points,attachments:rehearsal.attachments,asset:rehearsal.artSizes?.[role],scale:rehearsal.scale,region});
  }
+ function paintSight(){
+  const repaint=(image,normal,alternate)=>{
+   const hasAlternate=Boolean(spirit&&alternate&&alternate!==normal);
+   const src=hasAlternate?alternate:normal;
+   if(src&&image.getAttribute('src')!==src)image.src=src;
+   image.dataset.sightArt=hasAlternate?'spirit':'normal';
+  };
+  const region=rehearsal?.regions.find(r=>r.id===currentRegion);
+  if(region)repaint(bg,region.pixelSrc??region.src,region.spiritSrc);
+  for(const [role,img] of artImages)repaint(img,rehearsal.art[role],rehearsal.spiritArt?.[role]);
+ }
+ spiritToggle.addEventListener('click',()=>{
+  spirit=!spirit;spiritToggle.textContent=spirit?'서진 능력 · ON':'서진 능력 · OFF';
+  spiritToggle.setAttribute('aria-pressed',String(spirit));paintSight();
+  if(useActor)scene.focus({preventScroll:true});
+ },{signal});
  function showRegion(id){
   if(!rehearsal)return;
   const region=rehearsal.regions.find(r=>r.id===id);if(!region)return;
   currentRegion=id;jump.value=id;scene.dataset.region=id;scene.setAttribute('aria-label',region.name);
-  if(bg.getAttribute('src')!==region.src)bg.src=region.src;
+  paintSight();
   scene.style.aspectRatio=String(region.width/region.height);
   pressing=false;selected=null;
   altar.hidden=points.altar.regionId!==id;well.hidden=points.well.regionId!==id;
@@ -197,6 +219,7 @@ export function mountWellPuzzleDemo(host,{signal,rehearsal}={}){
   tell('제상 위의 빈 물그릇을 챙기세요.');if(actor){actor.setEnabled(true);actor.reset();}else if(rehearsal)showRegion(rehearsal.initialRegion);else render();scene.focus();
  },{signal});
  root.addEventListener('keydown',e=>{
+  if(e.target===spiritToggle)return;
   if(pressing){
    if(e.code==='Space'){e.preventDefault();if(!e.repeat)force();}
    else if(e.code==='Escape'){e.preventDefault();cancelMeter();}

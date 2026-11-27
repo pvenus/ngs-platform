@@ -49,3 +49,20 @@ test('assembly apply distinguishes an expired session, stale meta and ambiguous 
  assert.match(assemblyApplyFailure('NETWORK_ERROR'),/접수 여부/);
  assert.doesNotMatch(assemblyApplyFailure('private backend trace',500),/trace/);
 });
+
+test('Assembly sight resolves only published paired background and actual equal-size prop spirit lanes',()=>{
+ const f=fixture();
+ f.backgrounds[0].cinematic={sha256:sha('e'),width:1536,height:1024};
+ f.media.bowl.media.detail={...f.media.bowl.media.pixel,url:'/api/prop-workspace?size=detail',width:1535,height:1025};
+ f.media.bowl.media.spirit={...f.media.bowl.media.pixel,url:'/api/prop-workspace?size=spirit'};
+ f.media.table.media.spirit={...f.media.table.media.pixel,url:'/api/prop-workspace?size=wrong-size',width:1535};
+ f.media.well.media.spirit={...f.media.well.media.pixel,url:'https://outside.invalid/uncached'};
+ const a=buildWellRehearsal(f);
+ assert.ok(a.regions[0].pixelSrc.endsWith(sha('a')));
+ assert.ok(a.regions[0].spiritSrc.endsWith(sha('e')));
+ assert.equal(a.regions[1].pixelSrc,a.regions[1].spiritSrc);
+ assert.deepEqual(a.spiritArt,{bowl:'/api/prop-workspace?size=spirit'});
+ assert.deepEqual(a.artSizes.bowl,{width:307,height:205});
+ assert.equal(a.positions,f.layout);
+ assert.equal(a.graph,f.map.graph);
+});

@@ -50,7 +50,10 @@ function mapRehearsalRegions(map,backgrounds){
   const asset=byBackground.get(region.backgroundId);
   const lane=[asset,asset?.pixel,asset?.cinematic].find(p=>p?.sha256===region.imageSha256);
   if(!lane||!sha(lane.sha256)||!(lane.width>0&&lane.height>0))throw Error('MAP_ART_MISSING');
-  return {id:region.id,name:region.name,width:lane.width,height:lane.height,src:'/api/background-workspace?projectId=binari&image='+lane.sha256};
+  const url=entry=>sha(entry?.sha256)&&entry.width>0&&entry.height>0
+   ? '/api/background-workspace?'+new URLSearchParams({projectId:map.projectId,image:entry.sha256}) : undefined;
+  const src=url(lane);
+  return {id:region.id,name:region.name,width:lane.width,height:lane.height,src,pixelSrc:url(asset.pixel)??src,spiritSrc:url(asset.cinematic)??src};
  });
 }
 
@@ -73,15 +76,18 @@ export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bin
  if(!['altar','well'].every(key=>viewPoint(layout[key])&&map.graph.regions.some(x=>x.id===layout[key].regionId)))throw Error('PLACEMENT_INVALID');
  if(attachments&&!['bowl','lid'].every(key=>offsetOk(attachments[key])))throw Error('ATTACHMENT_INVALID');
  const regions=mapRehearsalRegions(map,backgrounds);
- const art={},artSizes={};
+ const art={},spiritArt={},artSizes={};
  for(const [role] of slots){
   const row=pins?.[role]??props.find(p=>p.propId===bindings[role]), result=media[role];
   if(!row||!result||result.propId!==row.propId||result.source?.revision!==row.revision||
     result.source?.sha256!==row.sha256||!imageSize(result.media?.pixel)||!safeMedia(result.media?.pixel?.url)||result.media.pixel.mediaType!=='image/png')
    throw Error('PROP_ART_MISSING_OR_STALE');
-  art[role]=result.media.pixel.url;artSizes[role]={width:result.media.pixel.width,height:result.media.pixel.height};
+  const {pixel,spirit}=result.media;
+  art[role]=pixel.url;artSizes[role]={width:pixel.width,height:pixel.height};
+  if(spirit?.mediaType==='image/png'&&spirit.width===pixel.width&&spirit.height===pixel.height&&safeMedia(spirit.url))
+   spiritArt[role]=spirit.url;
  }
- return {initialRegion:map.graph.startRegionId,regions,connections:map.graph.connections,positions:layout,attachments,scale,art,artSizes,graph:map.graph,portalConditions};
+ return {initialRegion:map.graph.startRegionId,regions,connections:map.graph.connections,positions:layout,attachments,scale,art,spiritArt,artSizes,graph:map.graph,portalConditions};
 }
 
 export async function mountWellAssembly({items,detail,request,projectId,signal,published,submit,updateEnabled=true}){
