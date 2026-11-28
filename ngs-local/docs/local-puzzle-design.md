@@ -1,6 +1,8 @@
-# Local NGS puzzle playground
+# NGS puzzle playground
 
-This is a single independent Binari puzzle under `퍼즐 설계`: **빈 마루에
+All authenticated team members can open the well and spirit playtests in
+Local, Space and Viewer under `퍼즐 설계`. The independent story preview is
+a separate private Binari puzzle: **빈 마루에
 바람이 앉으면**. It has no Episode 1/story binding, authoring mutation, or
 legacy `/api/production-sets` dependency. It uses the current Local NGS listener
 and browser project/session grant. It is not routed on Space.

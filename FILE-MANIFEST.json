@@ -1260,8 +1260,8 @@
       "sha256": "a67071f139e415caf9cc5b1823ad6212e6177974d0e14baa2414c2252da245b4"
     },
     "ngs-local/source-manifest.json": {
-      "bytes": 20103,
-      "sha256": "4fae49f6b614991e1a63dac8382b375ef0e154f7cf27975d14621ca4948ab999"
+      "bytes": 20222,
+      "sha256": "d5f1ddc174b1b5e4b4b7c6e04e66fa8da9b4d215665659168259675a6e603ea5"
     },
     "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
       "bytes": 15831,
@@ -1284,8 +1284,8 @@
       "sha256": "62051b8384c4c687f48a919aae0d50d88998d55c4d61d1d762a98aaec678351f"
     },
     "ngs-viewer/lib/assets.mjs": {
-      "bytes": 2636,
-      "sha256": "7befe4003a7e34a1337a2ba817bf5c908c32e7102555ae4b7d473ae0f2857e90"
+      "bytes": 2689,
+      "sha256": "7d8914db030e070aa2e66a3e765fc7b5af38401181f31bbc1a9cc137a2f68d03"
     },
     "ngs-viewer/lib/mirror.mjs": {
       "bytes": 22425,
@@ -1316,8 +1316,8 @@
       "sha256": "a062a67ba0e9e8b58b8b183af5cbcd232dd2e0fec81b69eddc681eff03dc94f5"
     },
     "ngs-viewer/tests/viewer.test.mjs": {
-      "bytes": 10788,
-      "sha256": "2cb36c6ddc78edd345402b3d7f3c9f1c4bffb85540cf45785c354308b6ef8736"
+      "bytes": 10851,
+      "sha256": "8fbab412e7efefd868661d8ca7e9a0a0faf1a7c1f7da22117f6d6fe2650d3636"
     },
     "ngs-viewer/viewer.mjs": {
       "bytes": 13193,
@@ -1492,8 +1492,8 @@
       "sha256": "d27f434f623ec32f221c45efe70a4d56770fc4e07ffa27696ca5cf1d7fbc9510"
     },
     "ngs-local/sites/npcgen/build/local-project-page.js": {
-      "bytes": 51281,
-      "sha256": "b3694dbe50917e7e6b29b3239b33fe21f959f86b62bee198c335f7979bb6ec61"
+      "bytes": 51319,
+      "sha256": "c95ad50908b5a290e512d3c2385e16f292bf734a87c5ef5681beb8e0b341e1fa"
     },
     "ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs": {
       "bytes": 7864,
@@ -1624,16 +1624,16 @@
       "sha256": "3d07bdef5a6cb71096d1d13d6482d7467c3cab21e04c750d976506040f0f9194"
     },
     "space-hosting/overlay/build/shared-ngs-assets.ts": {
-      "bytes": 6068,
-      "sha256": "9a108ac51a82b9a90d742a70ae1347d9a69bc1ebaefab1057edcbd08db10f2e5"
+      "bytes": 6122,
+      "sha256": "21e6ba127c3bc7b10af701ffddf3ef7ed9485daa2564f7dc874c821d08522119"
     },
     "space-hosting/overlay/build/shared-ngs-response.mjs": {
-      "bytes": 3320,
-      "sha256": "aa3c200a5f095babb19040c067b04714633535ca73bc051923a3a022ca046e2a"
+      "bytes": 3590,
+      "sha256": "69b3a17f236a45ffe50f2d02457b6bc718a34d6009a9e268e6553f32fc41f01c"
     },
     "space-hosting/overlay/tests/shared-ngs-response.mjs": {
-      "bytes": 5663,
-      "sha256": "ab1540b1ba90cb1b49b37ae1e7a0b482d042ccd184afbdac5852717b836b21a0"
+      "bytes": 6191,
+      "sha256": "0d20720fe0d9ea8bf76200dc8d7c3155e588e339b745bb01a43417b2fe460a66"
     },
     "tools/puzzle-core/README.md": {
       "bytes": 1466,

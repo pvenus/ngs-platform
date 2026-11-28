@@ -10,7 +10,7 @@
     "docs/catalog-roster-edit.md": "f19e51a4c90940b88003b44b007df5c71fa674968fab16eae620d354b7686da1",
     "docs/cinematic-workspace.md": "239bbbb229a03f03bcaee3a819ccd6d55abef6a4a8415a2bdafb6e266ae1f6ae",
     "docs/instance-mcp-flow.md": "c1b6e4e6755151a29793f2c3e0c2e82cc5aac996320af9ab567b4e0a8745eb6e",
-    "docs/local-puzzle-design.md": "a804adb21894b5bb5e92811083be85a04305057d445e0d1e18b15f394fb5e6aa",
+    "docs/local-puzzle-design.md": "80fbb06602f503f32a4187613fa59e3079e1e4b9b1c3a23f00857b136168e262",
     "docs/local-request-queue.md": "25473a038683d49d4185c52555644408735b48a1c17d12ac0653ee80fc6d8c86",
     "docs/local-s3-replica-bucket.md": "2677f698a9bee60d31db1c7c117b2c6a0a636eb5d37a8878c8201305478d2fa5",
     "docs/map-workspace.md": "0e6ae3dde4e045b3496dd43a7449b8759f39c18036a2f1c1ce6a384dd896f866",
@@ -63,8 +63,8 @@
     "sites/npcgen/build/local-project-page-server.mjs": "d27f434f623ec32f221c45efe70a4d56770fc4e07ffa27696ca5cf1d7fbc9510",
     "sites/npcgen/build/local-project-page.css": "592a7e7652507afb91d5bf16477d279824037081dec3719bc8d51bde0f087ae5",
     "sites/npcgen/build/local-project-page.html": "985258a59b571ec73c4d0680237945c2352598b75bf2f6538933c8acd7a97b1f",
-    "sites/npcgen/build/local-project-page.js": "b3694dbe50917e7e6b29b3239b33fe21f959f86b62bee198c335f7979bb6ec61",
-    "sites/npcgen/build/local-project-workspace.mjs": "6eddf781c47e38b38884d52864cb94ace0acbf80378f513164d33f709a8f9bfa",
+    "sites/npcgen/build/local-project-page.js": "c95ad50908b5a290e512d3c2385e16f292bf734a87c5ef5681beb8e0b341e1fa",
+    "sites/npcgen/build/local-project-workspace.mjs": "f44c43c7a0f214abfd020facfbf78011520b369009142144f03fc364f37e425f",
     "sites/npcgen/build/local-puzzle-empty-veranda.html": "d80101bbf73a1b032a1a18e4f533ddac8d6dc93f62c915826b01c879a03df2a9",
     "sites/npcgen/build/local-puzzle-ending-state.mjs": "6cce2ff9caeacd64823e232fc48c56b29f645777382e8e6bb0864458d6c745c1",
     "sites/npcgen/build/local-puzzle-media.mjs": "a2d9f4d0bc757166443360031f18a1b2ff9a3a675bd47ec3cf92f864a26cf940",
@@ -90,7 +90,7 @@
     "sites/npcgen/build/object-replica-view.mjs": "bce77e42a307d0fb20fa6139e5358a4df4656a298da3b0325e8a7020420c412b",
     "sites/npcgen/build/object-replica.mjs": "9dadf4244223e01be5a6228a165478eba71847a87a765f26dd84eccdc9623e80",
     "sites/npcgen/build/object-workspace-read-storage.mjs": "fc288052f7595754c2b26f0ca476d53102a0e15d15c0a25e5778531cb69913ef",
-    "sites/npcgen/build/pds-mcp-file-sync.mjs": "829ed71c4c95980dbe253c8541d0172d74d786605757f0027fcd62c8bf9d1bde",
+    "sites/npcgen/build/pds-mcp-file-sync.mjs": "d9026e7f4c88b3bba9ff5c0474822f127dc02a44995c50307388616d4d47a667",
     "sites/npcgen/build/project-workspace-view.mjs": "6812535a7f09bfe0459330c2c493eb6071f5b8d8a393d6a461579f62d8719f7f",
     "sites/npcgen/build/prop-design-pin.mjs": "a8ae3a15f992124635e54005ae220477b60177b6fab4374dca37c9707df2dd53",
     "sites/npcgen/build/prop-folder-delete-contract.mjs": "ac9bd0f76312c96c021e3c6a19835ef11a7162c43cf0a1052b59c9167448b492",
@@ -171,6 +171,7 @@
     "sites/npcgen/build/workspace-release-capabilities.mjs": "dde3201ff0299c3b99165e9209e19aa9ce6618b25e5ea0408408c989493b4fc2",
     "sites/npcgen/build/puzzle-core-bundle.mjs": "e61aa0c8cca40cd8180e713c5a70aac3a87d07da7f06c4ea2fbaed5838b00de4",
     "sites/npcgen/build/puzzle-core-release.mjs": "f8189e8a6dcf25da2bc72f7b4dcf552e87e45b08e24e2bb6013a130f43ddf1dd",
-    "sites/npcgen/tests/puzzle-core-release.mjs": "3d07bdef5a6cb71096d1d13d6482d7467c3cab21e04c750d976506040f0f9194"
+    "sites/npcgen/tests/puzzle-core-release.mjs": "3d07bdef5a6cb71096d1d13d6482d7467c3cab21e04c750d976506040f0f9194",
+    "sites/npcgen/build/mcp-file-sync-engine.mjs": "2853165ab3ac4f1ddb0e94268adef246a8ae220cd6b8516b7dae5df08ff8756e"
   }
 }

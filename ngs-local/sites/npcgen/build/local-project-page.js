@@ -663,7 +663,8 @@ async function loadWorkspace(search){
   if(hosted){
    if(session.queueEnabled===true)enableQueue(signal);
    const filter=id=>projectId==='binari'&&!session.readOnly&&(!legacySpace||id==='audio')&&
-    (id!=='maps'||session.mapReadEnabled===true)&&(id!=='assembly'||session.assemblyReadEnabled===true);
+    (id!=='maps'||session.mapReadEnabled===true)&&(id!=='assembly'||session.assemblyReadEnabled===true)&&
+    (id!=='production'||session.requestWritable===true);
    renderNav(filter);
    if(!filter(tab)){
     note(session.readOnly?'Space에서는 현재 프로젝트 목록만 연결되어 있습니다. 상세 작업은 로컬 NGS에서 계속할 수 있습니다.':
@@ -731,8 +732,7 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='production'){
-   // An independent Local puzzle, never an episode link or a legacy API.
-   if(hosted)return;
+   // Independent playtests, not an episode link or a production mutation.
    const id='binari.empty-veranda',title='빈 마루에 바람이 앉으면';
    const demo=document.documentElement.dataset.wellPuzzleDemo==='enabled'?await import('./well-puzzle-demo.mjs'):null;
    if(signal.aborted)return;

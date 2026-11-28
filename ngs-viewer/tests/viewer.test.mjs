@@ -178,7 +178,9 @@ test('update pause refuses in-progress sync and prevents a new download or reque
 
 test('Viewer serves the bundled C# browser runtime at the version in its shell',async t=>{
  const {get}=await fixture(t);
- const response=await get('/'),html=await response.text(),version=/data-puzzle-core="([a-f0-9]{64})"/u.exec(html)?.[1];
+ const response=await get('/'),html=await response.text();
+ assert.match(html,/data-well-puzzle-demo="enabled"/);
+ const version=/data-puzzle-core="([a-f0-9]{64})"/u.exec(html)?.[1];
  assert.ok(version);
  assert.match(response.headers.get('content-security-policy'),/wasm-unsafe-eval/);
  const result=await get('/puzzle-core/'+version+'/_framework/dotnet.js');

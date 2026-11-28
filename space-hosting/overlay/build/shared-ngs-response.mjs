@@ -18,6 +18,12 @@ export function withProductionAudio(html){
  return html.replace(opening,'<html lang="ko" data-audio-workspace="enabled">');
 }
 
+export function withSharedPuzzlePlaytests(html){
+ const opening='<html lang="ko"';
+ if(typeof html!=='string'||html.split(opening).length!==2)throw Error('SHARED_NGS_HTML_SOURCE_UNCONFIRMED');
+ return html.replace(opening,opening+' data-well-puzzle-demo="enabled"');
+}
+
 export function createSharedNgsResponse(assets,{servePuzzleCore,puzzleCoreCsp=""}={}){
  return (request,{catalogRelay=false}={})=>{
   const url=new URL(request.url),path=url.pathname,method=request.method;

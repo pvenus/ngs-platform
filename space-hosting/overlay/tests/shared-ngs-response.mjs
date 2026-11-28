@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createSharedNgsResponse,withProductionAudio} from '../build/shared-ngs-response.mjs';
+import {createSharedNgsResponse,withProductionAudio,withSharedPuzzlePlaytests} from '../build/shared-ngs-response.mjs';
 import {rejectCleanSpaceRequest} from '../build/clean-space-guard.mjs';
 
 const native={'oai-authenticated-user-id':'fixture','oai-authenticated-user-email':'fixture@example.invalid'};
@@ -76,4 +76,12 @@ test('Space serves the same authenticated release-versioned WASM runtime as Loca
  assert.equal(result.status,200);
  assert.equal(await result.text(),await (await servePuzzleCore(path,'GET')).text());
  assert.match(server(request('/')).headers.get('content-security-policy'),/wasm-unsafe-eval/);
+});
+
+
+test('the hosted shared shell includes the same independent well and spirit playtests',()=>{
+ assert.match(withSharedPuzzlePlaytests('<html lang="ko" data-audio-workspace="enabled">'),/data-well-puzzle-demo="enabled"/);
+ const source=readFileSync(new URL('../ngs-local/sites/npcgen/build/local-project-page.js',import.meta.url),'utf8');
+ assert.doesNotMatch(source,/if\(tab==='production'\)\{\s*if\(hosted\)return/u);
+ assert.match(source,/id!=='production'\|\|session.requestWritable===true/u);
 });
