@@ -1316,12 +1316,12 @@
       "sha256": "a062a67ba0e9e8b58b8b183af5cbcd232dd2e0fec81b69eddc681eff03dc94f5"
     },
     "ngs-viewer/tests/viewer.test.mjs": {
-      "bytes": 7375,
-      "sha256": "9a6a21ad642620e1206bfc1811d5065f625d7f7ae91422f330813228a1496922"
+      "bytes": 8617,
+      "sha256": "ca3f78b0e116c1dcd989860f8ff86e85a5e0d59eddf84b5293d2dbb91116ef04"
     },
     "ngs-viewer/viewer.mjs": {
-      "bytes": 10583,
-      "sha256": "081d40a715d209619a461838626eb3774bdf6f8c294ab969898fa155cb27c0da"
+      "bytes": 10525,
+      "sha256": "4edbb2a838fad4d3bb7694f165416b5c08b7807a523f17259b99bd488a41a1d7"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
       "bytes": 14953,

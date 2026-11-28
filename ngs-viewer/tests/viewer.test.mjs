@@ -120,3 +120,26 @@ test('Codex background mode syncs without a popup or browser, displays loss, and
  assert.equal((await until('failed')).error,'VIEWER_CODEX_CONNECTION_REQUIRED');
  assert.deepEqual(await readFile(join(root,'binari','project.json')),payload);
 });
+
+test('a formal request is sent while the first file sync is still waiting',{skip:process.platform==='win32'},async t=>{
+ let release,started,attempts=0;
+ const wait=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
+ t.after(()=>release());
+ const client={close:release,async tool(name,args){
+  if(name==='ngs_viewer_manifest'){
+   started();await wait;
+   return {isError:false,structuredContent:{status:200,manifest:{projectId:'binari',resources:['project'],files:[]}}};
+  }
+  assert.equal(name,'ngs_viewer_request_submit');assert.deepEqual(args.command,{requestType:'test',payload:{}});
+  attempts++;return {structuredContent:{status:403}};
+ }};
+ const {origin,get}=await fixture(t,{codexClient:client});
+ await entered;
+ assert.equal((await get('/api/project-folders')).status,503);
+ const result=await get('/api/requests',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',
+   'X-NPCGen-Csrf':'0'.repeat(64),'X-NPCGen-Frontend-Context':'space.'+'0'.repeat(64)},
+   body:JSON.stringify({requestType:'test',payload:{}})});
+ assert.equal(result.status,403);assert.equal(attempts,1);
+ assert.equal((await (await get('/__viewer/status')).json()).state,'running');
+ release();
+});

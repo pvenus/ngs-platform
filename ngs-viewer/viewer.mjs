@@ -98,7 +98,6 @@ export async function createViewer({root,space=binariSpace,mirror=null,codexClie
     if(method!=='POST'||url.search)throw fault('METHOD_NOT_ALLOWED',405);
     if(req.headers['x-npcgen-csrf']!=='0'.repeat(64)||req.headers['x-npcgen-frontend-context']!=='space.'+'0'.repeat(64))
      throw fault('VIEWER_WRITE_DENIED',403);
-    if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
     const command=await jsonBody(req,64*1024);
     const result=await forwardViewerRequest(command,async payload=>{
      const reply=(await codexClient.tool('ngs_viewer_request_submit',{command:payload}))?.structuredContent;
