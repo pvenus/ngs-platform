@@ -70,7 +70,7 @@ export const validCinematicSourceGenerate=p=>exact(p,['schemaVersion','projectId
 export const validCinematicSourceResult=p=>exact(p,['schemaVersion','projectId','officialRequestId','title','sha256','bytes','width','height'])&&
  p.schemaVersion===cinematicSourceResultSchema&&p.projectId==='binari'&&cinematicId(p.officialRequestId)&&boundedText(p.title,480,120)&&
  cinematicHash(p.sha256)&&Number.isSafeInteger(p.bytes)&&p.bytes>=57&&p.bytes<=8*1024*1024&&
- p.width===1536&&(p.height===768||p.height===1024);
+ validCinematicGeometry(p.width,p.height);
 export const validCinematicSequencesRemove=p=>exact(p,['schemaVersion','projectId','sequenceIds'])&&
  p.schemaVersion===cinematicSequencesRemoveSchema&&p.projectId==='binari'&&oneEach(p.sequenceIds,cinematicId,maxSelection);
 export const validCinematicArchive=p=>exact(p,['schemaVersion','projectId','sequenceIds'])&&p.schemaVersion===cinematicArchiveSchema&&p.projectId==='binari'&&
@@ -94,7 +94,7 @@ export const backgroundPixelType='background.pixel.workflow';
 export const backgroundPixelSchema='ngs.background-pixel-workflow.v1';
 export const validBackgroundPixelRequest=p=>p?.schemaVersion===backgroundPixelSchema&&typeof p.title==='string'&&
  [...p.title].length<=105&&validBackgroundRequest({...p,schemaVersion:backgroundSourceSchema});
-export const validBackgroundResult=p=>p?.schemaVersion===backgroundResultSchema&&p.height===1024&&validCinematicSourceResult({...p,schemaVersion:cinematicSourceResultSchema});
+export const validBackgroundResult=p=>p?.schemaVersion===backgroundResultSchema&&p.width===1536&&p.height===1024&&validCinematicSourceResult({...p,schemaVersion:cinematicSourceResultSchema});
 export const backgroundAnimationType='background.animation.workflow',backgroundAnimationSchema='ngs.background-animation-workflow.v2';
 const legacyBackgroundAnimationSchema='ngs.background-animation-workflow.v1';
 export const backgroundLoopInstruction='Continuous seamless ambient loop, static camera.';
@@ -110,3 +110,23 @@ export const validBackgroundAnimation=p=>exact(p,['schemaVersion','projectId','b
 export const validBackgroundAnimationGroup=g=>exact(g,['requestId','variant','backgroundSha256'])&&
  cinematicId(g.requestId)&&['cinematic','pixel'].includes(g.variant)&&cinematicHash(g.backgroundSha256);
 export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicUpscaleType,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType]);
+
+export const cinematicCropType='cinematic.source.crop',cinematicCropSchema='ngs.cinematic-source-crop.v1';
+export const validCinematicGeometry=(w,h)=>[w,h].every(n=>Number.isInteger(n)&&n>=1&&n<=4096)&&w*h<=8388608;
+const cropKeys=['width','height','left','top','right','bottom'];
+export function cinematicCropPresets(width,height){
+ if(!validCinematicGeometry(width,height)||width===2*height)return [];
+ const wide=width>height*2;
+ // An odd width cannot be preserved exactly in a vertical-only 2:1 crop.
+ // Drop one right-edge pixel explicitly; the preview shows that second edge.
+ const w=wide?height*2:width-width%2,h=wide?height:w/2;
+ if(w<2||h<1)return [];
+ const dx=width-w,dy=height-h;
+ return (wide?[['좌측 자르기',dx,0],['우측 자르기',0,0],['좌우 자르기',Math.floor(dx/2),0]]:
+  [['상단 자르기',0,dy],['하단 자르기',0,0],['상하 자르기',0,Math.floor(dy/2)]])
+  .map(([label,left,top])=>({label,width,height,left,top,right:left+w,bottom:top+h}));
+}
+export const validCinematicCrop=p=>exact(p,['schemaVersion','projectId','title','sourceSha256',...cropKeys])&&
+ p.schemaVersion===cinematicCropSchema&&p.projectId==='binari'&&boundedText(p.title,480,120)&&cinematicHash(p.sourceSha256)&&
+ validCinematicGeometry(p.width,p.height)&&p.width!==2*p.height&&cropKeys.slice(2).every(k=>Number.isInteger(p[k])&&p[k]>=0)&&
+ p.left<p.right&&p.right<=p.width&&p.top<p.bottom&&p.bottom<=p.height&&p.right-p.left===2*(p.bottom-p.top);

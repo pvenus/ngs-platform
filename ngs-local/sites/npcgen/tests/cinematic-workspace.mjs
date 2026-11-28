@@ -197,6 +197,30 @@ test('prop-style scene controls create a single original and add only versions o
  assert.match(walk(basic.detail,x=>x.tag==='img')[0].src,new RegExp(sourceSha256));
  assert.equal(walk(basic.detail,x=>x.tag==='form').length,0);
  assert.equal(walk(basic.detail,x=>x.attrs.role==='tab').length,2);
+ const cropRequests=[];
+ const cropView=async(width,height)=>mount({source:sourceSha256,panel:'source',cropEnabled:true,
+  request:async path=>path.includes('sourceInfo=2')?{sourceSha256,width,height}:{scenes:sceneList},
+  submit:async command=>{cropRequests.push(command);return Response.json({status:'queued',queueId:'ngs.local.a82bf7f5-c880-49e5-b490-3712b02eef72'},{status:202});}
+ });
+ const crop=await cropView(1536,512);
+ const cropButton=walk(crop.detail,x=>x.textContent==='2:1 자르기')[0];
+ const original=walk(crop.detail,x=>x.tag==='img')[0];
+ assert.ok(original.parentElement.children.indexOf(cropButton.parentElement)<original.parentElement.children.indexOf(original));
+ assert.match(cropButton.style.cssText,/background:#087f86/);
+ cropButton.click();
+ const cropForm=walk(crop.detail,x=>x.tag==='form')[0];
+ assert.equal(walk(cropForm,x=>x.textContent==='상단 자르기').length,0);
+ walk(cropForm,x=>x.textContent==='좌우 자르기')[0].click();
+ const lines=walk(cropForm,x=>x.style.cssText?.includes('#ff3434'));
+ assert.equal(lines.length,2);
+ assert.match(lines[0].style.cssText,/border-left/);
+ assert.equal(cropRequests.length,0);
+ await cropForm.events.submit({preventDefault(){}});
+ assert.equal(cropRequests[0].requestType,'cinematic.source.crop');
+ assert.deepEqual(['left','top','right','bottom'].map(k=>cropRequests[0].payload[k]),[256,0,1280,512]);
+ assert.equal(cropRequests[0].payload.label,undefined);
+ const already=await cropView(1536,768);
+ assert.equal(walk(already.detail,x=>x.textContent==='2:1 자르기').length,0);
  const versions=await mount({source:sourceSha256,panel:'animations'});
  assert.equal(walk(versions.detail,x=>x.type==='checkbox').length,2);
  assert.equal(walk(versions.detail,x=>x.tag==='button'&&x.textContent==='수정').length,2);
@@ -302,4 +326,20 @@ test('upscale submits an exact formal request and exposes separate 2× row in th
  assert.deepEqual(scenes[0].upscaledSequences,[resultId]);
  assert.deepEqual(new Set(scenes[0].sequences),new Set([id,resultId]));
  assert.deepEqual((await (await get('&sequence='+resultId)).json()).sequence,derivative);
+});
+
+test('crop direction only follows excess axis and produces exact half-open 2:1 pixels',async()=>{
+ const {cinematicCropPresets,validCinematicCrop,cinematicCropSchema}=await import('../build/cinematic-sequence-contract.mjs');
+ const presets=(w,h)=>cinematicCropPresets(w,h).map(({label,left,top,right,bottom})=>[label,left,top,right,bottom]);
+ assert.deepEqual(presets(1536,768),[]);
+ assert.deepEqual(presets(1536,1024),[['상단 자르기',0,256,1536,1024],['하단 자르기',0,0,1536,768],['상하 자르기',0,128,1536,896]]);
+ assert.deepEqual(presets(1536,512),[['좌측 자르기',512,0,1536,512],['우측 자르기',0,0,1024,512],['좌우 자르기',256,0,1280,512]]);
+ for(const [width,height] of [[1536,1024],[1536,512],[1537,1024],[1537,512]]){
+  for(const {label,...box} of cinematicCropPresets(width,height)){
+   const p={schemaVersion:cinematicCropSchema,projectId:'binari',title:'테스트',sourceSha256,...box};
+   assert.equal(validCinematicCrop(p),true,label);
+   assert.equal(validCinematicCrop({...p,label}),false);
+   assert.equal(validCinematicCrop({...p,right:9999}),false);
+  }
+ }
 });

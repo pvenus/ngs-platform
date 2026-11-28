@@ -2,7 +2,7 @@ import {browserRequestId} from './browser-request-id.mjs';
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {cinematicPath,cinematicHash,cinematicId} from './cinematic-contract.mjs';
 import {cinematicUpscaleType,cinematicUpscaleSchema,validCinematicUpscale,cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateType,cinematicPlaybackUpdateSchema,
- cinematicSourceGenerateType,cinematicSourceGenerateSchema,cinematicSequencesRemoveType,cinematicSequencesRemoveSchema,
+ cinematicCropType,cinematicCropSchema,cinematicCropPresets,validCinematicCrop,cinematicSourceGenerateType,cinematicSourceGenerateSchema,cinematicSequencesRemoveType,cinematicSequencesRemoveSchema,
  backgroundPath,backgroundSourceType,backgroundSourceSchema,backgroundFields,validBackgroundRequest,backgroundPixelType,backgroundPixelSchema,validBackgroundPixelRequest,backgroundAnimationType,backgroundAnimationSchema,backgroundLoopPrompt,validBackgroundAnimation,
  maxSelection,validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,
  validCinematicSourceGenerate,validCinematicSequencesRemove} from './cinematic-sequence-contract.mjs';
@@ -120,7 +120,7 @@ function mountSourceRoster({items,scenes,selected,go,projectId,signal,area='cine
  signal.addEventListener('abort',()=>{remember();label.remove();query.remove();},{once:true});
 }
 export async function mountCinematicWorkspace({items,detail,tools,request,submit,projectId,item,source,panel,navigate,signal,
- enabled,playbackEnabled=false,upscaleEnabled=false,sourceEnabled=false,removeEnabled=false,deleteItem,legacyDeleteEnabled=false}){
+ enabled,playbackEnabled=false,upscaleEnabled=false,sourceEnabled=false,cropEnabled=false,removeEnabled=false,deleteItem,legacyDeleteEnabled=false}){
  const {scenes}=await request(url(projectId,{grouped:'1'}));
  if(signal.aborted)return;
  if(!Array.isArray(scenes)||!scenes.every(s=>s&&cinematicHash(s.sourceSha256)&&(s.title===null||typeof s.title==='string')&&
@@ -140,7 +140,7 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
    const title=make('input'),prompt=make('textarea');title.maxLength=120;prompt.maxLength=1000;prompt.rows=5;
    requestForm(detail,{caption:'새 시네마틱 원본 생성',signal,send,notice,isValid:validCinematicSourceGenerate,
     makePayload:()=>({schemaVersion:cinematicSourceGenerateSchema,projectId,title:title.value.trim(),prompt:prompt.value.trim()}),
-    body:form=>form.append(make('p','새 장면의 2:1 원본 이미지 한 장(1536 × 768)을 생성해요. 애니메이션은 게시 후 별도로 추가할 수 있어요.','meta'),
+    body:form=>form.append(make('p','새 장면을 2:1로 요청해요. 다른 비율로 나오면 원본을 보존하고, 자르기 후처리를 별도로 요청할 수 있어요.','meta'),
      labeled('장면 이름',title),labeled('이미지 연출 지시',prompt))});
    title.focus();
   },signal,'npc-one-stop-trigger');
@@ -183,6 +183,45 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
   const next=make('a','애니메이션 보기','prop-control cinematic-refresh');next.href=go({cineTab:'animations'});
   card.append(make('h4','원본 이미지','npc-media-heading'),img,
    make('p','이 장면에서는 게시된 원본 한 장을 그대로 사용해 애니메이션을 추가해요.','meta'),next);
+  if(cropEnabled&&typeof submit==='function')void request(url(projectId,{source:currentSource,sourceInfo:'2'})).then(info=>{
+   if(signal.aborted||info?.sourceSha256!==currentSource)return;
+   const presets=cinematicCropPresets(info.width,info.height);
+   if(!presets.length)return;
+   const cropButton=action('2:1 자르기',()=>{
+    let payload;
+    const rawTitle=sceneLabel(selected).trim();
+    const title=[...rawTitle].slice(0,108).join('')+' · 2:1';
+    requestForm(detail,{caption:'시네마틱 원본 2:1 자르기',send:queueAction(submit,cinematicCropType),notice,signal,
+     makePayload:()=>payload,isValid:validCinematicCrop,body:(form,changed,formSignal)=>{
+      const frame=make('div');frame.style.cssText='position:relative;width:100%;overflow:hidden';
+      const preview=make('img');preview.src=img.src;preview.alt='자르기 전 원본';preview.style.cssText='display:block;width:100%;height:auto';
+      const overlay=make('div');overlay.style.cssText='position:absolute;inset:0;pointer-events:none';overlay.setAttribute('aria-hidden','true');
+      frame.append(preview,overlay);
+      const line=make('p','프리셋을 선택하면 잘리는 경계가 빨간색으로 표시돼요.','meta');
+      const choices=make('div',null,'prop-actions'),buttons=[];
+      for(const {label,...box} of presets){
+       const button=action(label,()=>{
+        for(const b of buttons)b.setAttribute('aria-pressed',String(b===button));
+        payload={schemaVersion:cinematicCropSchema,projectId,title,sourceSha256:currentSource,...box};
+        overlay.replaceChildren();
+        for(const [edge,at,extent] of [['x',box.left,box.width],['x',box.right,box.width],['y',box.top,box.height],['y',box.bottom,box.height]]){
+         if(at<=0||at>=extent)continue;
+         const red=make('span');red.style.cssText=edge==='x'?'position:absolute;top:0;bottom:0;border-left:2px solid #ff3434;left:'+100*at/extent+'%':
+          'position:absolute;left:0;right:0;border-top:2px solid #ff3434;top:'+100*at/extent+'%';
+         overlay.append(red);
+        }
+        line.textContent='남는 이미지: '+(box.right-box.left)+' × '+(box.bottom-box.top)+(box.width%2&&box.width<2*box.height?' · 정확한 2:1을 위해 오른쪽 1px도 잘라요.':'');
+        changed();
+       },formSignal);
+       button.setAttribute('aria-pressed','false');buttons.push(button);choices.append(button);
+      }
+      form.append(frame,choices,line);
+     }});
+   },signal,'prop-control cinematic-crop-action');
+   cropButton.style.cssText='background:#087f86;color:#fff;border:1px solid #3ccfd1;font-weight:700;align-self:flex-start;margin:.25rem 0 .5rem';
+   const placement=make('div',null,'prop-actions');
+   placement.append(cropButton);img.before(placement);
+  }).catch(()=>{});
   body.append(card);return;
  }
  const card=make('section',null,'prop-surface'),bar=make('div',null,'prop-panel-heading');

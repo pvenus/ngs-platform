@@ -10,7 +10,7 @@ const ordinaryWrites=Object.freeze({
 export const workspaceReleaseCapabilities=Object.freeze({
  ...ordinaryWrites,
  cinematicEnabled:true,cinematicSequenceEnabled:true,cinematicUpscaleEnabled:true,cinematicPlaybackEnabled:true,
- cinematicSourceEnabled:true,cinematicRemoveEnabled:true,
+ cinematicSourceEnabled:true,cinematicCropEnabled:true,cinematicRemoveEnabled:true,
  backgroundSourceEnabled:true,backgroundPixelEnabled:true,backgroundAnimationEnabled:true,
  propAnimationRemoveEnabled:true,propActions:Object.freeze(Object.keys(propTypes)),
  npcBasicPortraitEnabled:true,poseSelectionV2Enabled:true,

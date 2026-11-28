@@ -1,6 +1,6 @@
 import {cinematicUpscaleType,validCinematicUpscale,cinematicSequencePrefix,cinematicSequenceFramePath,cinematicSequenceFrameLimit,cinematicSequenceType,cinematicPlaybackUpdateType,
  validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,validCinematicPlaybackState,
- cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,validBackgroundAnimation,validBackgroundPixelRequest,validBackgroundRequest,cinematicSequencesRemoveType,cinematicArchivePath,validCinematicSourceGenerate,validCinematicSourceResult,
+ cinematicCropType,validCinematicCrop,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,validBackgroundAnimation,validBackgroundPixelRequest,validBackgroundRequest,cinematicSequencesRemoveType,cinematicArchivePath,validCinematicSourceGenerate,validCinematicSourceResult,
  validCinematicSequencesRemove,validCinematicArchive} from './cinematic-sequence-contract.mjs';
 import {admitBackgroundReferences} from './background-workspace.mjs';
 import {hashReplicaBytes,readReplicaObject,replicaUnavailable} from './workspace-read-storage.mjs';
@@ -66,12 +66,12 @@ async function getSequence(p,id,{timeline=true}={}){
 export async function admitCinematicRequest({command,openProject,authorize}){
  const p=command?.payload,type=command?.requestType;
  const validator=type===cinematicUpscaleType?validCinematicUpscale:type===backgroundAnimationType?validBackgroundAnimation:type===cinematicSequenceType?validCinematicSequencePayload:
-  type===cinematicPlaybackUpdateType?validCinematicPlaybackUpdate:type===backgroundSourceType?validBackgroundRequest:type===backgroundPixelType?validBackgroundPixelRequest:type===cinematicSourceGenerateType?validCinematicSourceGenerate:
+  type===cinematicPlaybackUpdateType?validCinematicPlaybackUpdate:type===backgroundSourceType?validBackgroundRequest:type===backgroundPixelType?validBackgroundPixelRequest:type===cinematicCropType?validCinematicCrop:type===cinematicSourceGenerateType?validCinematicSourceGenerate:
   type===cinematicSequencesRemoveType?validCinematicSequencesRemove:validCinematicPayload;
  if(!validator(p))throw failure('NGS_CINEMATIC_PAYLOAD_INVALID',400);
  if(await authorize(p.projectId,'cinematics')===false)throw failure('PROJECT_OR_RESOURCE_DENIED',403);
  const storage=await openProject(p.projectId);
- if(type===cinematicSourceGenerateType||type===backgroundSourceType||type===backgroundPixelType){if(!storage)throw replicaUnavailable();return;}
+ if(type===cinematicCropType||type===cinematicSourceGenerateType||type===backgroundSourceType||type===backgroundPixelType){if(!storage)throw replicaUnavailable();return;}
  if(type===backgroundAnimationType){if(!storage)throw replicaUnavailable();return admitBackgroundReferences(storage,p);}
  if(type===cinematicSequencesRemoveType){
   if(!storage)throw replicaUnavailable();
@@ -133,7 +133,7 @@ export async function cinematicWorkspaceRead({query,openProject,authorize}){
  const sha=query.get('source'),id=query.get('clip'),video=query.get('video'),
   sequenceId=query.get('sequence'),frame=query.get('frame'),sourceInfo=query.get('sourceInfo'),grouped=query.get('grouped');
  if(grouped!==null&&(grouped!=='1'||query.size!==2))throw failure('CINEMATIC_QUERY_INVALID',400);
- if(sourceInfo!==null&&(sourceInfo!=='1'||sha===null))throw failure('CINEMATIC_QUERY_INVALID',400);
+ if(sourceInfo!==null&&(!['1','2'].includes(sourceInfo)||sha===null))throw failure('CINEMATIC_QUERY_INVALID',400);
  if(sequenceId!==null&&(!cinematicId(sequenceId)||sha!==null||id!==null||video!==null)||
    frame!==null&&(sequenceId===null||!/^(?:0|[1-9][0-9]?)$/.test(frame)))throw failure('CINEMATIC_QUERY_INVALID',400);
  if(sha!==null&&(!cinematicHash(sha)||id!==null||video!==null)||id!==null&&!cinematicId(id)||
@@ -161,6 +161,12 @@ export async function cinematicWorkspaceRead({query,openProject,authorize}){
   if(sourceInfo!==null){
    const info=await readReplicaObject(p,paths.info,4096);
    if(info!==null&&(!validCinematicSourceResult(info)||info.sha256!==sha||info.bytes!==paths.head.size))throw replicaUnavailable();
+   if(sourceInfo==='2'){
+    const bytes=await p.readBytes(paths.path,maxCinematicBytes);
+    if(!bytes||bytes.length<24||!pngMagic.every((n,i)=>n===bytes[i])||await hashReplicaBytes(bytes)!==sha)throw replicaUnavailable();
+    const hdr=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+    return {json:{sourceSha256:sha,width:hdr.getUint32(16),height:hdr.getUint32(20)}};
+   }
    return {json:{sourceSha256:sha,title:info?.title??null,...(paths.path===sourceRoot(sha)+'/source.png'?{sceneFolder:true}:{})}};
   }
   const bytes=await p.readBytes(paths.path,maxCinematicBytes);
