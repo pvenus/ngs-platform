@@ -254,6 +254,21 @@ test('prop-style scene controls create a single original and add only versions o
   assert.equal(c.payload.playback,undefined);
  }
  assert.notEqual(submissions[1].idempotencyKey,submissions[2].idempotencyKey);
+ const rawPlayback={durationFrames:45,speedCurve:[{frame:0,rate:1}],cameraCurve:[{frame:0,zoom:1,x:.5,y:.5}]};
+ const picked=await mount({source:sourceSha256,panel:'animations',upscaleEnabled:true,
+  request:async path=>{if(path.includes('grouped=2'))return {scenes:sceneList};
+   const id=new URL(path,'http://local.test').searchParams.get('sequence');
+   return {revision:0,playback:rawPlayback,sequence:{schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',
+    officialRequestId:id,sourceSha256,title:'처마의 종',width:512,height:256,masterFps:24,frameCount:45,
+    frames:Array.from({length:45},(_,index)=>({index,bytes:png.length,sha256:sourceSha256})),playback:rawPlayback}};
+ }});
+ assert.equal(walk(picked.detail,x=>x.textContent==='업스케일링').length,0);
+ walk(picked.detail,x=>x.className==='cinematic-animation-select')[0].click();
+ await Promise.resolve();
+ const upscale=walk(picked.detail,x=>x.textContent==='업스케일링')[0];
+ assert.ok(upscale);
+ assert.equal(upscale.parentElement.parentElement.parentElement.className,'prop-surface cinematic-animation-preview');
+
 });
 
 test('object-store upload time is carried to the shared scene sort',async()=>{
