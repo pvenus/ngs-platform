@@ -72,3 +72,10 @@ are excluded. This publication does not change existing local services.
 ## Local NGS production source
 
 The current standalone local application is in [ngs-local](ngs-local/README.md). Runtime data and credentials are not included.
+
+## NGS Viewer for team members
+
+[ngs-viewer](ngs-viewer/README.md) runs on a teammate’s own machine using the
+shared Space workspace UI. Official requests go only through the existing Space
+session; a verified copy of Space-published files is stored in a user-selected
+local P2 folder. It does not join OPS or run local production services.

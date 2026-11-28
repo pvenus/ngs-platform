@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 319,
+  "fileCountIncludingManifest": 339,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -12,8 +12,8 @@
       "sha256": "a24ae42750e22ecada7db27cce5dea325e9e169c4d5b22640fd8889ce20f6afc"
     },
     "README.md": {
-      "bytes": 3230,
-      "sha256": "3fd4fba36932346a12ba74df221de372b4093119736ef2f8c29ac72ba09fcfa5"
+      "bytes": 3735,
+      "sha256": "5b340f202b41b97b5c540834e4ce60abf87762e188ee454edb9305c4ac262352"
     },
     "THIRD-PARTY-NOTICES.md": {
       "bytes": 2143,
@@ -1274,6 +1274,86 @@
     "ngs-local/sites/npcgen/tests/map-warp.mjs": {
       "bytes": 44707,
       "sha256": "8cf17d2cdf340957405b68fabde52fa81c090538df3608e45c426ab646a0f309"
+    },
+    "ngs-local/sites/npcgen/build/object-replica.mjs": {
+      "bytes": 35648,
+      "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
+    },
+    "ngs-viewer/README.md": {
+      "bytes": 3070,
+      "sha256": "358a0a3ed83d8fc43d738cc88a4c31369a37221289a76e7790a4bc1d4809aab3"
+    },
+    "ngs-viewer/lib/assets.mjs": {
+      "bytes": 2529,
+      "sha256": "fc26e8f722ec79e3c49f034388dbde4171a04fb89da6fe0102d2da119d9ddaa9"
+    },
+    "ngs-viewer/lib/mirror.mjs": {
+      "bytes": 16698,
+      "sha256": "088dac80e5733d9beaa99fb88870fb1a8701500b7610b5404c73e92a8e0bcb81"
+    },
+    "ngs-viewer/lib/projections.mjs": {
+      "bytes": 6380,
+      "sha256": "ba1fde217daf53ae4456e794e52545198cfd8b830a897e28cf01f9d108d97752"
+    },
+    "ngs-viewer/package.json": {
+      "bytes": 202,
+      "sha256": "2aad0abe49ea30c3bda1aecbe4a14b1b993acdc045268e7a845cf1fd5abac383"
+    },
+    "ngs-viewer/public/browser.mjs": {
+      "bytes": 6978,
+      "sha256": "75241b2e232b1f4a4f6fea75ce02784d19718e1134db9d143d9f07f5ca39b79a"
+    },
+    "ngs-viewer/public/style.css": {
+      "bytes": 631,
+      "sha256": "14493bc406037379d25ecf67e777c133cda0b36f54c8d8dbf0405b679bec9bfa"
+    },
+    "ngs-viewer/tests/browser.test.mjs": {
+      "bytes": 3911,
+      "sha256": "79c41d24369a3102dc9331fb545b37cc87866c8729c459595e3d7575626129c2"
+    },
+    "ngs-viewer/tests/mirror.test.mjs": {
+      "bytes": 8715,
+      "sha256": "d8e1dee59da814335b7b208142ec03e222da0c83a79adb2e21e594b9cef8987c"
+    },
+    "ngs-viewer/tests/viewer.test.mjs": {
+      "bytes": 3383,
+      "sha256": "79a8550fc03c0206659823fa72117e6dada2d9ea76dc57fd03e3eea0402dbc76"
+    },
+    "ngs-viewer/viewer.mjs": {
+      "bytes": 6781,
+      "sha256": "f863ae6261309ab833338919eed1788a2b47b7c12ad7d4852ee4c07dabed6025"
+    },
+    "space-hosting/overlay/build/sites-worker.ts": {
+      "bytes": 13196,
+      "sha256": "dea3b41a3e6dd4fe6dceeeed27e0ec2e1c3191daebb4d02764a67a43916cb0d0"
+    },
+    "space-hosting/overlay/build/space-file-replica.d.mts": {
+      "bytes": 825,
+      "sha256": "1f66268da9687c9521ca51a61d251dd4f869aba8a07cf0facd46071173c86ccf"
+    },
+    "space-hosting/overlay/build/space-viewer-bridge.mjs": {
+      "bytes": 7559,
+      "sha256": "cf0a4b0829d756cb2d5f0530f4f8d35ab52cd86b367e58c261298cabdf93978a"
+    },
+    "space-hosting/overlay/build/space-viewer-export.d.mts": {
+      "bytes": 396,
+      "sha256": "b081f73fcc7cd6911be88821bfdba07f3ec558e5cfafebba9ac0094f64360f7c"
+    },
+    "space-hosting/overlay/build/space-viewer-export.mjs": {
+      "bytes": 7103,
+      "sha256": "b8ce31775b9bc07bc9c9b1cb8839bd2ddfdeacdeaa0afbf9b5907396cf015872"
+    },
+    "space-hosting/overlay/tests/space-file-replica.mjs": {
+      "bytes": 18790,
+      "sha256": "d4da7897d4da81bcee2b3f4483723405a2697c7e4de5b24eae8dcfce53d86a98"
+    },
+    "space-hosting/overlay/tests/space-viewer-export.mjs": {
+      "bytes": 8624,
+      "sha256": "6658b5f024cd7299b846a9d579b3c62f5408195702d0565fdd9d3d8109b67cce"
+    },
+    "tools/release/validate-ngs-source.sh": {
+      "bytes": 1068,
+      "sha256": "52023036c9f4cce3ef43efbe6ddcd1119a5b93ae6680284e478bb6351a7da801"
     }
   }
 }

@@ -167,7 +167,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   }
   return bytes;
  }
- async function list(scope=''){
+ async function list(scope='',includeSize=false){
   ready();
   if(scope!==''&&!pathOK(scope))need(false);
   // Browser adapters may request one folder prefix. The machine begin
@@ -181,24 +181,27 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
     const path=item.key.slice(legacy.length);
     if(!item.key.startsWith(legacy+subtree)||!pathOK(path))unavailable();
     verifiedMeta(item);
-    if(item.customMetadata.removed!=='1')files.set(path,item.customMetadata.sha256);
+    if(item.customMetadata.removed!=='1')files.set(path,{sha256:item.customMetadata.sha256,size:item.size});
    }
    if(!page.truncated)break;
    if(!page.cursor||cursor===page.cursor)unavailable();cursor=page.cursor;
   }while(true);
-  const published=await all(`SELECT v.path,v.sha256,v.object_key FROM ${entries} v
+  const published=await all(`SELECT v.path,v.sha256,v.object_key,v.size FROM ${entries} v
    JOIN (SELECT path,MAX(version) AS newest FROM ${entries} ${scope?'WHERE path>=? AND path<?':''} GROUP BY path) x
     ON v.path=x.path AND v.version=x.newest
    LIMIT ${maxPaths+1}`,...(scope?[subtree,high]:[]));
   if(published.length>maxPaths)unavailable();
   for(const row of published){
    if(!pathOK(row.path)||!row.path.startsWith(subtree)||!hash(row.sha256))unavailable();
-   if(row.object_key)files.set(row.path,row.sha256);else files.delete(row.path);
+   if(row.object_key){
+    if(includeSize&&!safeInt(row.size,0,nativeObjectMaximum))unavailable();
+    files.set(row.path,{sha256:row.sha256,size:row.size});
+   }else files.delete(row.path);
   }
   let bytes=2;
   if(files.size>maxPaths)unavailable();
-  return [...files].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([path,sha256])=>{
-   const item={path,sha256};bytes+=encoder.encode(JSON.stringify(item)).length+1;
+  return [...files].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([path,{sha256,size}])=>{
+   const item=includeSize?{path,sha256,size}:{path,sha256};bytes+=encoder.encode(JSON.stringify(item)).length+1;
    if(bytes>maxInventoryBytes)unavailable();return item;
   });
  }
@@ -636,5 +639,5 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   need(exact(args,'syncId'));
   return await close(name,args.syncId);
  }
- return {call,list,head,get,progress,receiveWholeFile,npcCache,readVerifiedPng,audioIndex:audioIndex.read};
+ return {call,list:scope=>list(scope),listWithSizes:scope=>list(scope,true),head,get,progress,receiveWholeFile,npcCache,readVerifiedPng,audioIndex:audioIndex.read};
 }

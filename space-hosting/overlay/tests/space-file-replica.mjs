@@ -22,6 +22,7 @@ const mini=new Miniflare({
  modules:[{type:'ESModule',path:'test.mjs',contents:`
  import {createSpaceFileReplica,spaceFileSyncTools} from './build/space-file-replica.mjs';
  import {machineResponse} from './build/space-machine-routes.mjs';
+ import {spaceViewerResponse} from './build/space-viewer-export.mjs';
  export default {async fetch(request,env){
   const url=new URL(request.url),binary=url.pathname==='/api/ngs-file-sync-file';
   let put=0,multipart=0;
@@ -31,6 +32,8 @@ const mini=new Miniflare({
    return (...args)=>{if(key==='put')put++;if(key==='createMultipartUpload')multipart++;return original.apply(target,args);};
   }}):env.BUCKET;
   const replica=createSpaceFileReplica({db:env.DB,bucket});
+  if(url.pathname.startsWith('/api/viewer/'))return spaceViewerResponse(request,{replica,
+   authorizeParticipant:async user=>user.userId==='test-team',authorizeResource:async (_,project,resource)=>project==='binari'&&resource==='props'});
   if(binary){
    const result=await machineResponse(request,{secret:'a'.repeat(64),fileReplica:replica,fileTools:spaceFileSyncTools});
    const headers=new Headers(result.headers);headers.set('x-test-puts',String(put));headers.set('x-test-multipart',String(multipart));
@@ -51,6 +54,7 @@ const mini=new Miniflare({
  `},{type:'ESModule',path:'build/space-file-replica.mjs',contents:receiver},
  {type:'ESModule',path:sourcePath,contents:core},
  module('build/space-machine-routes.mjs','../build/space-machine-routes.mjs'),
+ module('build/space-viewer-export.mjs','../build/space-viewer-export.mjs'),
  module('build/space-request-queue.mjs','../build/space-request-queue.mjs'),
  module('build/space-map-assembly.mjs','../build/space-map-assembly.mjs'),
  ...['cinematic-sequence-contract.mjs','cinematic-timeline.mjs','cinematic-player.mjs','cinematic-contract.mjs','prop-workspace-contract.mjs','map-contract.mjs','assembly-contract.mjs','file-update-envelope.mjs','assembly-sprite-layout.mjs','prop-folder-delete-contract.mjs','audio-result-index.mjs','replica-whole-file-wire.mjs','local-concept-category-contract.mjs','local-npc-planning-ui.mjs','local-concept-category-ui.mjs',
@@ -240,4 +244,18 @@ try{
  await rpc('abort',{syncId:another.syncId});
  console.log('Space signed whole binary single-PUT sizes',sizes);
  console.log('Space file replica: real workerd D1/R2 integrity, scoped inventory, replay, range, recoverable deletion and no unrelated changes PASS');
+ const viewerPath='props/fixture/large.bin',viewerPass=await rpc('begin',{scope:'binari'});
+ assert.deepEqual(await rpc('file_chunk',envelope(viewerPass,viewerPath,data)),{nextOffset:part});
+ assert.deepEqual(await rpc('file_chunk',envelope(viewerPass,viewerPath,data,part)),{nextOffset:null});
+ const native={'oai-authenticated-user-id':'test-team','oai-authenticated-user-email':'test@fixture.invalid'};
+ const viewer=(path,query,headers=native)=>mini.dispatchFetch('http://receiver.invalid/api/viewer/'+path+(query?'?'+new URLSearchParams(query):''),{headers});
+ assert.equal((await viewer('manifest',null,{})).status,401);
+ assert.deepEqual(await (await viewer('manifest')).json(),{projectId:'binari',resources:['project','props','audio'],files:[{path:viewerPath,sha256:sha,size:data.length}]});
+ const committed=await viewer('file',{path:viewerPath,sha256:sha,offset:part});
+ assert.equal(committed.status,200);
+ assert.equal(committed.headers.get('x-ngs-file-size'),String(data.length));
+ assert.deepEqual(Buffer.from(await committed.arrayBuffer()),data.subarray(part));
+ assert.equal((await viewer('file',{path:p,sha256:sha,offset:0})).status,400);
+ await rpc('finish',{syncId:viewerPass.syncId});
+
 }finally{await mini.dispose();}
