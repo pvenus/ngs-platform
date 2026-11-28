@@ -7,6 +7,7 @@ const oneMiB=1024*1024;
 const config=await (await nativeFetch('/__viewer/config',{cache:'no-store'})).json();
 const key=config.guardKey, space=config.spaceOrigin;
 const storageKey='ngs-viewer.bridge-nonce.v1';
+const port=Number(location.port)||config.port||5281;
 let nonce=sessionStorage.getItem(storageKey),popup,ready=false,booted=false,syncing=false,timer=null,deadline;
 const pending=new Map();
 function update(text){status.textContent=text;}
@@ -64,7 +65,7 @@ connect.addEventListener('click',()=>{
  rejectAll('VIEWER_SPACE_LINK_CHANGED');ready=false;sync.disabled=true;
  void local('disconnect',{}).catch(()=>{});
  nonce=random();sessionStorage.setItem(storageKey,nonce);
- popup=window.open(space+'/viewer/bridge#'+nonce,'ngs-viewer-space','popup,width=540,height=620');
+ popup=window.open(space+'/viewer/bridge#'+nonce+'.'+port,'ngs-viewer-space-'+port,'popup,width=540,height=620');
  if(!popup){update('팝업이 차단됐어요. 팝업을 허용한 뒤 다시 연결하세요.');return;}
  update('Space 창에서 팀 계정으로 로그인하고 연결을 승인하세요.');
  clearTimeout(deadline);

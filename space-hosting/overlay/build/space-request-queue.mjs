@@ -22,7 +22,7 @@ export const record=v=>v&&typeof v==='object'&&!Array.isArray(v);
 export const queueIdPattern=queuePattern.source;
 export const receiptIdPattern=officialPattern.source;
 export const cursorIdPattern=cursorPattern.source;
-export const validMachineToken=v=>typeof v==='string'&&v.length===64&&/^[a-f0-9]{64}$/u.test(v);
+export {validMachineToken} from './space-browser-auth.mjs';
 const validQueueId=v=>typeof v==='string'&&v.length===46&&queuePattern.test(v);
 const hex=x=>Array.from(new Uint8Array(x),v=>v.toString(16).padStart(2,'0')).join('');
 const utf8=new TextEncoder();

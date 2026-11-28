@@ -38,7 +38,7 @@ test('approved Space popup receives only the native request envelope and returns
    assert.equal(path,'/__viewer/disconnect');return Response.json({ok:true});
   },
   addEventListener:(name,fn)=>events.set(name,fn),
-  open(url){assert.match(url,/\/viewer\/bridge#[a-f0-9]{64}$/);return bridge;},
+  open(url){assert.match(url,/\/viewer\/bridge#[a-f0-9]{64}\.5281$/);return bridge;},
  };
  let started;
  const booted=new Promise(resolve=>{started=resolve;});

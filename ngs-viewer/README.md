@@ -4,26 +4,47 @@
 공유하며, 실제로 표시되는 메뉴와 생성·수정·삭제 권한은 로그인한 팀원의
 Space 권한과 기능 설정을 따릅니다. Viewer 자체를 OPS에 등록하지 않습니다.
 
-## 실행
+## 설치
 
-현재 로컬 저장소 구현은 macOS의 소유자 전용 파일 권한을 검증합니다.
-Node.js 24 이상을 사용하세요. 별도의 npm 패키지 설치는 필요 없습니다.
+Node.js 24 이상이 필요합니다. 설치기는 **Space 주소, P2 절대 경로, Viewer 포트**
+(기본값 5281)를 받습니다. 주소는 이 빌드에서 승인된 비나리 Space HTTPS 주소만
+허용합니다. 아무 사이트나 인증 기관으로 지정할 수 없습니다.
+
+- **macOS:** 새 P2 폴더를 만든 뒤 저장소에서 `./ngs-viewer/install-macos.sh`를
+  실행하세요. 인증이 끝나면 현재 로그인 사용자 LaunchAgent로 등록합니다.
+- **Windows:** WSL2 배포판의 Linux 파일시스템에 저장소와 P2를 두고, Windows
+  PowerShell에서 `.\ngs-viewer\install-windows.ps1`을 실행하세요. 배포판과
+  저장소의 Linux 절대 경로를 입력하세요. Windows 로그인 시 현재 사용자의
+  예약 작업이 Viewer를 시작합니다. **Windows SCM 서비스나 네이티브 Windows
+  Node 실행은 지원하지 않으며**, Windows 드라이브 경로는 P2로 사용할 수 없습니다.
+
+이미 만든 macOS P2의 명령 예시:
 
 ```sh
-mkdir -p "$HOME/NGS-P2"
-cd ngs-viewer
-npm start -- --p2 "$HOME/NGS-P2"
+./ngs-viewer/install-macos.sh \
+  --space 'https://vinus-npcgen.park-venus0518.chatgpt.site' \
+  --p2 '/Volumes/무제/NGS-Viewer-P2' --port 5281
 ```
 
-1. `http://127.0.0.1:5281`을 엽니다. 이 고정 포트는 Space 브리지에서
-   직접 승인하는 로컬 주소입니다. LAN이나 인터넷으로 제공하지 않습니다.
-2. **Space 연결**을 눌러 로그인된 팀 계정으로 연결을 승인합니다. 로그인되지
+설치기는 먼저 Space 설치 인증 경로를 확인합니다. 브라우저에서 로그인한
+팀원이 승인하면, 선택한 포트와 로컬 설치 요청에만 유효한 5분 증명을
+설치기가 Space에 확인합니다. 유효한 응답 없이는 OS 자동 실행 항목이나
+Viewer 런타임을 만들지 않습니다. Space 로그인 세션을 복사하거나 저장하지
+않습니다. 설치 경로가 미배포이거나 게이트웨이가 검증을 막으면 등록하지 않습니다.
+
+## 사용
+
+1. 등록에 사용한 `http://127.0.0.1:<포트>`를 엽니다. LAN이나 인터넷으로
+   제공하지 않습니다.
+2. **Space 연결**을 눌러 현재 팀 계정으로 연결을 승인하세요. 로그인되지
    않은 경우 브리지 창의 Space 링크로 로그인한 뒤 Viewer에서 다시 연결합니다.
    연결 창은 사용 중 열어 둡니다.
-3. 파일은 지정 폴더의 `binari/`로 받습니다. 초기 동기화가 끝나면 일반 NGS
-   화면이 열립니다. 이후 90초마다 변경을 확인하고, **P2 동기화**로 즉시
-   확인할 수도 있습니다. 다른 동기화 도구가 관리하는 기존 `binari/`를
-   덮어쓰지 않으므로 새 P2 폴더를 권장합니다.
+3. 파일은 지정 폴더의 `binari/`로 받습니다. 초기 동기화가 끝나면 NGS 화면이
+   열립니다. 이후 90초마다 변경을 확인하고, **P2 동기화**로 즉시 확인할 수도
+   있습니다. 다른 도구가 관리하는 기존 `binari/`를 덮어쓰지 않습니다.
+
+개발용 `npm start -- --p2 <폴더> --port <포트> --space <주소>`는
+서비스를 등록하지 않으며 Space 로그인 없이는 요청이나 파일을 받을 수 없습니다.
 
 ## 데이터 흐름
 
@@ -49,7 +70,7 @@ OPS에서 관리하지 않습니다. 실제 팀 계정/브라우저 팝업 연�
 ```sh
 npm test
 cd ..
-node --test space-hosting/overlay/tests/space-viewer-export.mjs
+node --test space-hosting/overlay/tests/{space-viewer-export,space-viewer-install}.mjs
 ```
 
 테스트는 모의 Space 팀 로그인으로 요청 전달, 로컬 HTTP, 해시 및 저장 경계를

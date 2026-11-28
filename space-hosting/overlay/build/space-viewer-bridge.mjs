@@ -1,5 +1,6 @@
 /** Runs only on the authenticated Space origin. No credentials cross to localhost. */
-const viewerOrigin='http://127.0.0.1:5281';
+const defaultViewerPort=5281;
+const installIssue='/api/viewer/install/issue';
 const prefix='ngs-viewer.';
 const noQuery=new Set(['/__npcgen_session','/api/project-folders','/api/viewer/manifest','/api/space/audio-concepts']);
 const keysByPath=new Map([
@@ -17,7 +18,7 @@ const fail=(status,error)=>Response.json({error},{status});
 const maxResponse=24*1024*1024;
 const encoder=new TextEncoder();
 
-export function checkedRelay(message,origin){
+export function checkedRelay(message,origin,viewerPort=defaultViewerPort){
  if(!message||typeof message!=='object'||Array.isArray(message)||typeof message.path!=='string'||
     !message.path.startsWith('/')||message.path.startsWith('//')||message.path.length>4096||
     message.path.includes('#')||/[\\\u0000-\u0020\u007f]/u.test(message.path))return null;
@@ -35,10 +36,17 @@ export function checkedRelay(message,origin){
   else return null;
  }
  if(method==='POST'){
-  if(url.pathname!=='/api/requests'||url.search||
+  if(!['/api/requests',installIssue].includes(url.pathname)||url.search||
      headers.get('x-npcgen-csrf')!==csrfPlaceholder||headers.get('x-npcgen-frontend-context')!==contextPlaceholder||
      headers.get('content-type')!=='application/json'||typeof message.body!=='string'||
      message.body.length>64*1024||!message.body.isWellFormed()||encoder.encode(message.body).length>64*1024)return null;
+  if(url.pathname===installIssue){
+   if(message.body.length>256)return null;
+   let approval;
+   try{approval=JSON.parse(message.body);}catch{return null;}
+   if(!approval||Object.keys(approval).sort().join(',')!=='challengeSha256,port'||
+    approval.port!==viewerPort||typeof approval.challengeSha256!=='string'||!/^[a-f0-9]{64}$/u.test(approval.challengeSha256))return null;
+  }
  }else{
   if(message.body!==undefined&&message.body!==null)return null;
   if(method==='HEAD'&&!['/api/project-folders','/api/project-folders/icon'].includes(url.pathname))return null;
@@ -59,7 +67,7 @@ export async function relayFetch(spec,request=fetch){
   const current=await request(session,opts);
   if(!current.ok)return fail(current.status,current.status===401?'SIGN_IN_REQUIRED':'VIEWER_SPACE_SESSION_UNAVAILABLE');
   const s=await current.json();
-  if(s?.state!=='authenticated'||s?.backend!=='space'||s?.requestWritable!==true)return fail(403,'VIEWER_SPACE_REQUEST_DENIED');
+  if(s?.state!=='authenticated'||s?.backend!=='space'||(spec.url.pathname!==installIssue&&s?.requestWritable!==true))return fail(403,'VIEWER_SPACE_REQUEST_DENIED');
   if(typeof s.csrfToken!=='string'||typeof s.contextId!=='string')return fail(503,'VIEWER_SPACE_SESSION_UNAVAILABLE');
   spec.headers.set('x-npcgen-csrf',s.csrfToken);
   spec.headers.set('x-npcgen-frontend-context',s.contextId);
@@ -93,8 +101,10 @@ export function runBridge(runtime=globalThis){
  const {window,document,location}=runtime;
  const request=runtime.fetch??fetch;
  const node=document.getElementById('viewer-status'),button=document.getElementById('viewer-allow');
- const peer=window.opener,nonce=location.hash.slice(1);
- if(window.top!==window||!peer||!/^[a-f0-9]{64}$/u.test(nonce)){
+ const peer=window.opener,fragment=/^#([a-f0-9]{64})(?:\.([1-9][0-9]{3,4}))?$/u.exec(location.hash);
+ const nonce=fragment?.[1],port=fragment?.[2]?Number(fragment[2]):defaultViewerPort;
+ const viewerOrigin='http://127.0.0.1:'+port;
+ if(window.top!==window||!peer||!nonce||port<1024||port>65535){
   button.hidden=true;
   node.textContent='로컬 Viewer의 연결 버튼으로 이 창을 다시 열어 주세요.';
   return;
@@ -109,7 +119,7 @@ export function runBridge(runtime=globalThis){
      typeof m.id!=='string'||!/^[A-Za-z0-9_-]{1,64}$/u.test(m.id)||seen.has(m.id))return;
   const id=m.id;
   let spec;
-  try{spec=checkedRelay(m,location.origin);}catch{spec=null;}
+  try{spec=checkedRelay(m,location.origin,port);}catch{spec=null;}
   if(!spec){await error(id,403,'VIEWER_RELAY_ROUTE_DENIED');return;}
   if(active>=8){await error(id,503,'VIEWER_RELAY_BUSY');return;}
   seen.add(id);

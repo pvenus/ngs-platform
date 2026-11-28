@@ -1,6 +1,7 @@
 import handler from "vinext/server/fetch-handler";
 import { sharedNgsResponse } from "./shared-ngs-assets";
 import { spaceViewerResponse } from "./space-viewer-export.mjs";
+import { spaceViewerInstallResponse } from "./space-viewer-install.mjs";
 import viewerBridgeScript from "./space-viewer-bridge.mjs?raw";
 import { admitSpaceMapAssembly } from "./space-map-assembly.mjs";
 import { replicaSyncProgressPath,readReplicaSyncProgress } from "../ngs-local/sites/npcgen/build/replica-sync-progress.mjs";
@@ -80,8 +81,11 @@ export default {
         return true;
       } catch { return false; }
     };
+    const authorizeViewerParticipant=async (user:{userId:string,email:string})=>await authorize(user)&&!!await mapAssemblyGrant(user);
+    const viewerInstall=await spaceViewerInstallResponse(request,{secret,authorizeParticipant:authorizeViewerParticipant});
+    if(viewerInstall)return viewerInstall;
     const viewer=await spaceViewerResponse(request,{replica:replicaReads?fileReplica:undefined,bridgeScript:viewerBridgeScript,
-      authorizeParticipant:async user=>await authorize(user)&&!!await mapAssemblyGrant(user),authorizeResource:workspaceAuthorize});
+      authorizeParticipant:authorizeViewerParticipant,authorizeResource:workspaceAuthorize});
     if(viewer)return viewer;
     const hasPublishedNpc = replicaReads ? async (user:{userId:string,email:string},npcId:string) => {
       // The hosted queue must prove the same exact ID from the existing

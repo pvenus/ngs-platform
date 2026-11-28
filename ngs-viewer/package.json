@@ -4,5 +4,5 @@
   "private": true,
   "type": "module",
   "engines": {"node": ">=24"},
-  "scripts": {"start": "node viewer.mjs", "test": "node --test tests/*.test.mjs"}
+  "scripts": {"start": "node viewer.mjs", "install:viewer": "node install.mjs", "test": "node --test tests/*.test.mjs"}
 }

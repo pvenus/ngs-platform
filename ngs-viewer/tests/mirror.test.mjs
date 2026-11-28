@@ -4,7 +4,7 @@ import {chmodSync,existsSync,linkSync,mkdirSync,mkdtempSync,readFileSync,realpat
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
-import {mirrorChunkBytes,openMirror,replicaPathResource,validateMirrorManifest} from '../lib/mirror.mjs';
+import {assertMirrorWslFilesystem,mirrorChunkBytes,mirrorRuntime,openMirror,replicaPathResource,validateMirrorManifest} from '../lib/mirror.mjs';
 
 const sha=v=>createHash('sha256').update(v).digest('hex');
 const row=(path,value)=>({path,sha256:sha(value),size:Buffer.byteLength(value)});
@@ -144,4 +144,20 @@ test('restores an interrupted multi-file publish journal and removes abandoned s
  assert.deepEqual(newer.snapshot(),state);assert.equal(readFileSync(file(newer,p),'utf8'),'original');
  assert.equal(existsSync(file(newer,q)),false);assert.equal(existsSync(stage),false);
  assert.equal(existsSync(abandoned),false);
+});
+
+test('native Windows and WSL1 fail closed; WSL2 requires a non-root user and native Linux volume',()=>{
+ const classify=(platform,kernel,userId=501,wslEnvironment=false)=>mirrorRuntime({platform,kernel,userId,wslEnvironment});
+ assert.throws(()=>classify('win32','10.0.26100'),same('VIEWER_P2_NATIVE_WINDOWS_UNSUPPORTED_USE_WSL2'));
+ assert.throws(()=>classify('linux','4.4.0-19041-Microsoft'),same('VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM'));
+ assert.throws(()=>classify('linux','5.15.167.4-microsoft-standard-WSL2',0),same('VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM'));
+ assert.throws(()=>classify('linux','6.0.0',501,true),same('VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM'));
+ assert.equal(classify('linux','5.15.167.4-microsoft-standard-WSL2'),'wsl2');
+ assert.equal(classify('linux','4.19.128-microsoft-standard'),'wsl2');
+ assert.equal(classify('linux','6.8.0'),'posix');
+ assert.equal(classify('darwin','25.2.0'),'posix');
+ assert.doesNotThrow(()=>assertMirrorWslFilesystem(0xef53));
+ for(const type of [0x01021997,0x5346544e,0xff534d42,0x65735546]){
+  assert.throws(()=>assertMirrorWslFilesystem(type),same('VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM'));
+ }
 });

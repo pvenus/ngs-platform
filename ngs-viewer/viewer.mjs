@@ -11,6 +11,7 @@ import {localProjection,viewerReadRoute} from './lib/projections.mjs';
 import {openMirror} from './lib/mirror.mjs';
 
 export const viewerPort=5281;
+export const validViewerPort=port=>Number.isInteger(port)&&port>=1024&&port<=65535;
 export const binariSpace='https://vinus-npcgen.park-venus0518.chatgpt.site';
 const oneMiB=1024*1024;
 const fault=(code,status)=>Object.assign(Error(code),{status});
@@ -33,10 +34,11 @@ async function jsonBody(req){
  }
 }
 const comparator=key=>value=>typeof value==='string'&&/^[a-f0-9]{64}$/u.test(value)&&timingSafeEqual(Buffer.from(value),Buffer.from(key));
-function spaceRoot(value){
- const u=new URL(value);
+export function viewerSpaceOrigin(value){
+ let u;
+ try{u=new URL(value);}catch{throw Error('VIEWER_SPACE_ORIGIN_INVALID');}
  if(u.protocol!=='https:'||u.username||u.password||u.port||u.pathname!=='/'||u.search||u.hash||
-    !/^[a-z0-9-]+\.[a-z0-9-]+\.chatgpt\.site$/u.test(u.hostname))
+    u.origin!==binariSpace)
   throw Error('VIEWER_SPACE_ORIGIN_INVALID');
  return u.origin;
 }
@@ -51,7 +53,7 @@ async function send(res,response,method){
 
 export async function createViewer({root,space=binariSpace,mirror=null}={}){
  if(typeof root!=='string'||!isAbsolute(root)||resolve(root)!==root)throw Error('VIEWER_P2_ABSOLUTE_REQUIRED');
- const origin=spaceRoot(space);
+ const origin=viewerSpaceOrigin(space);
  const assets=viewerAssets(), guardKey=randomBytes(32).toString('hex'), validKey=comparator(guardKey);
  const receiver=mirror??await openMirror(root);
  let publishing=false,snapshot=null;
@@ -65,7 +67,7 @@ export async function createViewer({root,space=binariSpace,mirror=null}={}){
    const url=new URL(req.url,'http://127.0.0.1:'+port);
    const path=url.pathname,method=req.method;
    if(path==='/__viewer/config'&&method==='GET'&&!url.search)
-    return json(200,{spaceOrigin:origin,guardKey,committed:snapshot!==null});
+    return json(200,{spaceOrigin:origin,guardKey,committed:snapshot!==null,port});
    if(path.startsWith('/__viewer/')&&method==='POST'){
     if(!validKey(req.headers['x-ngs-viewer-key']))throw fault('VIEWER_WRITE_DENIED',403);
     if(path==='/__viewer/begin'&&!url.search)return json(200,await receiver.begin(await jsonBody(req)));
@@ -108,14 +110,26 @@ export async function createViewer({root,space=binariSpace,mirror=null}={}){
  return server;
 }
 
+export function viewerOptions(args){
+ if(args.length%2!==0||args.length<2||args.length>6)throw Error('VIEWER_ARGUMENTS');
+ const pairs=new Map();
+ for(let i=0;i<args.length;i+=2){
+  if(pairs.has(args[i])||!['--p2','--port','--space'].includes(args[i]))throw Error('VIEWER_ARGUMENTS');
+  pairs.set(args[i],args[i+1]);
+ }
+ const root=pairs.get('--p2'),raw=pairs.get('--port')??String(viewerPort),port=Number(raw);
+ if(typeof root!=='string'||!isAbsolute(root)||resolve(root)!==root||
+    !/^[1-9][0-9]{3,4}$/u.test(raw)||!validViewerPort(port))throw Error('VIEWER_ARGUMENTS');
+ return {root,port,space:viewerSpaceOrigin(pairs.get('--space')??binariSpace)};
+}
+
 if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
- const args=process.argv.slice(2);
  try{
-  if(args.length!==2||args[0]!=='--p2')throw Error('Usage: npm start -- --p2 /absolute/local/P2');
-  const server=await createViewer({root:args[1]});
-  server.on('error',error=>{console.error(error?.code==='EADDRINUSE'?'Viewer port 5281 is already in use.':'Viewer startup failed.');process.exitCode=1;});
+  const {root,port,space}=viewerOptions(process.argv.slice(2));
+  const server=await createViewer({root,space});
+  server.on('error',error=>{console.error(error?.code==='EADDRINUSE'?'That Viewer port is already in use.':'Viewer startup failed.');process.exitCode=1;});
   const stop=()=>server.close();
   process.once('SIGINT',stop);process.once('SIGTERM',stop);
-  server.listen(viewerPort,'127.0.0.1',()=>console.log('NGS Viewer: http://127.0.0.1:'+viewerPort));
- }catch(e){console.error(e?.message??'Viewer startup failed.');process.exitCode=1;}
+  server.listen(port,'127.0.0.1',()=>console.log('NGS Viewer: http://127.0.0.1:'+port));
+ }catch(e){console.error(e?.message==='VIEWER_ARGUMENTS'?'Usage: npm start -- --p2 /absolute/local/P2 --port 5281 --space https://…chatgpt.site':e?.message??'Viewer startup failed.');process.exitCode=1;}
 }

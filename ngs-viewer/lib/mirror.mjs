@@ -1,7 +1,8 @@
 /** Private, managed Space -> local Binari replica. No network or request authority. */
 import {createHash,randomUUID} from 'node:crypto';
 import {closeSync,constants,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,
- readSync,readdirSync,realpathSync,renameSync,rmdirSync,rmSync,unlinkSync,writeFileSync,writeSync} from 'node:fs';
+ readSync,readdirSync,realpathSync,renameSync,rmdirSync,rmSync,unlinkSync,statfsSync,writeFileSync,writeSync} from 'node:fs';
+import {release} from 'node:os';
 import {dirname,isAbsolute,join,resolve} from 'node:path';
 import {validWorkspacePath} from '../../ngs-local/sites/npcgen/build/workspace-read-storage.mjs';
 
@@ -21,7 +22,7 @@ const sameOwner=(s,privateMode=true)=>s&&Number(s.uid)===uid&&!(Number(s.mode)&(
 const privateFile=s=>s?.isFile()&&sameOwner(s)&&s.nlink===1n;
 const hash=()=>createHash('sha256');
 
-function directory(path,{create=false,privateMode=true}={}){
+function ownedDirectory(path,{create=false,privateMode=true}={}){
  let s=stat(path);
  if(!s&&create){
   try{mkdirSync(path,{mode:0o700});}catch(e){if(e.code!=='EEXIST')throw e;}
@@ -112,9 +113,36 @@ export function validateMirrorManifest(value){
  return {projectId:'binari',files:value.files.map(x=>({...x})),...(supplied?{resources:[...resources]}:{})};
 }
 
+// Separate classification from filesystem operations so tests can exercise
+// fail-closed Windows paths even on the POSIX development host.
+export function mirrorRuntime({platform,kernel,wslEnvironment,userId}){
+ assert(platform!=='win32','VIEWER_P2_NATIVE_WINDOWS_UNSUPPORTED_USE_WSL2',400);
+ const onWsl=platform==='linux'&&(/microsoft|wsl/iu.test(kernel)||wslEnvironment);
+ if(!onWsl)return 'posix';
+ assert(/wsl2|microsoft-standard/iu.test(kernel)&&Number.isInteger(userId)&&userId>0,
+  'VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM',400);
+ return 'wsl2';
+}
+export function assertMirrorWslFilesystem(type){
+ // Linux's ext2/3/4 magic; the default WSL2 distro VHD is ext4.
+ assert(type===0xef53,'VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM',400);
+}
 export async function openMirror(root){
+ const onWsl=mirrorRuntime({platform:process.platform,kernel:release(),
+  wslEnvironment:Boolean(process.env.WSL_DISTRO_NAME||process.env.WSL_INTEROP),userId:uid})==='wsl2';
  assert(uid!==undefined&&typeof root==='string'&&isAbsolute(root)&&resolve(root)===root&&
-  directory(root,{privateMode:false}),'VIEWER_P2_DIRECTORY_REQUIRED',400);
+  ownedDirectory(root,{privateMode:false}),'VIEWER_P2_DIRECTORY_REQUIRED',400);
+ // Windows-mounted NTFS and network paths may expose synthetic Unix modes.
+ // Do not accept those as equivalent to a native Linux filesystem.
+ if(onWsl)assertMirrorWslFilesystem(statfsSync(root).type);
+ const device=stat(root).dev;
+ const directory=(path,opts)=>{
+  if(onWsl){
+   const s=stat(path);
+   if(s)assert(s.dev===device,'VIEWER_P2_UNSAFE_DIRECTORY');
+  }
+  return ownedDirectory(path,opts);
+ };
  const projectRoot=join(root,'binari'), internal=join(root,'.ngs-viewer'), statePath=join(internal,'replica.json'),
   markerPath=join(internal,'managed.json'),lockPath=join(internal,'writer-lock');
  assert(directory(internal,{create:true}),'VIEWER_P2_UNSAFE_DIRECTORY');
