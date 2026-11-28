@@ -1,0 +1,89 @@
+name: Team Viewer build
+
+on:
+  push:
+    branches: [team-viewer]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: team-viewer-current
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.repository == 'pvenus/ngs-platform' && github.ref == 'refs/heads/team-viewer'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up the pinned Node runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.21.0
+      - name: Validate the Viewer and Space contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix ngs-viewer test
+          node --test space-hosting/overlay/tests/{space-viewer-export,space-viewer-install}.mjs ngs-local/sites/npcgen/tests/pds-mcp-file-sync.mjs
+
+  package:
+    if: github.repository == 'pvenus/ngs-platform' && github.ref == 'refs/heads/team-viewer'
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Package tracked Viewer runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir output
+          git archive --format=tar.gz --prefix=ngs-platform/ --output=output/team-viewer-source.tar.gz "$GITHUB_SHA" \
+            ngs-viewer ngs-local/sites/npcgen/build \
+            space-hosting/overlay/build/shared-ngs-assets.ts space-hosting/overlay/build/shared-ngs-response.mjs
+          printf '%s\n' "$GITHUB_SHA" > output/commit.txt
+          (cd output && sha256sum team-viewer-source.tar.gz > SHA256SUMS)
+      - name: Save the signed-off build for this commit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: team-viewer-${{ github.sha }}
+          path: output/
+          if-no-files-found: error
+          retention-days: 30
+
+  promote:
+    if: github.repository == 'pvenus/ngs-platform' && github.ref == 'refs/heads/team-viewer'
+    needs: package
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: Move only the tested Git branch, never force
+        shell: bash
+        run: |
+          set -euo pipefail
+          tip="$(git ls-remote --exit-code origin refs/heads/team-viewer | cut -f1)"
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            echo 'A newer candidate is already pending; skip this promotion.'
+            exit 0
+          fi
+          git push origin "$GITHUB_SHA:refs/heads/team-viewer-stable"

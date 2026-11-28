@@ -14,11 +14,17 @@
 ## 2. GitHub에서 받기
 
 ```sh
-git clone --branch team-viewer --single-branch https://github.com/pvenus/ngs-platform.git
+git clone --branch team-viewer-stable --single-branch https://github.com/pvenus/ngs-platform.git
 cd ngs-platform
 ```
 
-이미 저장소를 받았다면 팀 배포 기준은 `team-viewer` 브랜치입니다.
+`team-viewer`에 코드가 올라가면 GitHub Actions가 macOS·Windows 검사를 합니다.
+두 환경이 모두 통과한 커밋만 `team-viewer-stable`로 반영됩니다. 그 전에는
+직전 통과 버전이 남습니다. 첫 검사 전에는 이 브랜치가 아직 존재하지 않을 수 있습니다.
+별도로 빌드 파일과 SHA-256 해시는 해당 [Actions 실행](https://github.com/pvenus/ngs-platform/actions/workflows/team-viewer.yml)에서 확인할 수 있습니다.
+
+이미 설치한 서비스는 설치 시점의 실행본을 사용합니다. 브랜치가 갱신돼도 팀원
+PC가 자동으로 바뀌지는 않습니다.
 
 ## 3. 설치 및 실행
 

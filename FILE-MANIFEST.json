@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 368,
+  "fileCountIncludingManifest": 369,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1280,8 +1280,8 @@
       "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
     },
     "ngs-viewer/README.md": {
-      "bytes": 3521,
-      "sha256": "7c81d20bd4cbe82af45e7b1439de9e9e39d21500cc8efbd1f00b0d6713fb34fa"
+      "bytes": 4085,
+      "sha256": "192cf12bf9b8a45536802b4060e4d9c3d766103c33399250b1672bb1acdefcdd"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1470,6 +1470,10 @@
     "ngs-viewer/setup/codex-discovery.mjs": {
       "bytes": 1126,
       "sha256": "6d7d0a4c80a48beb5ff1165d779a52cbb99ae34bedf465228edd9bc71476a57b"
+    },
+    ".github/workflows/team-viewer.yml": {
+      "bytes": 3115,
+      "sha256": "311df8bc81233a71b0f57c99aa652b41d6ddc3e47e3afc2c4d526bb23b8aea39"
     }
   }
 }
