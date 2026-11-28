@@ -58,3 +58,37 @@ test('shared MCP pull only tombstones files still deleted on re-comparison', {sk
  assert.equal((await pullSpaceToP2({mirror,remote:remote([]).get})).removed,1);
  await assert.rejects(read(path),{code:'ENOENT'});
 });
+
+test('downloads ten distinct files in parallel, with each file read strictly in offset order',
+ {skip:process.platform==='win32',timeout:5000},async t=>{
+ const {mirror,read}=await fixture(t), full=Buffer.alloc(mirrorChunkBytes+33,47);
+ const data=Array.from({length:12},(_,i)=>['props/file-'+i+'/body.png',full]);
+ const upstream=remote(data), active=new Set(), offsets=new Map();
+ let peak=0,release,tenStarted;
+ const firstWave=new Promise(resolve=>{release=resolve;});
+ const parallelReached=new Promise(resolve=>{tenStarted=resolve;});
+ const pass=pullSpaceToP2({mirror,remote:async path=>{
+  if(path==='/api/viewer/manifest')return upstream.get(path);
+  const q=new URL(path,'http://127.0.0.1').searchParams, key=q.get('path'), offset=Number(q.get('offset'));
+  assert.equal(active.has(key),false,'chunks of the same file must not overlap');
+  active.add(key);
+  peak=Math.max(peak,active.size);
+  assert.ok(peak<=10,'must not start an eleventh file');
+  const sequence=offsets.get(key)??[];
+  assert.deepEqual(sequence,offset===0?[]:[0]);sequence.push(offset);offsets.set(key,sequence);
+  if(active.size===10)tenStarted();
+  try{await firstWave;return await upstream.get(path);}
+  finally{active.delete(key);}
+ }});
+ // Always settle the blocked first wave before cleaning its scratch files.
+ try{
+  await Promise.race([parallelReached,new Promise((_,reject)=>{
+   const timer=setTimeout(()=>reject(Error('did not admit ten files')),1500);timer.unref();
+  })]);
+  assert.equal(active.size,10);
+ }finally{release();}
+ const result=await pass;
+ assert.equal(peak,10);
+ assert.deepEqual(result,{files:12,changed:12,removed:0,failed:0});
+ for(const [path] of data){assert.deepEqual(offsets.get(path),[0,mirrorChunkBytes]);assert.deepEqual(await read(path),full);}
+});

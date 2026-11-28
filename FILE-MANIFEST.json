@@ -1280,8 +1280,8 @@
       "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
     },
     "ngs-viewer/README.md": {
-      "bytes": 4085,
-      "sha256": "192cf12bf9b8a45536802b4060e4d9c3d766103c33399250b1672bb1acdefcdd"
+      "bytes": 4219,
+      "sha256": "18d5a28c93815492fb23834762315a6d715bed9572d83801d920a910a0d2f217"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1412,8 +1412,8 @@
       "sha256": "d9026e7f4c88b3bba9ff5c0474822f127dc02a44995c50307388616d4d47a667"
     },
     "ngs-viewer/lib/sync.mjs": {
-      "bytes": 7551,
-      "sha256": "baf1a8ad26e1a921baae42fbd83f51e38bd20670ca24db2e579b5c84e7394f68"
+      "bytes": 7786,
+      "sha256": "09161ff3edf35257b022d5bd96c8fc5854a13a25d1e23373cc2ee39840b39ad8"
     },
     "ngs-local/sites/npcgen/build/local-project-workspace.mjs": {
       "bytes": 4771,
@@ -1424,8 +1424,8 @@
       "sha256": "6e8e33e0a309a6844c0e743bd22936f799102e3d339221f3f469577697228933"
     },
     "ngs-viewer/tests/sync.test.mjs": {
-      "bytes": 3474,
-      "sha256": "0a513f69d61aeb2b63331c809ed0f0e9f87a159c5f4943b4008776ced0fe4382"
+      "bytes": 5246,
+      "sha256": "41a624b47cebbe7de952cedc7f92c83d03c28aaea500107b72db9c261d683bc9"
     },
     "ngs-viewer/tests/windows-storage.test.mjs": {
       "bytes": 3095,

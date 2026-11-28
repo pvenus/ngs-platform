@@ -6,13 +6,14 @@ import {pushProjectFiles,shareFileTransferSlot} from '../../ngs-local/sites/npcg
 import {replicaPathResource,validateMirrorManifest,mirrorChunkBytes} from './mirror.mjs';
 
 const scope='binari', oneMiB=mirrorChunkBytes;
+export const viewerDownloadFileLimit=10;
 const invalid=()=>Error('VIEWER_MCP_SYNC_INVALID');
 const require=value=>{if(!value)throw invalid();};
 const match=(item,meta)=>item.path===meta.path&&item.sha256===meta.sha256&&item.size===meta.size;
 
-export async function pullSpaceToP2({mirror,remote,signal,parallelism=20,onFileError=()=>{}}){
+export async function pullSpaceToP2({mirror,remote,signal,parallelism=viewerDownloadFileLimit,sourceParallelism=parallelism,onFileError=()=>{}}){
  const rows=new Map(),failed=new Set(),removed=new Set(),plannedFiles=new Map();
- const chunkSlot=shareFileTransferSlot(2), transferSlot=shareFileTransferSlot(parallelism);
+ const chunkSlot=shareFileTransferSlot(sourceParallelism), transferSlot=shareFileTransferSlot(parallelism);
  const syncId='ngs.sync.'+randomUUID();
  let manifest,active,comparisonCount=0,last;
  const pds=createFolderMcpClient({call:async(name,args)=>{
@@ -140,7 +141,8 @@ export function createViewerSyncQueue(mirror,{onFinish=()=>{},onAccessLost=()=>{
     resolve(dto);
    }});
   });
-  void pullSpaceToP2({mirror,remote,signal:run.control.signal}).then(value=>{
+  // Preserve the legacy browser bridge limits. Team Viewer uses the Codex background path.
+  void pullSpaceToP2({mirror,remote,signal:run.control.signal,parallelism:20,sourceParallelism:2}).then(value=>{
    run.result=value;run.state='completed';onFinish(value);
   },e=>{
    run.error=/^[A-Z0-9_]+$/u.test(e?.message??'')?e.message:'VIEWER_SPACE_SYNC_FAILED';run.state='failed';
