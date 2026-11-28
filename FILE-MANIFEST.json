@@ -1452,12 +1452,12 @@
       "sha256": "17a16f24566f56134a91f0a16172dcb676f7073560739468e81126535188f807"
     },
     "ngs-viewer/lib/codex-transport.mjs": {
-      "bytes": 3870,
-      "sha256": "825e82a5e224908609cac9cf162eef706d443ce13279fe22f623f3188341db50"
+      "bytes": 4001,
+      "sha256": "d2cbe0047b7339156a4ec1f1ecb91e508f6205afd35d5722cede6f353adcf971"
     },
     "ngs-viewer/tests/codex-transport.test.mjs": {
-      "bytes": 3295,
-      "sha256": "3127da5237b012fab4b754cd80cd14b9372f30b0736fb1e67e72d93e1336013f"
+      "bytes": 3300,
+      "sha256": "fe503412abd4e965abf51620f2a1f2c781571eb1a49b4a0a31c189b1b8c6f5fe"
     },
     "ngs-viewer/lib/request-forward.mjs": {
       "bytes": 850,

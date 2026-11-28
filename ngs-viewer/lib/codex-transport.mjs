@@ -74,7 +74,9 @@ export function codexViewerClient({binary,server,socket,mode='proxy',spawnChild=
   if(!names.has(name))throw Error('VIEWER_CODEX_TOOL_DENIED');
   signal?.throwIfAborted();
   const state=get(),threadId=await state.ready;
-  return rpc(state,'mcpServer/tool/call',{server,threadId,tool:name,arguments:args},signal);
+  // The Sites-managed plugin appears as a namespace of Codex's connected apps.
+  const tool=server==='codex_apps'?'npcgen.'+name:name;
+  return rpc(state,'mcpServer/tool/call',{server,threadId,tool,arguments:args},signal);
  }
  return {tool,close:()=>{if(current)stop(current);}};
 }

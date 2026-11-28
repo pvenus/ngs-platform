@@ -8,7 +8,7 @@ import {appendViewerDiscovery} from '../../space-hosting/overlay/build/space-vie
 
 test('Codex direct tool call pins approved tools and never starts an AI turn',async t=>{
  const seen=[],children=[];
- const client=codexViewerClient({binary:'/fixture/codex',server:'team-binari',spawnChild(binary,args){
+ const client=codexViewerClient({binary:'/fixture/codex',server:'codex_apps',spawnChild(binary,args){
   assert.equal(binary,'/fixture/codex');assert.deepEqual(args,['app-server','proxy']);
   const child=new EventEmitter();children.push(child);child.stdout=new PassThrough();
   child.kill=()=>child.emit('exit');
@@ -26,7 +26,7 @@ test('Codex direct tool call pins approved tools and never starts an AI turn',as
  assert.deepEqual(JSON.parse((await remote('/api/viewer/manifest')).bytes),{projectId:'binari',files:[]});
  assert.deepEqual(seen.map(x=>x.method),['initialize','initialized','thread/start','mcpServer/tool/call']);
  assert.deepEqual(seen.at(-2).params,{ephemeral:true,sandbox:'read-only',approvalPolicy:'never'});
- assert.deepEqual(seen.at(-1).params,{server:'team-binari',threadId:'ephemeral-thread',tool:'ngs_viewer_manifest',arguments:{}});
+ assert.deepEqual(seen.at(-1).params,{server:'codex_apps',threadId:'ephemeral-thread',tool:'npcgen.ngs_viewer_manifest',arguments:{}});
  await assert.rejects(client.tool('write',{}),/VIEWER_CODEX_TOOL_DENIED/);
  assert.equal(seen.length,4);
  children[0].emit('exit');
