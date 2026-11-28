@@ -37,11 +37,12 @@ async function selected(project,propId){
 
 export async function admitPropRequest({openProject,command,actions=[],authorize}){
  const k=propAction(command.requestType);
+ if(command.requestType==='prop.regenerate')throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
  if(!k)return;
  if(!actions.includes(k)||k==='generate'&&Array.isArray(command.payload?.scalePercents)&&!actions.includes('scale'))throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
  const p=command.payload;
  if(!validPropPayload(command.requestType,p))throw invalid();
- if(['generate','regenerate'].includes(k)&&p.motion==='subtle')throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
+ if(k==='generate'&&p.motion==='subtle')throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
  if(await authorize?.(p.projectId,'props')===false)throw fail('PROJECT_OR_RESOURCE_DENIED',403);
  const project=await openProject(p.projectId);
  if(!project)throw unavailable();
@@ -59,10 +60,8 @@ export async function admitPropRequest({openProject,command,actions=[],authorize
   const {p:current,row}=await selected(project,p.propId);
   if(current.revision!==p.source.revision||current.sha256!==p.source.sha256)throw fail('PROP_WORKSPACE_SOURCE_STALE',409);
   if(k==='animation'&&row.animations.some(a=>a?.id===p.motionId))throw fail('PROP_WORKSPACE_MOTION_EXISTS',409);
-  if(k==='scale'&&p.scalePercents.some(pct=>row.scaleVariants?.some(v=>v.scalePercent===pct)))
-   throw fail('PROP_WORKSPACE_SCALE_EXISTS',409);
  }
- if(k==='generate'||k==='regenerate'){
+ if(k==='generate'){
   await authorize?.(p.projectId,'concept');
   if((await propDesignPin(openProject,p.projectId)).designContextSha256!==p.designContextSha256)
    throw fail('PROP_DESIGN_PIN_STALE',409);

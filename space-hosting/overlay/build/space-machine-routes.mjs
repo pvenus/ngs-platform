@@ -11,7 +11,7 @@ export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
  ['owner','editor','viewer'].includes(grant.role);
 import {cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
 import {cinematicType} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
-import {propAction,validPropActions} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
+import {propAction,propTypes,validPropActions} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
 const chunkTool='ngs_file_sync_file_chunk',small=32*1024;
 const deploymentStatusTool=Object.freeze({name:'space_ngs_deployment_status',
@@ -133,7 +133,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
  try{
   need(typeof authorize==='function'&&await authorize({userId:id,email})===true,403,'PROJECT_OR_RESOURCE_DENIED');
   const actor=await hash(JSON.stringify(['space.queue.actor.v1',id])),tokens=await csrf(secret,actor),service=new SpaceRequestQueue(db);
-  const activeProps=replicaReads&&workspaceReady&&validPropActions(propActions)&&typeof admitProp==='function'?propActions:[];
+  const activeProps=replicaReads&&workspaceReady&&validPropActions(propActions)&&typeof admitProp==='function'?propActions.filter(action=>Object.hasOwn(propTypes,action)):[];
   const nativeReady=replicaReads&&workspaceReady&&typeof admitCinematic==='function';
   const activeNpcBasic=replicaReads&&workspaceReady&&npcBasicPortraitEnabled===true;
   const activeCinematic=nativeReady&&cinematicEnabled===true;

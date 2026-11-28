@@ -317,8 +317,8 @@ test('Space separation is opt-in and binds one exact authorized original source 
 test('Space prop mutation requires its own explicit capability and existing browser CSRF/actor grants',async t=>{
  const db=store(t),a=headers('a'),seen=[];
  const options={db,secret:token,authorize:async()=>true,authorizeWrite:async user=>user.userId==='a',
-  replicaReads:true,workspaceReady:true,propActions:['animation']};
- const admitProp=async (user,cmd,actions)=>{assert.equal(user.userId,'a');assert.deepEqual(actions,['animation']);seen.push(cmd);};
+  replicaReads:true,workspaceReady:true,propActions:['animation','scale','regenerate']};
+ const admitProp=async (user,cmd,actions)=>{assert.equal(user.userId,'a');assert.deepEqual(actions,['animation','scale']);seen.push(cmd);};
  const inactive=(...args)=>browserQueueResponse(request(...args),options);
  const active=(...args)=>browserQueueResponse(request(...args),{...options,admitProp});
  const cfg=async browser=>(await (await browser('/__npcgen_session','GET',a)).json());
@@ -327,7 +327,7 @@ test('Space prop mutation requires its own explicit capability and existing brow
  const send=(browser,cfg,cmd)=>browser('/api/requests','POST',{...a,Origin:origin,'X-NPCGen-Csrf':cfg.csrfToken,
   'X-NPCGen-Frontend-Context':cfg.contextId},cmd);
  const off=await cfg(inactive),on=await cfg(active);
- assert.equal(off.propActions,undefined);assert.deepEqual(on.propActions,['animation']);
+ assert.equal(off.propActions,undefined);assert.deepEqual(on.propActions,['animation','scale']);
  assert.equal((await send(inactive,off,cmd)).status,404);
  assert.equal((await send(active,on,{...cmd,payload:{...cmd.payload,preset:'not allowed'}})).status,400);
  // This fixture inspects dispatch and payload whitelist; the true scoped
@@ -335,6 +335,11 @@ test('Space prop mutation requires its own explicit capability and existing brow
  const good=await send(active,on,cmd);
  assert.equal(good.status,202);assert.equal((await good.json()).status,'queued');
  assert.equal(seen.at(-1).payload.prompt,'Flame flickers once.');
+ const repair={requestType:'prop.scale.generate',idempotencyKey:'scale-case',payload:{schemaVersion:'ngs.prop-scale-generate.v1',
+  projectId:'binari',propId:'paper-candle',source:cmd.payload.source,scalePercents:[5,20]}};
+ assert.equal((await send(active,on,repair)).status,202);
+ assert.deepEqual(seen.at(-1),repair);
+ assert.equal((await send(active,on,{...repair,requestType:'prop.regenerate'})).status,400);
 });
 
 test('cinematic queue requires opt-in and exact source admission under existing Site auth',async t=>{

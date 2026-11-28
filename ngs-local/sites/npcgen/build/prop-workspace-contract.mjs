@@ -1,10 +1,12 @@
 /** Same formal prop request envelopes in Local, Space and fixture. */
 export const propWorkspacePath='/api/prop-workspace';
 export const propTypes=Object.freeze({
- generate:'prop.generate',regenerate:'prop.regenerate',animation:'prop.animation.generate',scale:'prop.scale.generate',
+ generate:'prop.generate',animation:'prop.animation.generate',scale:'prop.scale.generate',
 });
-const schema={generate:'ngs.prop-generate.v1',regenerate:'ngs.prop-regenerate.v1',animation:'ngs.prop-animation-generate.v1',scale:'ngs.prop-scale-generate.v1'};
+const schema={generate:'ngs.prop-generate.v1',animation:'ngs.prop-animation-generate.v1',scale:'ngs.prop-scale-generate.v1'};
 const names=Object.keys(propTypes);
+// Older authenticated Space sessions may still list the retired action. It never maps to an active request.
+const knownCapabilityNames=[...names,'regenerate'];
 export const propScalePercents=Object.freeze([100,90,80,70,60,50,40,30,20,10,5]);
 export const validPropScalePercent=value=>propScalePercents.includes(value);
 export const validPropScalePercents=value=>Array.isArray(value)&&value.length>=1&&value.length<=propScalePercents.length&&
@@ -24,17 +26,17 @@ export const validPropGenerateReference=(v,target)=>exactPropKeys(v,['propId','r
  propSlug(v.propId)&&v.propId!==target&&source({revision:v.revision,sha256:v.sha256});
 export const propAction=type=>names.find(k=>propTypes[k]===type);
 export function validPropActions(v){
- return Array.isArray(v)&&v.length>0&&v.length<=names.length&&v.every((name,i)=>names.includes(name)&&v.indexOf(name)===i);
+ return Array.isArray(v)&&v.length>0&&v.length<=knownCapabilityNames.length&&v.every((name,i)=>knownCapabilityNames.includes(name)&&v.indexOf(name)===i);
 }
 export function validPropPayload(type,p){
  const k=propAction(type),base=['schemaVersion','projectId','propId'];
  if(!k||p?.schemaVersion!==schema[k]||p.projectId!=='binari'||!propSlug(p.propId))return false;
  if(k==='scale')return exactPropKeys(p,[...base,'source','scalePercents'])&&source(p.source)&&validPropScalePercents(p.scalePercents);
- if(k==='generate'||k==='regenerate'){
-  const scales=k==='generate'&&Object.hasOwn(p,'scalePercents'),reference=k==='generate'&&Object.hasOwn(p,'reference'),profile=Object.hasOwn(p,'presentationProfile');
-  const fields=[...base,...(k==='regenerate'?['source']:[]),'intent','designContextSha256',
+ if(k==='generate'){
+  const scales=Object.hasOwn(p,'scalePercents'),reference=Object.hasOwn(p,'reference'),profile=Object.hasOwn(p,'presentationProfile');
+  const fields=[...base,'intent','designContextSha256',
    ...(Object.hasOwn(p,'motion')?['motion']:[]),...(reference?['reference']:[]),...(profile?['presentationProfile']:[]),...(scales?['scalePercents']:[])];
-  return exactPropKeys(p,fields)&&(!scales||p.presentationProfile===propSpiritProfile&&validPropScalePercents(p.scalePercents))&&(!profile||supportedSpiritProfiles.includes(p.presentationProfile))&&(k!=='regenerate'||source(p.source))&&(!reference||validPropGenerateReference(p.reference,p.propId))&&
+  return exactPropKeys(p,fields)&&(!scales||p.presentationProfile===propSpiritProfile&&validPropScalePercents(p.scalePercents))&&(!profile||supportedSpiritProfiles.includes(p.presentationProfile))&&(!reference||validPropGenerateReference(p.reference,p.propId))&&
    text(p.intent,4000)&&propSha(p.designContextSha256)&&(!Object.hasOwn(p,'motion')||propMotion(p.motion));
  }
  const profile=Object.hasOwn(p,'renderProfile');

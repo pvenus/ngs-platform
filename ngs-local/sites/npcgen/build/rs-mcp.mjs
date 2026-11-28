@@ -160,7 +160,7 @@ export function rsPropActions(list){
  const branches=input?.oneOf;
  if(!Array.isArray(types)||!Array.isArray(branches))return [];
  const matchesKeys=(values,keys)=>Array.isArray(values)&&values.length===keys.length&&keys.every(k=>values.includes(k));
- return ['generate','regenerate','animation','scale'].filter(action=>{
+ return ['generate','animation','scale'].filter(action=>{
   const type=propTypes[action],schema='ngs.prop-'+(action==='animation'?'animation-generate':action==='scale'?'scale-generate':action)+'.v1';
   const exactBranches=branches.filter(x=>x?.properties?.requestType?.const===type);
   const payload=exactBranches[0]?.properties?.payload,fields=payload?.properties;

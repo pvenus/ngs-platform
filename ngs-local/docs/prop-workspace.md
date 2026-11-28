@@ -17,7 +17,7 @@ Mac NGS, the private server checks the actual Request Service MCP
 Regenerate controls, and rechecks before enqueueing. It accepts only the
 confirmed static `still` mode for creation/regeneration. A separate
 `prop.animation.generate` schema with the selected source revision and SHA
-enables only the existing-prop animation action, never a create/regenerate
+enables only the existing-prop animation action, never a create
 mode. An inaccessible or mismatched schema produces no active control. The normal RS-MCP relay must be at this same release before
 activating the native app. It forwards the typed request; there is no direct
 browser call to the Request Service.
@@ -55,7 +55,7 @@ assets in the real project.
 
 ### 시네마틱 배치 이미지와 서진 능력 미리보기
 
-새 생성·재생성의 `spirit-v1` 프로필은 큰 원본과 동일한 프레이밍을 쓰는 1/5 크기의
+과거 생성 요청의 `spirit-v1` 프로필은 큰 원본과 동일한 프레이밍을 쓰는 1/5 크기의
 시네마틱 배치 이미지와 1/5 픽셀 후처리 결과를 같은 프랍 묶음에 보관한다. 크기는 각
 원본 축의 1/5을 반올림한다. 원본을 누르면 확대 팝업을 열며 원본은 능력 전환과 독립적이다.
 기본 정보에서 ‘서진 능력 사용’을 누르면 배치 미리보기만 픽셀(OFF)과 시네마틱(ON)
@@ -73,9 +73,9 @@ assets in the real project.
 배치 PNG 쌍을 등록한다. 해당 배율은 원본 전체의 가로·세로에 적용되므로 50%는
 가로와 세로 각각 절반이다.
 
-`prop.scale.generate`는 기존 프랍 ID, 현재 리비전·해시, 아직 게시되지 않은
-배율 목록을 받는 별도 정식 요청이다. 새 리비전에 이미지를 추가하며 원본,
-애니메이션, 이전 배율은 유지한다. 생성된 픽셀 원본 기반 자산은 새 요청의
+`prop.scale.generate`는 기존 프랍 ID, 현재 리비전·해시와 선택한 배율 목록을 받는 별도 정식 요청이다.
+배율별 이미지가 이미 있으면 다시 처리해 교체하고, 원본·애니메이션과
+선택하지 않은 배율은 유지한다. 전체 프랍 재생성 요청은 새로 접수하지 않는다. 생성된 픽셀 원본 기반 자산은 새 요청의
 후속 배율용으로 유지할 수 있지만, 배치 선택지나 상세 원본으로는 표시하지 않는다.
 이 자산이 없는 구형 프랍의 더 큰 픽셀 버전은 기존 픽셀을 확대하므로 새 디테일이
 생기지 않는다.

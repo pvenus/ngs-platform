@@ -5,13 +5,12 @@ import {propPackageMediaLimit} from './prop-package-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const node=(tag,text,className)=>{const n=document.createElement(tag);if(text)n.textContent=text;if(className)n.className=className;return n;};
 const api=fields=>propWorkspacePath+'?'+new URLSearchParams({projectId:'binari',...fields});
-const actionsLabel={generate:'프랍 종합 생성 요청',regenerate:'재생성 요청',animation:'애니메이션 생성 요청',scale:'배율 추가 생성 요청'};
+const actionsLabel={generate:'프랍 종합 생성 요청',animation:'애니메이션 생성 요청',scale:'배율 추가 생성 요청'};
 const errors={
  PROP_WORKSPACE_REFERENCE_STALE:'레퍼런스 프랍이 변경되었거나 삭제됐어요. 페이지를 새로 열어 다시 선택해 주세요.',
  PROP_WORKSPACE_REFERENCE_UNAVAILABLE:'이 프랍의 디테일 이미지는 레퍼런스로 사용할 수 없어요. 다른 프랍을 선택해 주세요.',
  PROP_WORKSPACE_SOURCE_STALE:'게시 버전이 바뀌었습니다. 목록에서 프랍을 다시 열어 주세요.',
  PROP_WORKSPACE_TARGET_EXISTS:'해당 폴더 이름은 이미 사용 중입니다.',
- PROP_WORKSPACE_SCALE_EXISTS:'이미 게시된 배율이 포함됐어요. 목록을 다시 열고 아직 없는 배율만 선택해 주세요.',
  PROP_WORKSPACE_MOTION_EXISTS:'같은 이름의 애니메이션이 이미 있습니다.',
  PROP_DESIGN_PIN_STALE:'설계 기준이 바뀌었습니다. 내용을 확인해 다시 요청해 주세요.',
  PROP_WORKSPACE_ACTION_UNAVAILABLE:'이 요청은 현재 접수할 수 없습니다.',
@@ -181,12 +180,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
  const heading=node('div',null,'prop-identity'),badges=node('div',null,'npc-character-badges');
  badges.append(node('span',item),node('span','버전 '+prop.source.revision));
  heading.append(node('h3',prop.title),badges);bar.append(heading);
- if(tab==='basic'&&can('regenerate'))bar.append(actionButton('regenerate'));
- if(tab==='basic'&&can('scale')){
-  const add=actionButton('scale');
-  add.disabled=propScalePercents.every(n=>prop.scaleVariants?.some(row=>row.scalePercent===n));
-  bar.append(add);
- }
+ if(tab==='basic'&&can('scale'))bar.append(actionButton('scale'));
  const tabs=node('nav',null,'npc-detail-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','프랍 상세 영역');
  const links=[['basic','기본 정보'],['animation','애니메이션']].map(([key,label],i,choices)=>{
   const link=node('a',label);link.id='prop-tab-'+key;link.href=sectionUrl(item,key);
@@ -414,7 +408,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   if(original&&action!=='generate')form.append(node('p',original.title+' · 버전 '+original.source.revision,'meta'));
   const id=action==='generate'?input('예: paper-collar-candle',80):null;
   const motionId=action==='animation'?input('예: candle-flicker',80):null;
-  const intent=action==='scale'?null:textarea(action==='animation'?'어떻게 움직이는지 적어 주세요.':'용도, 형태, 상태 또는 바꿀 내용을 적어 주세요.',action==='animation'?2000:4000);
+  const intent=action==='scale'?null:textarea(action==='animation'?'어떻게 움직이는지 적어 주세요.':'용도, 형태, 상태를 적어 주세요.',action==='animation'?2000:4000);
   let referenceSelect,referenceOptions;
   if(id){
    form.append(field('프랍 폴더 이름',id));
@@ -439,15 +433,14 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
    const flags=node('fieldset',null,'prop-scale-options'),grid=node('div',null,'prop-scale-grid');
    flags.append(node('legend','생성할 배율 (여러 개 선택)'),grid);
    for(const p of propScalePercents){
-    const control=node('input');control.type='checkbox';control.value=String(p);control.disabled=existing.has(p);
+    const control=node('input');control.type='checkbox';control.value=String(p);
     control.checked=action==='generate'&&p===20;
     const label=node('label');
-    label.append(control,node('span',p+'%'+(control.disabled?' · 게시됨':'')));grid.append(label);scaleBoxes.push(control);
+    label.append(control,node('span',p+'%'+(existing.has(p)?' · 기존 이미지 교체':'')));grid.append(label);scaleBoxes.push(control);
    }
-   form.append(flags,node('p',action==='scale'?'게시된 원본과 기존 배율은 바꾸지 않고 선택한 배율만 추가합니다.':'큰 원본은 그대로 저장하고, 선택한 배율별로 픽셀·시네마틱 배치 이미지를 만듭니다.','meta'));
+   form.append(flags,node('p',action==='scale'?'선택한 배율에 이미지가 있으면 새로 처리해 교체합니다. 원본과 선택하지 않은 배율은 유지합니다.':'큰 원본은 그대로 저장하고, 선택한 배율별로 픽셀·시네마틱 배치 이미지를 만듭니다.','meta'));
   }
-  if(action==='regenerate')form.append(node('p','완성된 새 프랍으로 교체합니다. 이전 버전은 보존되며, 기존 애니메이션은 새 버전에 자동으로 가져오지 않습니다.','meta'));
-  if((action==='generate'&&!useScales)||action==='regenerate')form.append(node('p','시네마틱 원본과 1/5 시네마틱·픽셀 배치 이미지가 함께 생성됩니다.','meta'));
+  if(action==='generate'&&!useScales)form.append(node('p','시네마틱 원본과 1/5 시네마틱·픽셀 배치 이미지가 함께 생성됩니다.','meta'));
   if(motionId)form.append(field('애니메이션 이름',motionId));
   if(intent)form.append(field(action==='animation'?'움직임 프롬프트':'요청 내용',intent));
   const info=node('p',null,'meta');info.setAttribute('role','status');
@@ -457,7 +450,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   signal?.addEventListener('abort',abort,{once:true});
   modal.addEventListener('close',()=>{signal?.removeEventListener('abort',abort);modal.remove();},{once:true});
   cancel.addEventListener('click',()=>modal.close());
-  document.body.append(modal);modal.showModal();(id??motionId??intent??scaleBoxes.find(x=>!x.disabled))?.focus();
+  document.body.append(modal);modal.showModal();(id??motionId??intent??scaleBoxes[0])?.focus();
   let pending;
   form.addEventListener('submit',async e=>{
    e.preventDefault();if(send.disabled)return;
@@ -473,7 +466,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
      body.reference=chosen;
     }
     if(useScales){
-     body.scalePercents=scaleBoxes.filter(x=>x.checked&&!x.disabled).map(x=>Number(x.value));
+     body.scalePercents=scaleBoxes.filter(x=>x.checked).map(x=>Number(x.value));
      if(!body.scalePercents.length){info.textContent='생성할 배율을 하나 이상 선택해 주세요.';return;}
     }
     if(action==='animation')Object.assign(body,{motionId:motionId.value.trim(),prompt:intent.value.trim()});

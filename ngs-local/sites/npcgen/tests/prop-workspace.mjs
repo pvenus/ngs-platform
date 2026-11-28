@@ -102,6 +102,7 @@ test('exact no-preset named request, current pin, double submission protection d
  assert.equal((await post(propPayload('generate',{propId:'new-prop',intent:'fixture',designContextSha256:pin}),propTypes.generate)).status,404);
  assert.equal((await post(animation,propTypes.animation,'invalid')).status,403);
  assert.equal((await post(animation,'prop.update')).status,404);
+ assert.equal((await post({...animation,schemaVersion:'ngs.prop-regenerate.v1'},'prop.regenerate')).status,404);
  assert.equal((await post(animation,'prop.image-generate')).status,404);
  assert.equal(sent.length,0);
  assert.equal((await post(animation)).status,202);
@@ -123,13 +124,12 @@ test('exact no-preset named request, current pin, double submission protection d
  assert.equal((await call(api+'&propId='+propId,{headers:{cookie}})).status,200);
 });
 
-test('regeneration binds the selected immutable source and full replacement intent, not edits or a scope picker',()=>{
- const payload=propPayload('regenerate',{propId,source,intent:'같은 용도에 새 외형과 작동 상태'});
- payload.designContextSha256=pin;
- assert.equal(validPropPayload(propTypes.regenerate,payload),true);
- assert.equal(validPropPayload(propTypes.regenerate,{...payload,motion:'subtle'}),true);
- assert.equal(validPropPayload(propTypes.regenerate,{...payload,scope:'appearance'}),false);
- assert.equal(validPropPayload('prop.update',payload),false);
+test('retired prop regeneration is rejected before reading a source',async()=>{
+ const requestType='prop.regenerate',payload={schemaVersion:'ngs.prop-regenerate.v1',projectId:'binari',
+  propId,source,intent:'테스트 기존 양식',designContextSha256:pin};
+ assert.equal(validPropPayload(requestType,payload),false);
+ await assert.rejects(admitPropRequest({openProject:()=>assert.fail('must not read original'),
+  actions:['generate','regenerate','scale'],command:{requestType,payload}}),{status:404});
  assert.equal(validPropPayload(propTypes.animation,{...animation,prompt:'embedding: opaque'}),false);
 });
 
@@ -204,7 +204,7 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   assert.deepEqual(walk(basic.detail,x=>x.className==='prop-preview-dimensions').map(x=>x.textContent),
    stills.map(x=>x.width+' × '+x.height+' px'));
   assert.equal(walk(basic.detail,x=>x.attributes['aria-label']==='프랍 애니메이션 목록').length,0);
-  assert.equal(walk(basic.detail,x=>x.textContent==='재생성 요청').length,1);
+  assert.equal(walk(basic.detail,x=>x.textContent==='재생성 요청').length,0);
   const newMedia={detail:{...body.json.prop.media.detail,width:1536,height:1024},
    pixel:{...body.json.prop.media.pixel,width:307,height:205},
    spirit:{...body.json.prop.media.pixel,width:307,height:205,url:'/api/prop-workspace?asset=spirit'}};
@@ -261,11 +261,10 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   walk(modal,x=>x.tag==='textarea')[0].value='새 등롱';
   await modal.children[0].events.submit({preventDefault(){}});
   assert.equal(Object.hasOwn(submissions[1].payload,'reference'),false);
-  walk(modalFixture.detail,x=>x.textContent==='재생성 요청')[0].click();
-  modal=document.body.children[0];assert.equal(walk(modal,x=>x.tag==='select').length,0);modal.close();
+  assert.equal(walk(modalFixture.detail,x=>x.textContent==='재생성 요청').length,0);
   const scaleRequests=[];
   const scaleFixture=await mount({request:async path=>path.includes('view=design')?{designContextSha256:pin}:
-   path.includes('propId=')?{prop:{...body.json.prop,scaleVariants:[{scalePercent:20,pixel:newMedia.pixel,spirit:newMedia.spirit}]}}:{props:[pointer]},
+   path.includes('propId=')?{prop:{...body.json.prop,scaleVariants:[100,90,80,70,60,50,40,30,20,10,5].map(scalePercent=>({scalePercent,pixel:newMedia.pixel,spirit:newMedia.spirit}))}}:{props:[pointer]},
    actions:['generate','scale'],
    submit:async request=>{scaleRequests.push(request);return new Response(JSON.stringify({status:'queued',queueId:'ngs.local.11111111-1111-4111-8111-111111111111'}),{status:202});}});
   scaleFixture.tools.children[0].click();
@@ -279,14 +278,16 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   walk(modal,x=>x.tag==='textarea')[0].value='크기 테스트';
   await modal.children[0].events.submit({preventDefault(){}});
   assert.equal(scaleRequests[0].requestType,'prop.generate');assert.deepEqual(scaleRequests[0].payload.scalePercents,[100,20,5]);
-  walk(scaleFixture.detail,x=>x.textContent==='배율 추가 생성 요청')[0].click();
+  const repair=walk(scaleFixture.detail,x=>x.textContent==='배율 추가 생성 요청')[0];
+  assert.ok(!repair.disabled);repair.click();
   modal=document.body.children[0];scales=walk(modal,el=>el.type==='checkbox');
-  assert.equal(scales.find(x=>x.value==='20').disabled,true);
+  assert.ok(!scales.find(x=>x.value==='20').disabled);
+  scales.find(x=>x.value==='20').checked=true;
   scales.find(x=>x.value==='5').checked=true;
   scales.find(x=>x.value==='90').checked=true;
   await modal.children[0].events.submit({preventDefault(){}});
   assert.equal(scaleRequests[1].requestType,'prop.scale.generate');
-  assert.deepEqual(scaleRequests[1].payload,propPayload('scale',{propId,source,scalePercents:[90,5]}));
+  assert.deepEqual(scaleRequests[1].payload,propPayload('scale',{propId,source,scalePercents:[90,20,5]}));
   const previewController=new AbortController(),nativeFetch=fetch,fetches=[];
   t.mock.method(globalThis,'fetch',async (url,opts)=>{
    fetches.push({url,opts});return new Response(png(20,20,true));
@@ -370,10 +371,10 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
  }
 });
 
-test('existing-prop animation capability does not authorize animated create/regenerate',async()=>{
- const actions=['generate','regenerate','animation'];
- for(const k of ['generate','regenerate']){
-  const payload=propPayload(k,{propId,...(k==='regenerate'?{source}:{}),intent:'정적 소품 수정',designContextSha256:pin,motion:'subtle'});
+test('existing-prop animation capability does not authorize animated create',async()=>{
+ const actions=['generate','animation'];
+ for(const k of ['generate']){
+  const payload=propPayload(k,{propId,intent:'정적 소품 수정',designContextSha256:pin,motion:'subtle'});
   await assert.rejects(admitPropRequest({openProject:()=>assert.fail('no source read for unavailable motion'),
    actions,command:{requestType:propTypes[k],payload}}),{status:404});
  }
@@ -388,8 +389,6 @@ test('published reference pin is optional, distinct and exact on CREATE only',as
  assert.equal(validPropPayload(propTypes.generate,valid),true);
  assert.equal(validPropPayload(propTypes.generate,{...valid,propId}),false);
  assert.equal(validPropPayload(propTypes.generate,{...valid,reference:{...ref,path:'/tmp/ref.png'}}),false);
- assert.equal(validPropPayload(propTypes.regenerate,propPayload('regenerate',{...basics,
-  source:{revision:ref.revision,sha256:ref.sha256},reference:ref})),false);
  await assert.rejects(run({...valid,reference:{...ref,sha256:'a'.repeat(64)}}),/PROP_WORKSPACE_REFERENCE_STALE/);
  await assert.rejects(run({...valid,reference:{...ref,propId:'unpublished-prop'}}),/PROP_WORKSPACE_REFERENCE_STALE/);
  // Reaching the ordinary design pin check proves admission accepted the published reference.
@@ -454,7 +453,10 @@ test('new scale assets are visible, exact previous revision and asset stay reada
  await assert.rejects(get({...source,sha256:'a'.repeat(64)}),{status:409});
  await assert.rejects(get({...nextPin,asset:next.scaleSourcePixel.sha256}),{status:404});
  const cmd={requestType:propTypes.scale,payload:propPayload('scale',{propId,source:nextPin,scalePercents:[5]})};
- await assert.rejects(admitPropRequest({...options,actions:['scale'],command:cmd}),{status:409,message:'PROP_WORKSPACE_SCALE_EXISTS'});
+ await admitPropRequest({...options,actions:['scale'],command:cmd});
+ store.delete(p+'/assets/'+scaled.pixel.assetId);
+ await assert.rejects(get({...nextPin,asset:scaled.pixel.sha256}),{status:503});
+ await admitPropRequest({...options,actions:['scale'],command:cmd});
  cmd.payload.scalePercents=[10,50];
  await admitPropRequest({...options,authorize:(id,scope)=>{assert.equal(scope,'props');},actions:['scale'],command:cmd});
 });
