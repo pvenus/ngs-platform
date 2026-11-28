@@ -1,5 +1,6 @@
 import handler from "vinext/server/fetch-handler";
 import { sharedNgsResponse } from "./shared-ngs-assets";
+import { appendViewerDiscovery, spaceViewerMcpResponse } from "./space-viewer-mcp.mjs";
 import { spaceViewerResponse } from "./space-viewer-export.mjs";
 import { spaceViewerInstallResponse } from "./space-viewer-install.mjs";
 import viewerBridgeScript from "./space-viewer-bridge.mjs?raw";
@@ -86,8 +87,9 @@ export default {
       (env as Cloudflare.Env & {NPCGEN_VIEWER_INSTALL_SIGNING_KEY?:string}).NPCGEN_VIEWER_INSTALL_SIGNING_KEY,
       authorizeParticipant:authorizeViewerParticipant});
     if(viewerInstall)return viewerInstall;
-    const viewer=await spaceViewerResponse(request,{replica:replicaReads?fileReplica:undefined,bridgeScript:viewerBridgeScript,
-      authorizeParticipant:authorizeViewerParticipant,authorizeResource:workspaceAuthorize});
+    const viewerOptions={replica:replicaReads?fileReplica:undefined,bridgeScript:viewerBridgeScript,
+      authorizeParticipant:authorizeViewerParticipant,authorizeResource:workspaceAuthorize};
+    const viewer=await spaceViewerResponse(request,viewerOptions);
     if(viewer)return viewer;
     const hasPublishedNpc = replicaReads ? async (user:{userId:string,email:string},npcId:string) => {
       // The hosted queue must prove the same exact ID from the existing
@@ -103,7 +105,7 @@ export default {
       if (!Array.isArray(result?.npcs)) throw Object.assign(Error("SPACE_NPC_REPLICA_UNAVAILABLE"),{status:503});
       return result.npcs.some((npc:{id:string})=>npc.id===npcId);
     } : undefined;
-    const browserQueue = await browserQueueResponse(request,{db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
+    const queueOptions:Parameters<typeof browserQueueResponse>[1]={db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
       mapAssemblyGrant,
       admitMapAssembly:replicaReads?async (user,command)=>admitSpaceMapAssembly({
         command,read:async (pathname,query)=>{
@@ -154,7 +156,21 @@ export default {
       // A trusted roster entry or the single configured exception is required in
       // addition to Sites authentication/admission and the active Binari grant.
       authorizeWrite:user=>authorizeSpaceQueueWrite(user,workspacePrincipal,env.NPCGEN_SPACE_QUEUE_EXTRA_EMAIL_SHA256),
-    });
+    };
+    const viewerMcp=await spaceViewerMcpResponse(request,{...viewerOptions,requestQueue:async (url,identity,command)=>{
+      if(command===undefined)return browserQueueResponse(new Request(url,{headers:identity}),queueOptions);
+      // Same actor, permission, capability and admission checks as the browser.
+      const session=await browserQueueResponse(new Request(new URL('/__npcgen_session',url),{headers:identity}),queueOptions);
+      if(!session?.ok)return session;
+      const auth=await session.json() as {requestWritable?:boolean;csrfToken?:string;contextId?:string};
+      if(auth.requestWritable!==true||!auth.csrfToken||!auth.contextId)
+        return Response.json({error:'SPACE_QUEUE_WRITE_NOT_GRANTED'},{status:403});
+      return browserQueueResponse(new Request(url,{method:'POST',headers:{...identity,Origin:url.origin,
+        'Content-Type':'application/json','X-NPCGen-Csrf':auth.csrfToken,'X-NPCGen-Frontend-Context':auth.contextId},
+        body:JSON.stringify(command)}),queueOptions);
+    }});
+    if(viewerMcp)return viewerMcp;
+    const browserQueue=await browserQueueResponse(request,queueOptions);
     if (browserQueue) return browserQueue;
     if (replicaReads) {
       const workspace = await spaceWorkspaceReadResponse(request,fileReplica,{authorize:workspaceAuthorize});
@@ -178,7 +194,7 @@ export default {
         try { const p=await masterPrincipal(user); return p.role==="owner" && p.projectId==="binari"; }
         catch { return false; }
       }})});
-    if (denied) return denied;
+    if (denied) return appendViewerDiscovery(request,denied);
     let binding = ctx.props?.CONNECTORS;
     // Local preview emulates the same request-scoped capability. This branch and
     // the auxiliary service binding are absent from production builds.

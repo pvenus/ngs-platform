@@ -43,6 +43,23 @@ function remote(path,method='GET',headers={},body,signal){
   catch(e){stop(e);}
  });
 }
+if(config.backend==='codex'){
+ connect.hidden=true;sync.disabled=false;
+ sync.addEventListener('click',()=>void local('sync/now',{}).catch(()=>{}));
+ const poll=async()=>{
+  try{
+   const s=await (await nativeFetch('/__viewer/status',{cache:'no-store'})).json();
+   if(s.state==='completed')update('P2 파일 '+s.files+'개 · 변경 '+s.changed+'개 · 실패 '+s.failed+'개');
+   else if(s.error==='VIEWER_CODEX_CONNECTION_REQUIRED'||s.error==='VIEWER_SPACE_SIGN_IN_REQUIRED')
+    update('Codex 연결 필요. Codex 앱과 비나리 Space MCP 연결을 확인하세요. 기존 P2는 보존됩니다.');
+   else if(s.state==='failed')update('동기화 실패. 기존 P2는 보존됩니다.');
+   else update('Codex MCP로 Space 파일을 동기화하는 중…');
+   if(s.committed&&!booted){booted=true;await import('/local-project-page.js');}
+  }catch{update('로컬 Viewer 서비스에 연결할 수 없어요.');}
+  setTimeout(()=>void poll(),2000);
+ };
+ void poll();
+}else{
 window.addEventListener('message',event=>{
  if(event.origin!==space||!event.source||!event.data||event.data.nonce!==nonce||!nonce)return;
  if(popup&&event.source!==popup)return;
@@ -124,3 +141,4 @@ async function refresh(){
  }finally{syncing=false;sync.disabled=!ready;connect.disabled=false;}
 }
 if(nonce)update('열려 있는 Space 연결 창을 찾는 중…');
+}

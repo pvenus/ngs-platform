@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 345,
+  "fileCountIncludingManifest": 354,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1240,8 +1240,8 @@
       "sha256": "d9026e7f4c88b3bba9ff5c0474822f127dc02a44995c50307388616d4d47a667"
     },
     "ngs-viewer/README.md": {
-      "bytes": 5199,
-      "sha256": "301b969b7af0e7ed6cf43d4d9a1f9cff0e6a4990a53a1b5fe46a4337d0e4feda"
+      "bytes": 7316,
+      "sha256": "249cea2bce4643e2f118b973918d121afc0c88438bcf5831b390123f49d1e510"
     },
     "ngs-viewer/install-macos.sh": {
       "bytes": 215,
@@ -1280,8 +1280,8 @@
       "sha256": "3d0b8981c1547cd91ead5610718904b40a4a05ebeb95aa9c24ba9da15dc2fffa"
     },
     "ngs-viewer/public/browser.mjs": {
-      "bytes": 6708,
-      "sha256": "9bb11f813e6f5af17dd5eb79659ba4a925ad0c866ebf7b82115123c583bca6d4"
+      "bytes": 7691,
+      "sha256": "0d518f07473f9083cf0716696e3753c782a076818bda8e7c55894e64dea44a0e"
     },
     "ngs-viewer/public/style.css": {
       "bytes": 631,
@@ -1296,8 +1296,8 @@
       "sha256": "5a36a063265acf25fd49ebdaa9a8d68bd0ff06e24663b716c493539dbfaf830c"
     },
     "ngs-viewer/tests/browser.test.mjs": {
-      "bytes": 4205,
-      "sha256": "176e4a27786e2f628588692008843b1240f36f695beff416b7dec258cbb98816"
+      "bytes": 4208,
+      "sha256": "59de15089c801eebb5a287e058a85fb72c96b1351c07be6898910a43bd8cef43"
     },
     "ngs-viewer/tests/install.test.mjs": {
       "bytes": 4812,
@@ -1312,20 +1312,20 @@
       "sha256": "0a513f69d61aeb2b63331c809ed0f0e9f87a159c5f4943b4008776ced0fe4382"
     },
     "ngs-viewer/tests/viewer.test.mjs": {
-      "bytes": 4225,
-      "sha256": "3100d0c08c1a1923cec178a9ebbf75f7a645295faf1e36949abd2c079c266848"
+      "bytes": 8617,
+      "sha256": "ca3f78b0e116c1dcd989860f8ff86e85a5e0d59eddf84b5293d2dbb91116ef04"
     },
     "ngs-viewer/tests/windows-storage.test.mjs": {
       "bytes": 3095,
       "sha256": "68062726f78c07efd903cdaea4ad3de25c8d2e2dee0abe9c00f304c57d0f701c"
     },
     "ngs-viewer/viewer.mjs": {
-      "bytes": 7764,
-      "sha256": "097a9d4af745f708fadc2e97311a025d0479200c8ca81a2d67aeab87a1e70b95"
+      "bytes": 10525,
+      "sha256": "4edbb2a838fad4d3bb7694f165416b5c08b7807a523f17259b99bd488a41a1d7"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
-      "bytes": 13661,
-      "sha256": "fa80b78771c4c3c99f4eba35fd877ad95186b9614598119a0f0d548e79473da7"
+      "bytes": 14953,
+      "sha256": "08de496151d9d5dfd7c2e8109d987b36830d431d11d6bdac9ab38fa951690e83"
     },
     "space-hosting/overlay/build/space-browser-auth.mjs": {
       "bytes": 1344,
@@ -1378,6 +1378,42 @@
     "tools/release/validate-ngs-source.sh": {
       "bytes": 1089,
       "sha256": "cfd27404d01e497cc9607b1a612c00060aae6bdb32379907ec97b2287b227085"
+    },
+    "ngs-viewer/lib/background.mjs": {
+      "bytes": 1772,
+      "sha256": "c4f629ebc7bb18814919299342208a353545d3d3145143315b1837dc07dad35c"
+    },
+    "ngs-viewer/lib/codex-transport.mjs": {
+      "bytes": 3742,
+      "sha256": "c58c4c4e5d46419c91c95ff4579fd187f8318f482765245061113a3bff3e2d9e"
+    },
+    "ngs-viewer/lib/native-mcp.mjs": {
+      "bytes": 3921,
+      "sha256": "ea6ea879ef94a36da0c94232689fc58437e7d11fd9e5fdd6a89965702dc1b112"
+    },
+    "ngs-viewer/lib/request-forward.mjs": {
+      "bytes": 850,
+      "sha256": "0d44a37a90d2a6b1104a7f54d42bd0bea901d626db15452f1fad2a39ca0c892a"
+    },
+    "ngs-viewer/tests/codex-transport.test.mjs": {
+      "bytes": 3295,
+      "sha256": "3127da5237b012fab4b754cd80cd14b9372f30b0736fb1e67e72d93e1336013f"
+    },
+    "ngs-viewer/tests/native-mcp.test.mjs": {
+      "bytes": 5353,
+      "sha256": "8406be7424d3312f9770bce8938e206598551a7201d716e8af346fe940cb3df7"
+    },
+    "ngs-viewer/tests/request-forward.test.mjs": {
+      "bytes": 1974,
+      "sha256": "d399e3715d97ad8b16bcf95c117d913c8089d3d854729596a91d453ebb4caf61"
+    },
+    "space-hosting/overlay/build/space-viewer-mcp.d.mts": {
+      "bytes": 390,
+      "sha256": "afd686a14699a52537302a68115b94594b61c0511dab7a757ff396cf800263d5"
+    },
+    "space-hosting/overlay/build/space-viewer-mcp.mjs": {
+      "bytes": 6549,
+      "sha256": "17a16f24566f56134a91f0a16172dcb676f7073560739468e81126535188f807"
     }
   }
 }

@@ -11,6 +11,12 @@ import {localProjection,viewerReadRoute} from './lib/projections.mjs';
 import {openMirror} from './lib/mirror.mjs';
 import {createViewerSyncQueue} from './lib/sync.mjs';
 
+import {backgroundViewerSync} from './lib/background.mjs';
+import {codexViewerRemote} from './lib/native-mcp.mjs';
+import {codexViewerClient} from './lib/codex-transport.mjs';
+
+import {forwardViewerRequest} from './lib/request-forward.mjs';
+
 export const viewerPort=5281;
 export const validViewerPort=port=>Number.isInteger(port)&&port>=1024&&port<=65535;
 export const binariSpace='https://vinus-npcgen.park-venus0518.chatgpt.site';
@@ -28,9 +34,9 @@ async function body(req,max=16*oneMiB){
  if(len!==Number(header))throw fault('VIEWER_BODY_INVALID',400);
  return Buffer.concat(chunks);
 }
-async function jsonBody(req){
+async function jsonBody(req,max){
  if(req.headers['content-type']!=='application/json')throw fault('VIEWER_BODY_INVALID',400);
- try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await body(req)));}catch(e){
+ try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await body(req,max)));}catch(e){
   throw e?.status?e:fault('VIEWER_BODY_INVALID',400);
  }
 }
@@ -52,13 +58,16 @@ async function send(res,response,method){
  await pipeline(Readable.fromWeb(response.body),res);
 }
 
-export async function createViewer({root,space=binariSpace,mirror=null}={}){
+export async function createViewer({root,space=binariSpace,mirror=null,codexClient=null}={}){
  if(typeof root!=='string'||!isAbsolute(root)||resolve(root)!==root)throw Error('VIEWER_P2_ABSOLUTE_REQUIRED');
  const origin=viewerSpaceOrigin(space);
  const assets=viewerAssets(), guardKey=randomBytes(32).toString('hex'), validKey=comparator(guardKey);
  const receiver=mirror??await openMirror(root);
  let snapshot=null;
- const sync=createViewerSyncQueue(receiver,{onFinish:()=>{snapshot=receiver.snapshot();},onAccessLost:()=>{snapshot=null;}});
+ const sync=codexClient?null:createViewerSyncQueue(receiver,{onFinish:()=>{snapshot=receiver.snapshot();},onAccessLost:()=>{snapshot=null;}});
+ let state={state:'waiting'};
+ const background=codexClient&&backgroundViewerSync({mirror:receiver,remote:codexViewerRemote({origin,client:codexClient}),
+  onSnapshot:v=>{snapshot=v;},onState:v=>{state=v;}});
 
  const server=createServer(async(req,res)=>{
   for(const [k,v] of Object.entries(sourceHeaders))res.setHeader(k,v);
@@ -70,9 +79,38 @@ export async function createViewer({root,space=binariSpace,mirror=null}={}){
    const url=new URL(req.url,'http://127.0.0.1:'+port);
    const path=url.pathname,method=req.method;
    if(path==='/__viewer/config'&&method==='GET'&&!url.search)
-    return json(200,{spaceOrigin:origin,guardKey,committed:snapshot!==null,port});
+    return json(200,{spaceOrigin:origin,guardKey,committed:snapshot!==null,port,...(background?{backend:'codex'}:{})});
+   if(background&&path==='/__viewer/status'&&method==='GET'&&!url.search)return json(200,{...state,committed:snapshot!==null});
+   if(background&&path==='/__npcgen_session'&&method==='GET'&&!url.search){
+    if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
+    const r=(await codexClient.tool('ngs_viewer_request_session',{}))?.structuredContent;
+    if(r?.status!==200||r.data?.state!=='authenticated'||r.data?.backend!=='space')
+     throw fault('VIEWER_CODEX_CONNECTION_REQUIRED',503);
+    return json(200,{...r.data,csrfToken:'0'.repeat(64),contextId:'space.'+'0'.repeat(64)});
+   }
+   if(background&&path==='/api/requests'){
+    if(method==='GET'){
+     if(url.search&&[...url.searchParams.keys()].join(',')!=='queueId')throw fault('VIEWER_REQUEST_INVALID',400);
+     const r=(await codexClient.tool('ngs_viewer_request_status',url.search?{queueId:url.searchParams.get('queueId')}:{}))?.structuredContent;
+     if(r?.status!==200)throw fault('VIEWER_CODEX_CONNECTION_REQUIRED',503);
+     return json(200,r.data);
+    }
+    if(method!=='POST'||url.search)throw fault('METHOD_NOT_ALLOWED',405);
+    if(req.headers['x-npcgen-csrf']!=='0'.repeat(64)||req.headers['x-npcgen-frontend-context']!=='space.'+'0'.repeat(64))
+     throw fault('VIEWER_WRITE_DENIED',403);
+    const command=await jsonBody(req,64*1024);
+    const result=await forwardViewerRequest(command,async payload=>{
+     const reply=(await codexClient.tool('ngs_viewer_request_submit',{command:payload}))?.structuredContent;
+     return {status:reply?.status,receipt:reply?.data};
+    });
+    return json(result.status,result.body);
+   }
    if(path.startsWith('/__viewer/')&&method==='POST'){
     if(!validKey(req.headers['x-ngs-viewer-key']))throw fault('VIEWER_WRITE_DENIED',403);
+    if(background){
+     if(path==='/__viewer/sync/now'&&!url.search){await jsonBody(req);void background.start();return json(202,{ok:true});}
+     throw fault('NOT_FOUND',404);
+    }
     if(path==='/__viewer/sync/start'&&!url.search){
      const v=await jsonBody(req);
      if(!v||Object.keys(v).length!==0)throw fault('VIEWER_SYNC_INVALID',400);
@@ -106,11 +144,12 @@ export async function createViewer({root,space=binariSpace,mirror=null}={}){
    res.setHeader('Content-Type',asset.type);res.end(method==='HEAD'?undefined:asset.body);
   }catch(e){
    if(res.headersSent){res.destroy();return;}
-   const status=[400,401,403,404,405,409,413,416,423,429,503].includes(e?.status)?e.status:503;
+   const status=[400,401,403,404,405,409,413,416,423,429,502,503].includes(e?.status)?e.status:503;
    return json(status,{error:/^[A-Z0-9_]+$/u.test(e?.message??'')?e.message:'VIEWER_LOCAL_UNAVAILABLE'});
   }
  });
- server.on('close',()=>{sync.close();void receiver.close?.();});
+ if(background)server.on('listening',()=>void background.start());
+ server.on('close',()=>{sync?.close();codexClient?.close();void (async()=>{await background?.close();await receiver.close?.();})();});
  return server;
 }
 
@@ -130,7 +169,10 @@ export function viewerOptions(args){
 if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
  try{
   const {root,port,space}=viewerOptions(process.argv.slice(2));
-  const server=await createViewer({root,space});
+  const binary=process.env.NGS_VIEWER_CODEX_BIN, mcp=process.env.NGS_VIEWER_CODEX_MCP_NAME;
+  if(Boolean(binary)!==Boolean(mcp))throw Error('VIEWER_CODEX_CONFIGURATION');
+  const codexClient=binary?codexViewerClient({binary,server:mcp,socket:process.env.NGS_VIEWER_CODEX_SOCKET}):null;
+  const server=await createViewer({root,space,codexClient});
   server.on('error',error=>{console.error(error?.code==='EADDRINUSE'?'That Viewer port is already in use.':'Viewer startup failed.');process.exitCode=1;});
   const stop=()=>server.close();
   process.once('SIGINT',stop);process.once('SIGTERM',stop);
