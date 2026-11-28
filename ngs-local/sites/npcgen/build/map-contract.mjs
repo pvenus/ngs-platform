@@ -1,3 +1,4 @@
+import {sha256Hex} from './browser-sha256.mjs';
 // Map topology is independent of background render revisions. Coordinates are
 // integer thousandths of the natural canvas, with the origin at top left.
 export const mapTypes=['map.generate','map.update'];
@@ -151,8 +152,7 @@ export function mapGraphMatches(source,result){
 
 export async function hashBrowserMap(project,queueId){
  const data=new TextEncoder().encode(mapCanonical(['request.official.v1',queueId.startsWith('ngs.space.')?'space':'local',project,queueId]));
- const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',data));
- return 'request.official.'+Array.from(bytes,x=>x.toString(16).padStart(2,'0')).join('');
+ return 'request.official.'+await sha256Hex(data);
 }
 
 // Editor labels and limits do not change the canonical request fields.

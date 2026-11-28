@@ -1,3 +1,4 @@
+import {browserRequestId} from './browser-request-id.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {parseRequiredSections,validRequiredSections} from './local-concept-category-contract.mjs';
 import {conceptMarkdown} from './local-concept-category-ui.mjs';
@@ -86,7 +87,7 @@ export function editableNpcPlanningDocument(row){
    row.content!==null&&typeof row.content==='object'&&Object.keys(row.content).length>0);
 }
 
-export function createNpcPlanningIntake(submit,{uuid=()=>crypto.randomUUID(),type=npcPlanningRequestType,
+export function createNpcPlanningIntake(submit,{uuid=()=>browserRequestId(),type=npcPlanningRequestType,
  build=makeNpcPlanningUpdate}={}){
  let command=null,pending=false,accepted=false;
  return {

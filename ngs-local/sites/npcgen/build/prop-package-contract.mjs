@@ -1,3 +1,4 @@
+import {sha256Hex} from './browser-sha256.mjs';
 /** Browser/Node portable shared v1 contract. Storage and renderer are injected authority ports. */
 export const propPackageSchema='ngs.prop-package.v1';
 export const propPackageMediaLimit=16*1024*1024;
@@ -23,10 +24,7 @@ function canonical(v){
  if(v!==null&&typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}';
  return JSON.stringify(v);
 }
-async function sha(bytes){
- const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
- return Array.from(digest,b=>b.toString(16).padStart(2,'0')).join('');
-}
+const sha=sha256Hex;
 
 function parseMedia(m,role,motion){
  const max=role==='detail'?2048:512;

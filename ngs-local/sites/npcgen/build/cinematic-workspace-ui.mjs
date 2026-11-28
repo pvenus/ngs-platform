@@ -1,3 +1,4 @@
+import {browserRequestId} from './browser-request-id.mjs';
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {cinematicPath,cinematicHash,cinematicId} from './cinematic-contract.mjs';
 import {cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateType,cinematicPlaybackUpdateSchema,
@@ -20,7 +21,7 @@ function queueAction(submit,requestType){
  let last, key;
  return async payload=>{
   const encoded=JSON.stringify(payload);
-  if(last!==encoded){last=encoded;key=crypto.randomUUID();}
+  if(last!==encoded){last=encoded;key=browserRequestId();}
   const response=await submit({requestType,idempotencyKey:key,payload}),value=await response.json();
   if(!isQueuedRequest(response,value))throw Error(value?.error==='CINEMATIC_PLAYBACK_REVISION_CONFLICT'
    ?value.error:'CINEMATIC_QUEUE_UNCONFIRMED');
@@ -29,7 +30,7 @@ function queueAction(submit,requestType){
 
 function dialog(parent,heading,signal,afterClose){
  const modal=make('dialog',null,'prop-workspace-dialog'),title=make('h3',heading);
- title.id='cinematic-dialog-'+crypto.randomUUID();modal.setAttribute('aria-labelledby',title.id);
+ title.id='cinematic-dialog-title';modal.setAttribute('aria-labelledby',title.id);
  modal.append(title);parent.append(modal);
  const close=()=>modal.close();
  signal.addEventListener('abort',close,{once:true});

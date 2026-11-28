@@ -1,3 +1,5 @@
+import browserSha256 from "../ngs-local/sites/npcgen/build/browser-sha256.mjs?raw";
+import browserRequestId from "../ngs-local/sites/npcgen/build/browser-request-id.mjs?raw";
 import {withPuzzleCore,servePuzzleCore,puzzleCoreCsp} from "../ngs-local/sites/npcgen/build/puzzle-core-release.mjs";
 import assembly0 from "../ngs-local/sites/npcgen/build/assembly-catalog-ui.mjs?raw";
 import assembly1 from "../ngs-local/sites/npcgen/build/assembly-contract.mjs?raw";
@@ -41,6 +43,8 @@ if (!logo.startsWith(pngPrefix)) throw Error("SHARED_NGS_LOGO_BUILD_UNCONFIRMED"
 const png = Uint8Array.from(atob(logo.slice(pngPrefix.length)), c => c.charCodeAt(0));
 const javascript = "text/javascript; charset=utf-8";
 const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>([
+ ["/browser-sha256.mjs",{type:javascript,body:browserSha256}],
+ ["/browser-request-id.mjs",{type:javascript,body:browserRequestId}],
  ["/", {type: "text/html; charset=utf-8", body: withSharedPuzzlePlaytests(withPuzzleCore(withProductionAudio(html)))}],
  ["/local-project-page.css", {type: "text/css; charset=utf-8", body: css}],
  ["/local-project-page.js", {type: javascript, body: page}],

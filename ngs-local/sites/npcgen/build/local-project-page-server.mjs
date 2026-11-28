@@ -42,6 +42,8 @@ import {isPoseSelectionV2,validNpcWorkflowRequest,animationRegenerateType,validN
 
 const canonicalPolicy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const assets=new Map([
+ ['/browser-sha256.mjs',['text/javascript; charset=utf-8',new URL('./browser-sha256.mjs',import.meta.url)]],
+ ['/browser-request-id.mjs',['text/javascript; charset=utf-8',new URL('./browser-request-id.mjs',import.meta.url)]],
  ['/', ['text/html; charset=utf-8', new URL('./local-project-page.html',import.meta.url)]],
  ['/local-project-page.css', ['text/css; charset=utf-8', new URL('./local-project-page.css',import.meta.url)]],
  ['/local-project-page.js', ['text/javascript; charset=utf-8', new URL('./local-project-page.js',import.meta.url)]],

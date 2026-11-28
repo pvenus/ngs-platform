@@ -1,3 +1,4 @@
+import {browserRequestId} from './browser-request-id.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const audioRequestType='audio.generate',schemaVersion='ngs.audio-generate.v1';
 export const audioSeparationType='audio.separate',audioSeparationSchema='ngs.audio-separate.v1';
@@ -82,7 +83,7 @@ export function makeAudioPayload({kind,title,conceptId,brief,duration,targetFull
  return v;
 }
 
-export function createAudioIntake(submit,{uuid=()=>crypto.randomUUID(),requestType=audioRequestType}={}){
+export function createAudioIntake(submit,{uuid=()=>browserRequestId(),requestType=audioRequestType}={}){
  let pending=null,busy=false,receipt=null;
  return {
   get uncertain(){return pending!==null&&!receipt;},

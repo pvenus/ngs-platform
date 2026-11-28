@@ -1,3 +1,4 @@
+import {sha256Hex} from './browser-sha256.mjs';
 /** Same formal scope for Local, Space and the browser. No engine or media settings in the request. */
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 
@@ -37,8 +38,7 @@ export async function motionConversionCommand(input){
  const payload={schemaVersion:motionPresetConvertSchema,projectId:input.projectId,sourcePresetId:input.sourcePresetId,
   variantPresetId:trim(input.variantPresetId),label:trim(input.label)};
  if(!validMotionPresetConvert(payload))throw Error('새 프리셋 ID와 이름을 확인하세요.');
- const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([motionPresetConvertType,payload])));
- const idempotencyKey='motion-2d-'+[...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,'0')).join('');
+ const idempotencyKey='motion-2d-'+await sha256Hex(new TextEncoder().encode(JSON.stringify([motionPresetConvertType,payload])));
  return {requestType:motionPresetConvertType,idempotencyKey,payload};
 }
 

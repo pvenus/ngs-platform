@@ -1,3 +1,4 @@
+import {browserRequestId} from './browser-request-id.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {conceptCategoryRequestType,makeConceptCategoryRequest} from './local-concept-category-contract.mjs';
 
@@ -9,7 +10,7 @@ const definitive=new Set(['CONCEPT_CATEGORY_REQUEST_INVALID','NGS_CONCEPT_CATEGO
 const labels={add:'카테고리 추가',update:'수정 요청',remove:'카테고리 삭제 요청'};
 const id=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
-export function createConceptCategoryIntake(submit,{uuid=()=>crypto.randomUUID()}={}){
+export function createConceptCategoryIntake(submit,{uuid=()=>browserRequestId()}={}){
  let command=null,busy=false,receipt=null;
  return {
   get waitingConfirmation(){return command!==null&&!receipt;},

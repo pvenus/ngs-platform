@@ -47,7 +47,7 @@ export function mountCatalogRosterEdit({items,tools,modalOwner=items.parentEleme
  remove.addEventListener('click',()=>{
   if(busy||opened||!selected.size)return;
   const list=[...selected.values()],dialog=create('dialog','prop-workspace-dialog');opened=dialog;
-  const h=create('h3',null,'선택한 항목 전체 삭제');h.id='catalog-delete-'+crypto.randomUUID();
+  const h=create('h3',null,'선택한 항목 전체 삭제');h.id='catalog-delete-title';
   dialog.setAttribute('aria-labelledby',h.id);
   const names=create('ul','catalog-roster-delete-targets');
   for(const row of list)names.append(create('li',null,row.title));

@@ -1,3 +1,4 @@
+import {browserRequestId} from './browser-request-id.mjs';
 import {fileUpdateType,fileUpdateSchema,assemblyUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
 import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,decorationArt,decorationsLoader,renderMapDecorations,paintPropDepth,puzzleZOrder} from './assembly-sprite-layout.mjs';
 import {assemblyReachable,bowlStates,validPortalConditions} from './assembly-contract.mjs';
@@ -173,7 +174,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  remove.classList.add('prop-animation-delete','well-assembly-remove');
  const removeDialog=el('dialog',null,'prop-workspace-dialog well-assembly-remove-dialog');
  const removeTitle=el('h3','조립에서 퍼즐 삭제'),removeBody=el('p'),cancelRemove=control('취소'),confirmRemove=control('삭제');
- removeTitle.id='well-assembly-remove-'+crypto.randomUUID();removeDialog.setAttribute('aria-labelledby',removeTitle.id);
+ removeTitle.id='well-assembly-remove-'+browserRequestId();removeDialog.setAttribute('aria-labelledby',removeTitle.id);
  confirmRemove.classList.add('prop-animation-delete');
  const removeActions=el('div',null,'prop-actions');removeActions.append(cancelRemove,confirmRemove);
  removeDialog.append(removeTitle,removeBody,removeActions);fine.append(el('summary','좌표 미세 조정'),placement);
@@ -231,8 +232,8 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  }
  function newPreset(){
   const regions=map.graph.regions,shift=(instances.length%5)*5;
-  if(puzzle.value===spiritDemoId)return {id:crypto.randomUUID(),type:spiritDemoId,layout:{spirit:{regionId:map.graph.startRegionId,x:55+shift,y:65}},attachments:{},bindings:{spirit:''}};
-  return {id:crypto.randomUUID(),type:wellDemoId,
+  if(puzzle.value===spiritDemoId)return {id:browserRequestId(),type:spiritDemoId,layout:{spirit:{regionId:map.graph.startRegionId,x:55+shift,y:65}},attachments:{},bindings:{spirit:''}};
+  return {id:browserRequestId(),type:wellDemoId,
    layout:{altar:{regionId:regions.find(x=>x.id==='zone-2')?.id??regions[0].id,x:43+shift,y:70},
            well:{regionId:regions.find(x=>x.id==='zone-4')?.id??regions.at(-1).id,x:53+shift,y:70}},
    attachments:{bowl:{x:5,y:-10},lid:{x:5,y:-10}},bindings:Object.fromEntries(slots.map(([key])=>[key,'']))};
@@ -507,7 +508,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    let saved=drafts[map.mapId];
    if(!saved&&published)saved=published.puzzles.map(p=>({...structuredClone(p),pinned:p.bindings,bindings:Object.fromEntries(Object.entries(p.bindings).map(([role,pin])=>[role,pin.propId]))}));
    if(!saved&&previous?.mapId===map.mapId&&previous.layout&&previous.bindings)
-    saved=[{id:crypto.randomUUID(),type:wellDemoId,layout:previous.layout,bindings:previous.bindings,
+    saved=[{id:browserRequestId(),type:wellDemoId,layout:previous.layout,bindings:previous.bindings,
       attachments:previous.attachments??{bowl:{x:5,y:-10},lid:{x:5,y:-10}}}];
    if(Array.isArray(saved)){
     instances=saved.slice(0,16).filter(p=>typeof p?.id==='string'&&[wellDemoId,spiritDemoId].includes(p.type)&&
@@ -577,7 +578,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    content:{title:published.title,mapId:published.map.mapId,puzzles}};
   if(!validFileUpdate(payload)){setStatus('모든 퍼즐의 필수 프랍 연결과 좌표를 확인하세요.');return;}
   const fingerprint=JSON.stringify(payload);
-  if(!lastApply||lastApply.body!==fingerprint)lastApply={body:fingerprint,key:crypto.randomUUID()};
+  if(!lastApply||lastApply.body!==fingerprint)lastApply={body:fingerprint,key:browserRequestId()};
   busy=true;refresh();
   try{
    const current=await latestMap(map.mapId);

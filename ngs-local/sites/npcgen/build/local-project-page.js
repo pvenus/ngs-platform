@@ -1,3 +1,4 @@
+import {sha256Hex} from './browser-sha256.mjs';
 import {mountMapWorkspace} from './map-workspace-ui.mjs';
 import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,cinematicSceneDeletePayload,mapFolderDeletePayload,assemblyFolderDeletePayload} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
@@ -251,7 +252,7 @@ function workspaceTransport(session,request,signal){
 }
 async function submitFolderDelete(submit,payload){
  const data=new TextEncoder().encode(JSON.stringify(payload));
- const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),n=>n.toString(16).padStart(2,'0')).join('');
+ const hash=await sha256Hex(data);
  const response=await submit({requestType:fileDeleteType,idempotencyKey:'delete-catalog-folder:'+hash,payload});
  const value=await response.json().catch(()=>null);
  if(!isQueuedRequest(response,value))throw Error(value?.error??'CATALOG_FOLDER_DELETE_NOT_ACCEPTED');
@@ -712,7 +713,7 @@ async function loadWorkspace(search){
    const removeAnimations=session.propAnimationRemoveEnabled===true&&submit?async({propId,source,animationIds})=>{
     const motionIds=[...animationIds].sort();
     const data=new TextEncoder().encode(JSON.stringify([propId,source.revision,source.sha256,motionIds]));
-    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data)),n=>n.toString(16).padStart(2,'0')).join('');
+    const hash=await sha256Hex(data);
     const response=await submit({requestType:propAnimationRemoveType,idempotencyKey:'prop-remove:'+hash,payload:{schemaVersion:propAnimationRemoveSchema,projectId,propId,source,motionIds}});
     const value=await response.json().catch(()=>null);
     if(!isQueuedRequest(response,value))throw Error(value?.error??'PROP_ANIMATION_REMOVE_NOT_ACCEPTED');

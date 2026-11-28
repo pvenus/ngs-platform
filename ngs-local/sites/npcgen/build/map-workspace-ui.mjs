@@ -1,3 +1,4 @@
+import {browserRequestId} from './browser-request-id.mjs';
 import {fileUpdateType,fileUpdateSchema,mapUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {orderedMapChain} from './map-warp.mjs';
@@ -175,7 +176,7 @@ export async function mountMapWorkspace({items,detail,tools,request,submit,proje
  function openNew(){
   if(modal||!enabled||!submit||signal?.aborted)return;
   modal=el('dialog',undefined,'prop-workspace-dialog map-create-dialog');
-  const dialog=modal,content=el('div'),heading=el('h3','새 맵 생성 요청'),id='map-create-'+crypto.randomUUID();
+  const dialog=modal,content=el('div'),heading=el('h3','새 맵 생성 요청'),id='map-create-title';
   heading.id=id;dialog.setAttribute('aria-labelledby',id);
   dialog.append(heading,el('p','배경을 그룹으로 묶고 시작 맵, 포털, 충돌 영역, 꾸미기 요청을 지정하세요. 꾸미기를 선택하면 선택한 프랍의 배치 제안 단계가 추가돼요.','meta'),content);
   const abort=()=>dialog.close();
@@ -223,7 +224,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
  let decorRegion=null,decorId=null,decorPreview=false,warpSight=false,propRows=null,propLoading=false,propLoadFailed=false,decorAdding=false;
  const decorSelection={propId:'',visibility:'both'};
  let decorListScroll=0;
- const newDecorationId=()=> 'd-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
+ const newDecorationId=()=> 'd-'+browserRequestId().replaceAll('-','').slice(0,20);
  const showDecorationMode=visibility=>{if(visibility!=='both')decorPreview=visibility==='cinematic';};
  const visibilityLabels={both:'능력 OFF / ON 모두','pixel':'능력 OFF · 픽셀만','cinematic':'능력 ON · 시네마틱만'};
  const pinProp=p=>({propId:p.propId,revision:p.revision,sha256:p.sha256});
@@ -290,7 +291,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
   }
   if(scoped.regions.some(r=>!imageAligned(r))){bark.textContent='누락된 배경을 제거하거나 교체해 주세요.';return;}
   const body=mapCanonical(payload);
-  if(!lastToken||lastBody!==body){lastToken='map:'+crypto.randomUUID();lastBody=body;store();}
+  if(!lastToken||lastBody!==body){lastToken='map:'+browserRequestId();lastBody=body;store();}
   busy=true;render();
   try{
    const response=await submit({requestType,idempotencyKey:lastToken,payload});
@@ -501,7 +502,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    const box=preview(collision,current);
    const addCollider=rect=>{
     if(locked||!imageAligned(current)||!mapRect(rect)||(graph.colliders??[]).length>=maxMapColliders)return;
-    const id='c-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
+    const id='c-'+browserRequestId().replaceAll('-','').slice(0,20);
     graph.colliders=[...(graph.colliders??[]),{id,regionId:collisionRegion,rect,shape:newColliderShape,rotation:0}];
     collisionId=id;drawingCollider=false;changed();
    };
@@ -894,7 +895,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    const plus=button('선택 배경으로 구역 추가',()=>{
     const bg=assets.get(bgPick.value);
     if(!bg||graph.regions.length>=(published?24:12))return;
-    const id='r-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
+    const id='r-'+browserRequestId().replaceAll('-','').slice(0,20);
     graph.regions.push({id,name:assetTitle(bgPick.value).slice(0,100),description:'이 배경을 사용해 이동하는 구역',backgroundId:bgPick.value,imageSha256:bg.sha256});
     graph.startRegionId??=id;active=id;changed();
    });plus.disabled=true;
@@ -994,7 +995,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    };
    const newEdge=button('이동 연결 추가',()=>{
     if(!imageAligned(region(from.value))||!imageAligned(region(to.value))||from.value===to.value||graph.connections.length>=96)return;
-    const id='e-'+crypto.randomUUID().replaceAll('-','').slice(0,20);
+    const id='e-'+browserRequestId().replaceAll('-','').slice(0,20);
     graph.connections.push({id,from:from.value,to:to.value,label:title(to.value).slice(0,100),hit:null,spawn:null});
     edgeId=id;changed();
    });

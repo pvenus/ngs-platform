@@ -1,3 +1,4 @@
+import {browserRequestId} from './browser-request-id.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 import {motionCatalogSchema,motionSelectionOf,npcReplacementSlug,quickMotionSelection,selectionReplaceSchemaVersion,
  selectionSchemaVersion,selectionLegacySchemaVersion,selectionLegacyReplaceSchemaVersion,validMotionChoice,validMotionSelection,validNpcMotionSelectionRequest,npcBasicSchema,validNpcBasicRequest} from './npc-motion-selection.mjs';
@@ -109,7 +110,7 @@ export async function readOneStopMotionPresets(request,signal){
  return catalog.presets;
 }
 
-export function createNpcOneStopIntake(submit,{key=()=>crypto.randomUUID(),requestType='npc.workflow'}={}){
+export function createNpcOneStopIntake(submit,{key=()=>browserRequestId(),requestType='npc.workflow'}={}){
  let pending=null,busy=false,accepted=false;
  return {
   get waitingConfirmation(){return pending!==null;},

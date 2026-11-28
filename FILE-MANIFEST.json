@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 414,
+  "fileCountIncludingManifest": 417,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1240,12 +1240,12 @@
       "sha256": "592a7e7652507afb91d5bf16477d279824037081dec3719bc8d51bde0f087ae5"
     },
     "ngs-local/sites/npcgen/build/map-contract.mjs": {
-      "bytes": 13814,
-      "sha256": "43d44ff27d5797eec43e897bfd82b2b75b84c0cb1f58881f9b34b706e2ad465f"
+      "bytes": 13750,
+      "sha256": "808e4c00c2fe866948141cce9f880eeb8fe3d9842e2bcba0680829d03d64368f"
     },
     "ngs-local/sites/npcgen/build/map-workspace-ui.mjs": {
-      "bytes": 77848,
-      "sha256": "fac0269138bf9f77a2d29d05a90ea84b9af56dba49a402d621666c6c81d21533"
+      "bytes": 77887,
+      "sha256": "5ded2b65b737106058a7dfadcd1a4eba0582918554e6fe4f05013e5c60c2da71"
     },
     "ngs-local/sites/npcgen/build/well-puzzle-demo.mjs": {
       "bytes": 23161,
@@ -1260,8 +1260,8 @@
       "sha256": "a67071f139e415caf9cc5b1823ad6212e6177974d0e14baa2414c2252da245b4"
     },
     "ngs-local/source-manifest.json": {
-      "bytes": 20222,
-      "sha256": "d2152dadfb92db336510a5d1485b113518409815471848fc69ee8a16c1100bc5"
+      "bytes": 20567,
+      "sha256": "feac60361061316569d34758a4a5347c65ad6c44c5b1786fab5b9be3d4c6349b"
     },
     "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
       "bytes": 15831,
@@ -1488,12 +1488,12 @@
       "sha256": "472ec51761641c10f227f6f0c43d7a9ac9a8a085db7c4524b7536acc470ce7f9"
     },
     "ngs-local/sites/npcgen/build/local-project-page-server.mjs": {
-      "bytes": 42286,
-      "sha256": "d27f434f623ec32f221c45efe70a4d56770fc4e07ffa27696ca5cf1d7fbc9510"
+      "bytes": 42512,
+      "sha256": "217aff3a712360effb528f793f6d52e22932ba6abbccb373d9031469fd8e1694"
     },
     "ngs-local/sites/npcgen/build/local-project-page.js": {
-      "bytes": 51319,
-      "sha256": "c95ad50908b5a290e512d3c2385e16f292bf734a87c5ef5681beb8e0b341e1fa"
+      "bytes": 51183,
+      "sha256": "e7a591f8aa79c684a8dbb26090851ff12d3d7c3bc43c61dd42045db610dee773"
     },
     "ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs": {
       "bytes": 7864,
@@ -1516,8 +1516,8 @@
       "sha256": "eade0b75714716ab5842a6530a71a275e587000dc9d76b01966e2059f0f10a2e"
     },
     "ngs-local/sites/npcgen/build/cinematic-workspace-ui.mjs": {
-      "bytes": 34982,
-      "sha256": "74e41771bfd329430b51be0e665cc94cc3fa89514468adb39103f2d3fb59477b"
+      "bytes": 35025,
+      "sha256": "c3dccb2e4ae64df793862ef8918347a5253a319aba4d73ad7f63687136fce20f"
     },
     "ngs-local/sites/npcgen/build/cinematic-workspace.mjs": {
       "bytes": 14058,
@@ -1588,16 +1588,16 @@
       "sha256": "fde1397e2467aa292cab093ac16b3d9c7df2d38595ee2a3152beaa074a406ad8"
     },
     "ngs-local/sites/npcgen/build/assembly-catalog-ui.mjs": {
-      "bytes": 12171,
-      "sha256": "6d77f64be1980c97f55d3677c4c206ec1a4279f9f98cca76779a449981880b60"
+      "bytes": 12213,
+      "sha256": "6f44eb9be76552319ecba68a24aceb4bc409caf78cd6409ef3c7ec3eea5be4d8"
     },
     "ngs-local/sites/npcgen/build/local-npc-one-stop-ui.mjs": {
-      "bytes": 23175,
-      "sha256": "f03f9bed1ca7e31c893d1d679628b1882ab1d6668ad93043659d05b52a76c90c"
+      "bytes": 23233,
+      "sha256": "6c590b39715339e5accfc8cb202d2c75869aa1562ef1f66163fffa92791d3758"
     },
     "ngs-local/sites/npcgen/build/npc-motion-selection.mjs": {
-      "bytes": 10795,
-      "sha256": "a0c16dee75fbd3deea1896ad4011b71d5840ce8224e8d4fc399e5c1b9f3b5c59"
+      "bytes": 10729,
+      "sha256": "a1e34811e09617ea80c369889fe677f155cd5affcd8a6261629e25c3786c8286"
     },
     "ngs-local/sites/npcgen/build/puzzle-core-bundle.mjs": {
       "bytes": 3097443,
@@ -1624,8 +1624,8 @@
       "sha256": "3d07bdef5a6cb71096d1d13d6482d7467c3cab21e04c750d976506040f0f9194"
     },
     "space-hosting/overlay/build/shared-ngs-assets.ts": {
-      "bytes": 6122,
-      "sha256": "21e6ba127c3bc7b10af701ffddf3ef7ed9485daa2564f7dc874c821d08522119"
+      "bytes": 6430,
+      "sha256": "3aa83b96fda342e946ae01a7d9d12f837de2818e54d670f3c92d6056a32abc1a"
     },
     "space-hosting/overlay/build/shared-ngs-response.mjs": {
       "bytes": 3590,
@@ -1654,6 +1654,18 @@
     "ngs-viewer/lib/viewer-miniflare-worker.mjs": {
       "bytes": 2996,
       "sha256": "0de8df053a7ea153de7e59e04bc96b8b3e3f3b7d52d828f4a523a7b0a236f639"
+    },
+    "ngs-local/sites/npcgen/build/browser-request-id.mjs": {
+      "bytes": 480,
+      "sha256": "78f4330b20409dd98d93146e4d17a147cb058a0f04232a7bec8586968f3f1133"
+    },
+    "ngs-local/sites/npcgen/build/browser-sha256.mjs": {
+      "bytes": 2568,
+      "sha256": "08f9ec948a703a85f6b22b4ba2c28194dad809d93aeeb73c5fb66028fa26945a"
+    },
+    "ngs-local/sites/npcgen/tests/private-lan-http.mjs": {
+      "bytes": 4708,
+      "sha256": "ad48227b6941cc7437de41ae57aa25fbaad9a433fb1c0514f956250c75198ad6"
     }
   }
 }

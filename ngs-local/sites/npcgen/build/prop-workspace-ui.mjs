@@ -1,3 +1,4 @@
+import {browserRequestId} from './browser-request-id.mjs';
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {propPayload,propTypes,propSpiritProfile,propWorkspacePath,propSlug,validPropGenerateReference,validPropPayload} from './prop-workspace-contract.mjs';
 import {propPackageMediaLimit} from './prop-package-contract.mjs';
@@ -272,7 +273,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   const dialog=node('dialog',null,'prop-workspace-dialog background-media-dialog');
   const header=node('div',null,'prop-panel-heading'),title=node('h3',prop.title+' · 큰 원본');
   const close=node('button','닫기','prop-control');close.type='button';
-  title.id='prop-original-'+crypto.randomUUID();dialog.setAttribute('aria-labelledby',title.id);header.append(title,close);
+  title.id='prop-original-title';dialog.setAttribute('aria-labelledby',title.id);header.append(title,close);
   const stage=node('div',null,'npc-media-enlarge-stage'),img=staticImage(prop.media.detail,prop.title+' 큰 원본');
   const {width,height}=prop.media.detail;img.width=width;img.height=height;img.loading='eager';
   stage.append(img);dialog.append(header,stage,node('p',width+' × '+height+' px','meta'));
@@ -385,7 +386,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   if(!can(action)||action!=='generate'&&!selected)return;
   const original=selected;
   const modal=node('dialog',null,'prop-workspace-dialog'),form=node('form');
-  const heading=node('h3',actionsLabel[action]);const ariaId='prop-action-'+crypto.randomUUID();
+  const heading=node('h3',actionsLabel[action]);const ariaId='prop-action-title';
   heading.id=ariaId;modal.setAttribute('aria-labelledby',ariaId);form.append(heading);
   if(original&&action!=='generate')form.append(node('p',original.title+' · 버전 '+original.source.revision,'meta'));
   const id=action==='generate'?input('예: paper-collar-candle',80):null;
@@ -445,7 +446,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
     const payload=propPayload(action,body);
     if(!validPropPayload(type,payload)){info.textContent='이름과 요청 내용을 확인해 주세요. 이름은 영문 소문자·숫자와 구분자를 사용하세요.';return;}
     const fingerprint=JSON.stringify(payload);
-    if(!pending||pending.fingerprint!==fingerprint)pending={fingerprint,key:crypto.randomUUID()};
+    if(!pending||pending.fingerprint!==fingerprint)pending={fingerprint,key:browserRequestId()};
     const response=await submit({requestType:type,idempotencyKey:pending.key,payload});
     const result=await response.json().catch(()=>null);
     if(signal?.aborted)return;

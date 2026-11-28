@@ -1,3 +1,4 @@
+import {sha256Hex} from './browser-sha256.mjs';
 /** Portable browser/Local/Space contract for explicit, immutable motion selections. */
 // v2 requests derive a combat portrait branch from selected combat presets.
 export const selectionSchemaVersion='ngs.npc-one-stop.selection.v2';
@@ -110,8 +111,7 @@ export async function publishedMotionChoice(id,meta,label){
  }
  const payload=['ngs.motion-assets.v1',id,meta.posePreset,motionDirections.map(d=>[d,assets.get(d)])];
  const raw=new TextEncoder().encode(JSON.stringify(payload));
- const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',raw));
- return {presetId:id,posePreset:meta.posePreset,assetSetSha256:Array.from(digest,n=>n.toString(16).padStart(2,'0')).join(''),label};
+ return {presetId:id,posePreset:meta.posePreset,assetSetSha256:await sha256Hex(raw),label};
 }
 
 const quickIds=Object.freeze({
