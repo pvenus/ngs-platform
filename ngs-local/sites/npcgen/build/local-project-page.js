@@ -1,6 +1,8 @@
 import {sha256Hex} from './browser-sha256.mjs';
 import {mountMapWorkspace} from './map-workspace-ui.mjs';
 import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,cinematicSceneDeletePayload,mapFolderDeletePayload,assemblyFolderDeletePayload} from './prop-folder-delete-contract.mjs';
+import {mountUiWorkspace} from './ui-workspace-ui.mjs';
+import {uiStagePath} from './ui-asset-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
@@ -20,6 +22,7 @@ let run;
 const queuePanel=document.querySelector('#local-request-queue');
 const queueLabel={
  [cinematicType]:'시네마틱 영상 생성',
+ 'ui.asset.generate':'UI 이미지 생성','ui.asset.import':'UI PNG 등록',
  'cinematic.sequence.generate':'PNG 시네마틱 생성','cinematic.playback.update':'시네마틱 메타 수정',
  'cinematic.source.generate':'시네마틱 원본 이미지 생성','background.source.generate':'배경 원본 이미지 생성','cinematic.sequences.remove':'시네마틱 애니메이션 제거','prop.animation.remove':'프랍 애니메이션 제거',
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
@@ -248,7 +251,13 @@ function workspaceTransport(session,request,signal){
   if(response.status===202&&isQueuedRequest(response,await response.clone().json().catch(()=>null)))void queueRefresh();
   return response;
  };
- return {hosted,post,submit};
+ const stage=hosted?undefined:async file=>{
+  const response=await fetch(uiStagePath,{method:'POST',headers:{'Content-Type':'image/png','X-NPCGen-Csrf':session.csrfToken,
+    'X-NPCGen-Frontend-Context':session.contextId},body:file,signal});
+  if(!response.ok)throw Error(response.status===422?'실제 알파 투명도가 있는 RGBA PNG인지 확인하세요.':'PNG 등록 준비에 실패했습니다.');
+  return response.json();
+ };
+ return {hosted,post,submit,stage};
 }
 async function submitFolderDelete(submit,payload){
  const data=new TextEncoder().encode(JSON.stringify(payload));
@@ -452,7 +461,7 @@ async function load(){
 const areas=[
  ['concept','마스터 컨셉',true],['story','스토리 설계',false],['assembly','조립·플레이',true],
  ['npcs','NPC 설계',true],['motion-presets','모션 프리셋',true],['production','퍼즐 설계',['puzzleWorkspace','wellPuzzleDemo'].some(key=>document.documentElement?.dataset[key]==='enabled')],
- ['cinematic','시네마틱 영상',true],['resources','배경 설계',true],['maps','맵 제작',true],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
+ ['cinematic','시네마틱 영상',true],['ui','UI 제작',true],['resources','배경 설계',true],['maps','맵 제작',true],['props','프랍 설계',true],['audio','음원 설계',document.documentElement?.dataset.audioWorkspace==='enabled'],['docs','작성 참고',false],
 ];
 const iconPaths={
  concept:'M4 19V5a1 1 0 0 1 1-1h7v16H5a1 1 0 0 1-1-1Zm8-15h7a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-7M7 8h2m6 0h2m-10 4h2m6 0h2',
@@ -497,11 +506,11 @@ async function loadWorkspace(search){
  const listToolbar=document.querySelector('#concept-category-tools');
  listToolbar.replaceChildren();listToolbar.hidden=true;
  let conceptActions=null,motionSubmit;
- const supported=(area,enabled)=>enabled&&(!['audio','production','assembly','props','cinematic'].includes(area)||projectId==='binari');
+ const supported=(area,enabled)=>enabled&&(!['audio','production','assembly','props','cinematic','ui'].includes(area)||projectId==='binari');
  const [_,label,enabled]=areas.find(([id])=>id===tab)??['','프로젝트',false];
- document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':tab==='cinematic'?'장면':tab==='resources'?'배경':tab==='maps'?'맵':tab==='production'?'퍼즐':'항목';
+ document.querySelector('#items-title').textContent=tab==='audio'&&supported(tab,enabled)?'음원 종류':tab==='props'?'프랍':tab==='cinematic'?'장면':tab==='ui'?'UI 리소스':tab==='resources'?'배경':tab==='maps'?'맵':tab==='production'?'퍼즐':'항목';
  document.querySelector('#app').classList.remove('project-home');
- workspace.classList.toggle('npc-folder-workspace',['npcs','props','cinematic','resources','maps','production'].includes(tab));
+ workspace.classList.toggle('npc-folder-workspace',['npcs','props','cinematic','resources','maps','production','ui'].includes(tab));
  document.querySelector('#project-home').hidden=true;
  for(const id of ['#project-workspace','#workspace-identity','#workspace-tools'])document.querySelector(id).hidden=false;
  document.querySelector('#workspace-title').textContent=projectId;
@@ -658,7 +667,7 @@ async function loadWorkspace(search){
  try{
   note('항목을 읽고 있습니다.');
   const session=await request('/__npcgen_session');
-  const {hosted,post,submit}=workspaceTransport(session,request,signal);
+  const {hosted,post,submit,stage}=workspaceTransport(session,request,signal);
   const legacySpace=hosted&&!spaceWorkspaceReady(session);
   if(!legacySpace)motionSubmit=submit;
   if(hosted){
@@ -694,6 +703,11 @@ async function loadWorkspace(search){
    await mountBackgroundWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,deleteItem,
     enabled:session.backgroundSourceEnabled===true,pixelEnabled:session.backgroundPixelEnabled===true,
     panel:search.get('cineTab'),animationEnabled:session.backgroundAnimationEnabled===true});
+   if(!signal.aborted)note('');
+   return;
+  }
+  if(tab==='ui'){
+   await mountUiWorkspace({items,detail,tools:listToolbar,request,submit,stage,projectId,item,navigate:next,signal});
    if(!signal.aborted)note('');
    return;
   }

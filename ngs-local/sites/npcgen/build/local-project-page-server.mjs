@@ -30,6 +30,8 @@ import {propAction,validPropActions} from './prop-workspace-contract.mjs';
 import {admitPropRequest,admitPropAnimationRemove} from './prop-workspace.mjs';
 import {createRSPropReadiness} from './rs-mcp.mjs';
 import {dispatchWorkspaceRead,workspaceReadRoute} from './workspace-read-registry.mjs';
+import {uiStagePath,uiMaxPng,uiSchemas,validUiRequest} from './ui-asset-contract.mjs';
+import {stageLocalUiPng} from './local-ui-stage.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
 import {openLocalRequestQueue} from './local-request-queue.mjs';
 import {conceptCategoryRequestType,validConceptCategoryRequest} from './local-concept-category-contract.mjs';
@@ -50,6 +52,7 @@ const assets=new Map([
  ['/prop-package-contract.mjs',['text/javascript; charset=utf-8',new URL('./prop-package-contract.mjs',import.meta.url)]],
  ['/cinematic-sequence-contract.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-sequence-contract.mjs',import.meta.url)]],
  ['/cinematic-timeline.mjs',['text/javascript; charset=utf-8',new URL('./cinematic-timeline.mjs',import.meta.url)]],
+ ...['ui-asset-contract.mjs','ui-workspace-ui.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
  ...['file-update-envelope.mjs','map-contract.mjs','map-workspace-ui.mjs','map-warp.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
  ...['puzzle-state-runtime.mjs','well-puzzle-demo.mjs','well-assembly-ui.mjs','assembly-contract.mjs','assembly-catalog-ui.mjs','assembly-sprite-layout.mjs','assembly-actor.mjs'].map(name=>['/'+name,['text/javascript; charset=utf-8',new URL('./'+name,import.meta.url)]]),
  ['/background-playback.mjs',['text/javascript; charset=utf-8',new URL('./background-playback.mjs',import.meta.url)]],
@@ -192,7 +195,7 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
   audioWorkspaceEnabled:released.audioFullLengthEnabled,audioSeparationEnabled:released.audioSeparationEnabled,poseSelectionV2Enabled:released.poseSelectionV2Enabled,npcBasicPortraitEnabled:released.npcBasicPortraitEnabled,npcScopedPortraitEnabled:false,brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,releaseCapabilities,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,releaseCapabilities,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot,stageUiPng=stageLocalUiPng}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -307,6 +310,20 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     return json(200,value);
    }
+   if(url.pathname===uiStagePath){
+    const session=auth.read(req);
+    if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
+    if(req.method!=='POST'||url.search)throw failure('METHOD_NOT_ALLOWED',405);
+    if(!queue)throw failure('NGS_REQUEST_QUEUE_UNAVAILABLE',503);
+    auth.csrf(req,session);
+    if(req.headers['x-npcgen-frontend-context']!==session.contextId)throw failure('FRONTEND_SESSION_CONTEXT_CHANGED',409);
+    projectPermission(session.principal,'binari',undefined,false);
+    if(req.headers['content-type']!=='image/png')throw failure('NGS_UI_PNG_REQUIRED',415);
+    if(Number(req.headers['content-length'])>uiMaxPng)throw failure('PAYLOAD_TOO_LARGE',413);
+    const bytes=await readSmallBody(req,uiMaxPng);
+    if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
+    return json(200,await stageUiPng(bytes));
+   }
    if(url.pathname==='/api/requests'){
     const session=auth.read(req);
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
@@ -324,6 +341,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     projectPermission(session.principal,command.payload.projectId,undefined,false);
     if(releaseCapabilities&&!queue)throw failure('NGS_REQUEST_QUEUE_UNAVAILABLE',503);
+    if(Object.hasOwn(uiSchemas,command.requestType)&&!validUiRequest(command.requestType,command.payload))throw failure('NGS_UI_PAYLOAD_INVALID',400);
     if(Object.hasOwn(cinematicReads,command.requestType)){
      if(!await activeCinematic(command.requestType))throw failure('CINEMATIC_GENERATION_UNAVAILABLE',404);
      await admitCinematicRequest({openProject,command,authorize:id=>projectPermission(session.principal,id,undefined,false)});

@@ -3,14 +3,36 @@ import {createHash} from 'node:crypto';
 export const audioSummaryLimit=64*1024;
 export const audioPageSize=30;
 export const audioOfficialId=/^request\.official\.[a-f0-9]{64}$/u;
+export const audioImportId=/^audio\.import\.[a-f0-9]{64}$/u;
+export const isAudioResourceId=id=>typeof id==='string'&&(audioOfficialId.test(id)||audioImportId.test(id));
 const sha=/^[a-f0-9]{64}$/u,sourceId=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const resultPath=/^audio\/(request\.official\.[a-f0-9]{64})\/(metadata\.json|audio\.wav)$/u;
-const cursorPattern=/^a1\.(0|[1-9][0-9]{0,15})\.([a-f0-9]{64})$/u;
+const resultPath=/^audio\/((?:request\.official|audio\.import)\.[a-f0-9]{64})\/(metadata\.json|audio\.wav)$/u;
+const cursorPattern=/^(a[12])\.(0|[1-9][0-9]{0,15})\.([a-f0-9]{64})$/u;
 const digest=x=>createHash('sha256').update(x).digest('hex');
 const fits=(n,min,max)=>Number.isSafeInteger(n)&&n>=min&&n<=max;
 const invalid=()=>{throw Object.assign(Error('AUDIO_RESULT_INPUT_INVALID'),{status:400});};
 export function audioIndexPath(path){return resultPath.exec(path);}
+export function manualAudioSummary(meta,id){
+ if(typeof id!=='string'||!audioImportId.test(id)||meta?.schemaVersion!=='ngs.audio-import-result.v1'||
+    Object.keys(meta).sort().join(',')!=='audio,id,kind,projectId,provenance,publishedAt,schemaVersion,title'||
+    meta.id!==id||meta.projectId!=='binari'||meta.kind!=='bgm'||!fits(meta.publishedAt,1,Number.MAX_SAFE_INTEGER)||
+    typeof meta.title!=='string'||!meta.title.isWellFormed()||!meta.title||meta.title.trim()!==meta.title||
+    [...meta.title].length>120||/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(meta.title))return null;
+ const p=meta.provenance,a=meta.audio,validHash=x=>typeof x==='string'&&sha.test(x);
+ if(!p||Object.keys(p).sort().join(',')!=='mode,source'||p.mode!=='owner-manual'||
+    a?.path!=='audio.wav'||a.mimeType!=='audio/wav'||!validHash(a.sha256)||!fits(a.bytes,44,24*1024*1024)||
+    ![1,2].includes(a.channels)||a.bitsPerSample!==16||!fits(a.sampleRate,8000,96000)||!fits(a.frames,1,24*1024*1024)||
+    a.bytes!==44+a.frames*a.channels*2||a.durationSeconds!==a.frames/a.sampleRate||a.durationSeconds<10||a.durationSeconds>120)return null;
+ const source=p.source;
+ if(source!==null&&(!source||Object.keys(source).sort().join(',')!=='sourceOfficialRequestId,sourceSha256'||
+    typeof source.sourceOfficialRequestId!=='string'||!audioOfficialId.test(source.sourceOfficialRequestId)||
+    !validHash(source.sourceSha256)||source.sourceSha256===a.sha256))return null;
+ const canonicalSource=source===null?null:{sourceOfficialRequestId:source.sourceOfficialRequestId,sourceSha256:source.sourceSha256};
+ if(id!=='audio.import.'+digest(JSON.stringify(['ngs.audio-import.v1','binari',meta.title,canonicalSource,a.sha256])))return null;
+ return {id,title:meta.title,bpm:null,separated:false,generatedAt:meta.publishedAt,sha256:a.sha256,bytes:a.bytes,durationSeconds:a.durationSeconds};
+}
 export function audioResultSummary(meta,id){
+ if(audioImportId.test(id))return manualAudioSummary(meta,id);
  const a=meta?.audio,s=meta?.separation;
  const separated=meta!=null&&Object.hasOwn(meta,'separation');
  if(separated&&(!s||Object.keys(s).sort().join(',')!=='sourceOfficialRequestId,sourceSha256'||
@@ -39,18 +61,18 @@ export function audioIndexQuery(query){
  if(keys==='cursor,projectId'){const cursor=query.get('cursor');parseAudioCursor(cursor);return {projectId,cursor};}
  if(keys==='projectId,resultId'){
   const resultId=query.get('resultId');
-  if(audioOfficialId.test(resultId))return {projectId,resultId};
+  if(isAudioResourceId(resultId))return {projectId,resultId};
  }
  return invalid();
 }
 export function parseAudioCursor(cursor){
  const m=typeof cursor==='string'&&cursorPattern.exec(cursor);
- if(!m||!Number.isSafeInteger(Number(m[1])))return invalid();
- return {date:Number(m[1]),id:'request.official.'+m[2]};
+ if(!m||!Number.isSafeInteger(Number(m[2])))return invalid();
+ return {date:Number(m[2]),id:(m[1]==='a1'?'request.official.':'audio.import.')+m[3]};
 }
-export const audioCursor=({generated_at,id})=>'a1.'+generated_at+'.'+id.slice('request.official.'.length);
+export const audioCursor=({generated_at,id})=>(audioImportId.test(id)?'a2.':'a1.')+generated_at+'.'+id.slice(-64);
 export function audioIndexResult({id,title,bpm,separated,duration_seconds,metadata_audio_sha}){
- return {title,bpm,bpmBasis:bpm===null?'unavailable':'model',durationSeconds:duration_seconds,...(separated?{separated:true}:{}),
+ return {title,bpm,bpmBasis:bpm===null?'unavailable':'model',durationSeconds:duration_seconds,...(separated?{separated:true}:{}),...(audioImportId.test(id)?{manual:true}:{}),
   url:'/api/audio-workspace?'+new URLSearchParams({projectId:'binari',id,sha256:metadata_audio_sha})};
 }
 
@@ -135,7 +157,7 @@ export function createAudioResultIndex(db){
  }
  async function read(args){
   if(!args||args.projectId!=='binari'||Object.keys(args).some(k=>!['projectId','cursor','resultId'].includes(k))||
-     (args.resultId!==undefined&&(args.cursor!==undefined||!audioOfficialId.test(args.resultId))))return invalid();
+     (args.resultId!==undefined&&(args.cursor!==undefined||!isAudioResourceId(args.resultId))))return invalid();
   const {projectId,resultId,cursor}=args;
   if((await first(`SELECT complete FROM ${progress} WHERE id=1`))?.complete!==1)
    throw Object.assign(Error('AUDIO_INDEX_PREPARING'),{status:503});

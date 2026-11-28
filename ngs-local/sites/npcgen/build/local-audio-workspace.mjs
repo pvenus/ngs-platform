@@ -334,6 +334,7 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
    button.type='button';button.addEventListener('click',()=>select(row));
    const title=node('button','audio-track-title',row.title);
    title.type='button';title.addEventListener('click',()=>select(row));
+   if(row.manual===true)title.title='수동 등록 음원';
    const modeled=Number.isInteger(row.bpm)&&row.bpm>=30&&row.bpm<=300&&row.bpmBasis==='model';
    const bpm=node('span','audio-bpm',modeled?formatter.format(row.bpm):'—');
    bpm.setAttribute('aria-label',modeled?bpm.textContent+' BPM (모델 추정)':'BPM 미제공');
@@ -341,7 +342,7 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
    const duration=node('span','audio-duration',formatter.format(row.durationSeconds)+'초');
    duration.setAttribute('aria-label','총길이 '+duration.textContent);
    const deleteStatus=submitDelete?node('span','audio-delete-status'):null;
-   const source=submitSeparation&&row.separated!==true?audioSeparationSource(row):null;
+   const source=submitSeparation&&row.manual!==true&&row.separated!==true?audioSeparationSource(row):null;
    const separate=source?node('button','audio-separate'):null;
    const separateStatus=separate?node('span','audio-separate-status'):null;
    const separateSlot=submitSeparation?node('span','audio-separate-slot'):null;
@@ -399,7 +400,7 @@ function makePlaylist(container,signal,{request,refresh,submitDelete,onDeleteAcc
 }
 function normalizeAudioPage(data){
  if(data?.projectId!=='binari'||!Array.isArray(data.results)||data.results.length>audioPageSize||
-    !(data.nextCursor===null||typeof data.nextCursor==='string'&&data.nextCursor.startsWith('a1')&&data.nextCursor.length<=2048))
+    !(data.nextCursor===null||typeof data.nextCursor==='string'&&/^a[12]\./u.test(data.nextCursor)&&data.nextCursor.length<=2048))
   throw Error('AUDIO_PAGE_INVALID');
  const rows=new Map();
  for(const row of data.results){

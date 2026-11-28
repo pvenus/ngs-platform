@@ -1,9 +1,9 @@
-import {audioIndexQuery} from './audio-result-index.mjs';
+import {audioIndexQuery,audioImportId,isAudioResourceId,manualAudioSummary} from './audio-result-index.mjs';
 /** Verified-object projections reused by Mac S3 and Space R2. Callers enforce their own session policy. */
 import {audioResultTaskKey} from './local-audio-workspace.mjs';
 const projectId='binari',icon='/api/project-folders/icon',audio='/api/audio-workspace';
 const limit=24*1024*1024,metadataLimit=64*1024,iconLimit=2*1024*1024;
-const official=/^request\.official\.[a-f0-9]{64}$/u,sha=/^[a-f0-9]{64}$/u,sourceId=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const sha=/^[a-f0-9]{64}$/u,sourceId=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
 const binaryHeaders={...headers,'Content-Security-Policy':"sandbox; default-src 'none'"};
 const reject=(status,code)=>{throw Object.assign(Error(code),{status});};
@@ -59,6 +59,7 @@ export async function projectIcon(request,replica,q){
 async function audioRecord(replica,id,wavSha){
  const folder='audio/'+id,wav=folder+'/audio.wav';
  const meta=await recordObject(replica,folder+'/metadata.json'),a=meta?.audio,task=meta&&audioResultTaskKey(meta,id);
+ if(audioImportId.test(id))return manualAudioSummary(meta,id)&&(wavSha===undefined||a.sha256===wavSha)?{meta,a,wav,manual:true}:null;
  if(meta?.schemaVersion!=='workflow.audio-result.v1'||meta.officialRequestId!==id||meta.projectId!==projectId||meta.kind!=='bgm'||
     !task||meta.taskId!=='workflow.task.'+await hash(encoder.encode(JSON.stringify([id,task])))||
     !digest(meta.payloadSha256)||typeof meta.conceptId!=='string'||!sourceId.test(meta.conceptId)||
@@ -72,7 +73,7 @@ async function audioRecord(replica,id,wavSha){
 }
 export async function objectAudioSeparationSource(replica,{sourceOfficialRequestId,sourceSha256}){
  const row=await audioRecord(replica,sourceOfficialRequestId,sourceSha256);
- return Boolean(row&&!row.separated&&proof(await replica.head(row.wav),sourceSha256,row.a.bytes));
+ return Boolean(row&&!row.manual&&!row.separated&&proof(await replica.head(row.wav),sourceSha256,row.a.bytes));
 }
 export async function playlist(replica,query){
  return replica.audioIndex(audioIndexQuery(query));
@@ -135,7 +136,7 @@ function rangeOf(value,size){
 }
 export async function audioFile(request,replica,q){
  const id=q.get('id'),sha256=q.get('sha256');
- need(exactKeys(q,'id,projectId,sha256')&&typeof id==='string'&&official.test(id)&&digest(sha256),400,'AUDIO_RESULT_INPUT_INVALID');
+ need(exactKeys(q,'id,projectId,sha256')&&isAudioResourceId(id)&&digest(sha256),400,'AUDIO_RESULT_INPUT_INVALID');
  const row=await audioRecord(replica,id,sha256);
  if(!row)missingAudio();
  const file=await replica.head(row.wav),size=row.a.bytes;

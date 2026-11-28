@@ -18,7 +18,7 @@ export async function spaceWorkspaceReadResponse(request,replica,{authorize,npcR
    mediaCache:!request.headers.has('Range')&&!request.headers.has('If-Range'),
    openProject:id=>openSpaceWorkspaceProject(replica,id),
    authorize:async (id,resource)=>{
-    const selected=route==='prop'||route==='cinematic'?resource:
+    const selected=route==='prop'||route==='cinematic'||route==='ui'?resource:
      route==='map'||route==='background'?'cinematics':route==='assembly'?'assembly':
      workspaceReadResource(route==='npc'?'npcs':url.searchParams.get('tab'));
     if(id!=='binari'||await authorize?.({userId,email},id,selected)!==true)

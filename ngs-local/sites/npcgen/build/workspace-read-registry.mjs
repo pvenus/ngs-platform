@@ -8,9 +8,12 @@ import {backgroundWorkspaceRead} from './background-workspace.mjs';
 import {cinematicPath} from './cinematic-contract.mjs';
 import {workspaceRead} from './project-workspace-view.mjs';
 import {propWorkspaceRead} from './prop-workspace.mjs';
+import {uiPath} from './ui-asset-contract.mjs';
+import {uiWorkspaceRead} from './ui-workspace.mjs';
 import {npcWorkspaceRead} from './npc-workspace.mjs';
 export const workspaceReadRegistry=Object.freeze({
  '/api/project-workspace':'project',
+ [uiPath]:'ui',
  '/api/npc-workspace':'npc',
  '/api/prop-workspace':'prop',
  [cinematicPath]:'cinematic',
@@ -28,7 +31,7 @@ export function workspaceReadRoute(pathname){
 export async function dispatchWorkspaceRead({pathname,query,openProject,authorize,npcRead=npcWorkspaceRead,mediaCache=false}){
  const route=workspaceReadRoute(pathname);
  if(!route)return null;
- const handler=route==='project'?workspaceRead:route==='prop'?propWorkspaceRead:route==='cinematic'?cinematicWorkspaceRead:route==='background'?backgroundWorkspaceRead:route==='map'?mapWorkspaceRead:route==='assembly'?assemblyWorkspaceRead:npcRead;
+ const handler=route==='ui'?uiWorkspaceRead:route==='project'?workspaceRead:route==='prop'?propWorkspaceRead:route==='cinematic'?cinematicWorkspaceRead:route==='background'?backgroundWorkspaceRead:route==='map'?mapWorkspaceRead:route==='assembly'?assemblyWorkspaceRead:npcRead;
  if(typeof handler!=='function')throw Object.assign(Error('PROJECT_WORKSPACE_REPLICA_UNAVAILABLE'),{status:503});
  return handler({query,openProject,authorize,...(route==='npc'?{mediaCache}:{})});
 }

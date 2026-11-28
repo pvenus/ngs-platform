@@ -1,5 +1,6 @@
 /** Site-owned transit only. The Mac Request Service owns durable official state. */
 import {validSpaceMapAssemblyCommand} from './space-map-assembly.mjs';
+import {uiGenerate,validUiRequest} from '../ngs-local/sites/npcgen/build/ui-asset-contract.mjs';
 import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local-concept-category-contract.mjs';
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
 import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
@@ -55,6 +56,7 @@ function commandOK(cmd){
  case motionPresetConvertType:return validMotionPresetConvert(p);
  case 'npc.planning.add':return validNpcPlanningAdd(p);
  case 'npc.planning.update':return validNpcPlanningUpdate(p);
+ case uiGenerate:return validUiRequest(uiGenerate,p);
  case 'concept.category.workflow':return validConceptCategoryRequest(p);
  case 'npc.workflow':return validNpcWorkflowRequest(p);
  case animationRegenerateType:return validNpcAnimationRegenerate(p);

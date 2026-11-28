@@ -1,11 +1,11 @@
 /** Read the active PDS replica only. No request, worker, or archive access. */
+import {audioImportId,isAudioResourceId,manualAudioSummary} from './audio-result-index.mjs';
 import {createHash} from 'node:crypto';
 import {lstatSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {localWorkspaceReplica as fs} from './local-project-workspace.mjs';
 import {audioResultTaskKey} from './local-audio-workspace.mjs';
 
-const official=/^request\.official\.[a-f0-9]{64}$/;
 const sha=/^[a-f0-9]{64}$/;
 const sourceId=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const maximum=24*1024*1024;
@@ -17,8 +17,8 @@ const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 
 function record(root,id){
  const directory='audio/'+id,meta=fs.readObject(root,directory+'/metadata.json');
- const a=meta?.audio,task=meta&&audioResultTaskKey(meta,id);
- if(meta?.schemaVersion!=='workflow.audio-result.v1'||meta.officialRequestId!==id||meta.projectId!=='binari'||meta.kind!=='bgm'||
+ const a=meta?.audio,task=meta&&audioResultTaskKey(meta,id),manual=audioImportId.test(id);
+ if(manual?!manualAudioSummary(meta,id):meta?.schemaVersion!=='workflow.audio-result.v1'||meta.officialRequestId!==id||meta.projectId!=='binari'||meta.kind!=='bgm'||
     !task||meta.taskId!=='workflow.task.'+hash(JSON.stringify([id,task]))||
     typeof meta.payloadSha256!=='string'||!sha.test(meta.payloadSha256)||typeof meta.conceptId!=='string'||!sourceId.test(meta.conceptId)||
     meta.source?.conceptId!==meta.conceptId||typeof meta.source.sectionSha256!=='string'||!sha.test(meta.source.sectionSha256)||
@@ -33,23 +33,23 @@ function record(root,id){
  let st;
  try{st=lstatSync(join(physical,'audio.wav'));}catch(error){if(error.code==='ENOENT')return null;throw error;}
  if(!st.isFile()||st.uid!==process.getuid()||st.mode&0o077||st.nlink!==1||st.size!==a.bytes)return null;
- return {meta,a,relative,separated:task==='audio_separate'};
+ return {meta,a,relative,manual,separated:task==='audio_separate'};
 }
 export function localAudioSeparationSource(root,{sourceOfficialRequestId,sourceSha256}){
  const project=fs.safeDirectory(root,'binari'),row=project&&record(project,sourceOfficialRequestId);
- return Boolean(row&&!row.separated&&row.a.sha256===sourceSha256);
+ return Boolean(row&&!row.manual&&!row.separated&&row.a.sha256===sourceSha256);
 }
-function userResult({meta,a,separated}){
+function userResult({meta,a,separated,manual}){
  const bpm=meta.bpmBasis==='model'&&Number.isInteger(meta.bpm)&&meta.bpm>=30&&meta.bpm<=300?meta.bpm:null;
  return {title:meta.title,bpm,bpmBasis:bpm===null?'unavailable':'model',durationSeconds:a.durationSeconds,
-  ...(separated?{separated:true}:{}),
-  url:'/api/audio-workspace?'+new URLSearchParams({projectId:'binari',id:meta.officialRequestId,sha256:a.sha256})};
+  ...(separated?{separated:true}:{}),...(manual?{manual:true}:{}),
+  url:'/api/audio-workspace?'+new URLSearchParams({projectId:'binari',id:manual?meta.id:meta.officialRequestId,sha256:a.sha256})};
 }
 
 export function localAudioResults({root,query,authorize}){
  const projectId=query.get('projectId'),id=query.get('id'),digest=query.get('sha256'),keys=[...query.keys()].sort().join(',');
  if(!projectId||keys!==(id===null?'projectId':'id,projectId,sha256')||
-    id!==null&&(!official.test(id)||typeof digest!=='string'||!sha.test(digest)))throw invalid();
+    id!==null&&(!isAudioResourceId(id)||typeof digest!=='string'||!sha.test(digest)))throw invalid();
  authorize(projectId);
  if(projectId!=='binari')throw missing();
  const project=fs.safeDirectory(root,projectId),directory=project&&fs.safeDirectory(project,'audio');
@@ -69,14 +69,14 @@ export function localAudioResults({root,query,authorize}){
  if(entries.length>4096||fs.safeDirectory(project,'audio')!==directory)throw unavailable();
  const results=[];
  for(const entry of entries){
-  if(!entry.isDirectory()||!official.test(entry.name))continue;
+  if(!entry.isDirectory()||!isAudioResourceId(entry.name))continue;
   try{const row=record(project,entry.name);if(row)results.push(row);}
   catch{/* An unreadable result never becomes a playable or complete-looking item. */}
  }
  // Publication time is canonical metadata, never replica file mtime or title.
  // Unknown historical dates sort before dated results in a stable order.
- const generatedAt=row=>Number.isSafeInteger(row.meta.generatedAt)&&row.meta.generatedAt>0?row.meta.generatedAt:0;
- results.sort((a,b)=>generatedAt(a)-generatedAt(b)||a.meta.officialRequestId.localeCompare(b.meta.officialRequestId));
+ const generatedAt=row=>row.manual?row.meta.publishedAt:Number.isSafeInteger(row.meta.generatedAt)&&row.meta.generatedAt>0?row.meta.generatedAt:0;
+ results.sort((a,b)=>generatedAt(a)-generatedAt(b)||(a.meta.officialRequestId??a.meta.id).localeCompare(b.meta.officialRequestId??b.meta.id));
  return {json:{projectId,results:results.map(userResult)}};
 }
 

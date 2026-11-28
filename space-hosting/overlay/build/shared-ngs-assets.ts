@@ -16,6 +16,8 @@ import backgroundPlayback from "../ngs-local/sites/npcgen/build/background-playb
 import propFolderDelete from "../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs?raw";
 import html from "../ngs-local/sites/npcgen/build/local-project-page.html?raw";
 import css from "../ngs-local/sites/npcgen/build/local-project-page.css?raw";
+import uiAssetContract from "../ngs-local/sites/npcgen/build/ui-asset-contract.mjs?raw";
+import uiWorkspaceUi from "../ngs-local/sites/npcgen/build/ui-workspace-ui.mjs?raw";
 import page from "../ngs-local/sites/npcgen/build/local-project-page.js?raw";
 import propPackageContract from "../ngs-local/sites/npcgen/build/prop-package-contract.mjs?raw";
 import cine0 from "../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs?raw";
@@ -47,6 +49,8 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/browser-request-id.mjs",{type:javascript,body:browserRequestId}],
  ["/", {type: "text/html; charset=utf-8", body: withSharedPuzzlePlaytests(withPuzzleCore(withProductionAudio(html)))}],
  ["/local-project-page.css", {type: "text/css; charset=utf-8", body: css}],
+ ["/ui-asset-contract.mjs", {type: javascript, body: uiAssetContract}],
+ ["/ui-workspace-ui.mjs", {type: javascript, body: uiWorkspaceUi}],
  ["/local-project-page.js", {type: javascript, body: page}],
  ["/prop-package-contract.mjs", {type: javascript, body: propPackageContract}],
  ["/cinematic-sequence-contract.mjs",{type:javascript,body:cine0}],

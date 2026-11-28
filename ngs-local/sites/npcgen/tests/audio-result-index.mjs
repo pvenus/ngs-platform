@@ -51,15 +51,29 @@ test('Local runtime: indexes native commit/tombstone, newest-first fixed pages w
  assert.deepEqual(third.results.map(r=>r.title),['fixture 2','fixture 1']);assert.equal(third.nextCursor,null);
  assert.equal((await page({resultId:oid(1)})).result.title,'fixture 1');
  assert.equal((await page({resultId:oid(63)})).result,null);
+ const manual=Buffer.alloc(44+20*8000*2);manual.write('RIFF');manual.write('WAVE',8);
+ const title='수동 등록',manualHash=sha(manual),id='audio.import.'+sha(JSON.stringify(['ngs.audio-import.v1','binari',title,null,manualHash]));
+ const manualMeta=Buffer.from(JSON.stringify({schemaVersion:'ngs.audio-import-result.v1',id,title,projectId:'binari',kind:'bgm',publishedAt:70,
+  provenance:{mode:'owner-manual',source:null},audio:{path:'audio.wav',mimeType:'audio/wav',sha256:manualHash,bytes:manual.length,
+   channels:1,bitsPerSample:16,sampleRate:8000,frames:20*8000,durationSeconds:20}}));
+ await chunk(id,'metadata.json',manualMeta);
+ assert.equal((await page({resultId:id})).result,null);
+ await chunk(id,'audio.wav',manual);
+ const item=(await page({resultId:id})).result;
+ assert.equal(item.manual,true);assert.equal(item.title,title);
+ assert.equal((await page()).results[0].title,title);
  await assert.rejects(page({cursor:'bad'}),{status:400});
  await closePass();
  syncId=await open();await replica.call('ngs_file_sync_plan',{syncId,totalFiles:1});
  const stream=ReadableStream.from([wave]);
  await replica.receiveWholeFile({syncId,path:'audio/'+oid(63)+'/audio.wav',sha256:sha(wave),size:wave.length},stream);
- assert.equal((await page()).results[0].title,'fixture 63');
+ assert.equal((await page()).results[0].title,title);
+ assert.equal((await page({resultId:oid(63)})).result.title,'fixture 63');
  await closePass();
  syncId=await open();await replica.call('ngs_file_sync_remove',{syncId,path:'audio/'+oid(1)+'/audio.wav',sha256:sha(wave)});
  assert.equal((await page({resultId:oid(1)})).result,null);
+ await replica.call('ngs_file_sync_remove',{syncId,path:'audio/'+id+'/audio.wav',sha256:manualHash});
+ assert.equal((await page({resultId:id})).result,null);
  assert.deepEqual((await page({cursor:second.nextCursor})).results.map(r=>r.title),['fixture 2']);
  await closePass();
 });

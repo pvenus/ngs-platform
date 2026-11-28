@@ -78,7 +78,7 @@ export default {
         // The new prop folder is not a legacy PromptService logical resource.
         // Only the existing active Binari participant roster can read it.
         // In particular, a queue-only additional email is not a prop grant.
-        if(resource==="props"||resource==="cinematics"||resource==="assembly")return !!await mapAssemblyGrant(user);
+        if(resource==="props"||resource==="ui-assets"||resource==="cinematics"||resource==="assembly")return !!await mapAssemblyGrant(user);
         await new PromptService(db!,user.userId,undefined,siteAppMaster(user)).resourcePolicy(projectId,resource);
         return true;
       } catch { return false; }
