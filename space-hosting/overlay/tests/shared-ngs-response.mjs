@@ -48,6 +48,7 @@ test('hosted bundling uses the single authored Local source tree, with no parall
  const imports=readFileSync(new URL('../build/shared-ngs-assets.ts',import.meta.url),'utf8');
  const paths=[...imports.matchAll(/from "\.\.\/ngs-local\/sites\/npcgen\/(.+?)\?(?:raw|inline)";/g)].map(m=>m[1]);
  assert.deepEqual(paths.toSorted(),[
+  'build/browser-request-id.mjs','build/browser-sha256.mjs',
   'build/map-warp.mjs','build/map-contract.mjs','build/file-update-envelope.mjs','build/map-workspace-ui.mjs',
   'build/assembly-catalog-ui.mjs','build/assembly-contract.mjs','build/well-assembly-ui.mjs','build/well-puzzle-demo.mjs',
   'build/puzzle-state-runtime.mjs','build/assembly-sprite-layout.mjs','build/assembly-actor.mjs',

@@ -1632,8 +1632,8 @@
       "sha256": "69b3a17f236a45ffe50f2d02457b6bc718a34d6009a9e268e6553f32fc41f01c"
     },
     "space-hosting/overlay/tests/shared-ngs-response.mjs": {
-      "bytes": 6191,
-      "sha256": "0d20720fe0d9ea8bf76200dc8d7c3155e588e339b745bb01a43417b2fe460a66"
+      "bytes": 6252,
+      "sha256": "79b0c118567de7f05ff16685893af371370798618b992684e1c3b5124d595c19"
     },
     "tools/puzzle-core/README.md": {
       "bytes": 1466,
