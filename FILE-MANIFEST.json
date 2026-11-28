@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 306,
+  "fileCountIncludingManifest": 345,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -12,8 +12,8 @@
       "sha256": "a24ae42750e22ecada7db27cce5dea325e9e169c4d5b22640fd8889ce20f6afc"
     },
     "README.md": {
-      "bytes": 3230,
-      "sha256": "3fd4fba36932346a12ba74df221de372b4093119736ef2f8c29ac72ba09fcfa5"
+      "bytes": 3735,
+      "sha256": "5b340f202b41b97b5c540834e4ce60abf87762e188ee454edb9305c4ac262352"
     },
     "THIRD-PARTY-NOTICES.md": {
       "bytes": 2143,
@@ -1222,6 +1222,162 @@
     "tools/runtime-prerequisites/bootstrap/trusted-uv.lock.json": {
       "bytes": 1802,
       "sha256": "07259f7f175a8d34451d65a1e9c0841670f138a44e96528c3b1ad51b97679381"
+    },
+    "ngs-local/sites/npcgen/build/local-project-workspace.mjs": {
+      "bytes": 4771,
+      "sha256": "f44c43c7a0f214abfd020facfbf78011520b369009142144f03fc364f37e425f"
+    },
+    "ngs-local/sites/npcgen/build/mcp-file-sync-engine.mjs": {
+      "bytes": 9486,
+      "sha256": "2853165ab3ac4f1ddb0e94268adef246a8ae220cd6b8516b7dae5df08ff8756e"
+    },
+    "ngs-local/sites/npcgen/build/object-replica.mjs": {
+      "bytes": 35648,
+      "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
+    },
+    "ngs-local/sites/npcgen/build/pds-mcp-file-sync.mjs": {
+      "bytes": 6469,
+      "sha256": "d9026e7f4c88b3bba9ff5c0474822f127dc02a44995c50307388616d4d47a667"
+    },
+    "ngs-viewer/README.md": {
+      "bytes": 5288,
+      "sha256": "8019d0031b09c7855ed79b5c2f120c171135038fbac77da41a16816e932104ff"
+    },
+    "ngs-viewer/install-macos.sh": {
+      "bytes": 215,
+      "sha256": "dec1a02e562d6e3fdacb542a96693d2af74965872a416cc761323c344b86ceb8"
+    },
+    "ngs-viewer/install-windows.ps1": {
+      "bytes": 1368,
+      "sha256": "2e9f05623fc911fa4397100df2b6fd147da50816071d79368b3ccfaf10ea4bc9"
+    },
+    "ngs-viewer/install.mjs": {
+      "bytes": 9764,
+      "sha256": "fae61a235ad2cadbffd55571ca8cb9d932bb3057a3faf4b5810baa0dd0b361b1"
+    },
+    "ngs-viewer/lib/assets.mjs": {
+      "bytes": 2529,
+      "sha256": "fc26e8f722ec79e3c49f034388dbde4171a04fb89da6fe0102d2da119d9ddaa9"
+    },
+    "ngs-viewer/lib/mirror.mjs": {
+      "bytes": 22425,
+      "sha256": "a3c66fb24c216c5854e51dc9c3197e6b4b951b1f5f077590c1aaa78881a568bb"
+    },
+    "ngs-viewer/lib/projections.mjs": {
+      "bytes": 6454,
+      "sha256": "21a07c6a60f44a8717117587ab5cb1877436493dd946aae268c960525171e474"
+    },
+    "ngs-viewer/lib/sync.mjs": {
+      "bytes": 7551,
+      "sha256": "baf1a8ad26e1a921baae42fbd83f51e38bd20670ca24db2e579b5c84e7394f68"
+    },
+    "ngs-viewer/lib/windows-storage.mjs": {
+      "bytes": 5450,
+      "sha256": "6e8e33e0a309a6844c0e743bd22936f799102e3d339221f3f469577697228933"
+    },
+    "ngs-viewer/package.json": {
+      "bytes": 240,
+      "sha256": "3d0b8981c1547cd91ead5610718904b40a4a05ebeb95aa9c24ba9da15dc2fffa"
+    },
+    "ngs-viewer/public/browser.mjs": {
+      "bytes": 6708,
+      "sha256": "9bb11f813e6f5af17dd5eb79659ba4a925ad0c866ebf7b82115123c583bca6d4"
+    },
+    "ngs-viewer/public/style.css": {
+      "bytes": 631,
+      "sha256": "14493bc406037379d25ecf67e777c133cda0b36f54c8d8dbf0405b679bec9bfa"
+    },
+    "ngs-viewer/setup/install-browser.mjs": {
+      "bytes": 2262,
+      "sha256": "6d40950fe4b42a48163b45360542a26a76c47cfa1bbd6f32d873955936b5bad3"
+    },
+    "ngs-viewer/setup/os-targets.mjs": {
+      "bytes": 7619,
+      "sha256": "5a36a063265acf25fd49ebdaa9a8d68bd0ff06e24663b716c493539dbfaf830c"
+    },
+    "ngs-viewer/tests/browser.test.mjs": {
+      "bytes": 4205,
+      "sha256": "176e4a27786e2f628588692008843b1240f36f695beff416b7dec258cbb98816"
+    },
+    "ngs-viewer/tests/install.test.mjs": {
+      "bytes": 4874,
+      "sha256": "a188e37d7572ef815390bd64c07c83e30189f322d50fdb333306916c2755cfa3"
+    },
+    "ngs-viewer/tests/mirror.test.mjs": {
+      "bytes": 9995,
+      "sha256": "a062a67ba0e9e8b58b8b183af5cbcd232dd2e0fec81b69eddc681eff03dc94f5"
+    },
+    "ngs-viewer/tests/sync.test.mjs": {
+      "bytes": 3474,
+      "sha256": "0a513f69d61aeb2b63331c809ed0f0e9f87a159c5f4943b4008776ced0fe4382"
+    },
+    "ngs-viewer/tests/viewer.test.mjs": {
+      "bytes": 4225,
+      "sha256": "3100d0c08c1a1923cec178a9ebbf75f7a645295faf1e36949abd2c079c266848"
+    },
+    "ngs-viewer/tests/windows-storage.test.mjs": {
+      "bytes": 3095,
+      "sha256": "68062726f78c07efd903cdaea4ad3de25c8d2e2dee0abe9c00f304c57d0f701c"
+    },
+    "ngs-viewer/viewer.mjs": {
+      "bytes": 7764,
+      "sha256": "097a9d4af745f708fadc2e97311a025d0479200c8ca81a2d67aeab87a1e70b95"
+    },
+    "space-hosting/overlay/build/sites-worker.ts": {
+      "bytes": 13532,
+      "sha256": "2dd96cf335576622e63cfe30fe39b6344473d80adf93ded3b215db4fcd67470a"
+    },
+    "space-hosting/overlay/build/space-browser-auth.mjs": {
+      "bytes": 1344,
+      "sha256": "6e44b6bb8ded4883d76fbb37e751d7d24357a17553a6aaf01804c6c19a25e091"
+    },
+    "space-hosting/overlay/build/space-file-replica.d.mts": {
+      "bytes": 825,
+      "sha256": "1f66268da9687c9521ca51a61d251dd4f869aba8a07cf0facd46071173c86ccf"
+    },
+    "space-hosting/overlay/build/space-machine-routes.mjs": {
+      "bytes": 16363,
+      "sha256": "465cb7e56e8ac77c9b15bd4adb201d94d511122748a9aef776645c3c341b1940"
+    },
+    "space-hosting/overlay/build/space-request-queue.mjs": {
+      "bytes": 12498,
+      "sha256": "3f7c9c03523d9738489eae219e76e585904b714aa8435e7692c635cbd63a15d7"
+    },
+    "space-hosting/overlay/build/space-viewer-bridge.mjs": {
+      "bytes": 8245,
+      "sha256": "131f2e104b3f5d781d26d04cde7838bb04c0e12f4fc755eb32a24a7a52ec0847"
+    },
+    "space-hosting/overlay/build/space-viewer-export.d.mts": {
+      "bytes": 396,
+      "sha256": "b081f73fcc7cd6911be88821bfdba07f3ec558e5cfafebba9ac0094f64360f7c"
+    },
+    "space-hosting/overlay/build/space-viewer-export.mjs": {
+      "bytes": 7103,
+      "sha256": "b8ce31775b9bc07bc9c9b1cb8839bd2ddfdeacdeaa0afbf9b5907396cf015872"
+    },
+    "space-hosting/overlay/build/space-viewer-install.d.mts": {
+      "bytes": 216,
+      "sha256": "0f6e48fd45c1e4c1b6b248ab70e08a685bf663a37d02414258a7579573cab458"
+    },
+    "space-hosting/overlay/build/space-viewer-install.mjs": {
+      "bytes": 4262,
+      "sha256": "19bb88170f8e5bcec4c5588b6e705688b85e5e197ec0fd7ed86a1c44f4334324"
+    },
+    "space-hosting/overlay/tests/space-file-replica.mjs": {
+      "bytes": 18865,
+      "sha256": "b4d261a6b882e9d1ddce5ef611d2b2ea6edbb4b795edb653bbf8e0eecbede183"
+    },
+    "space-hosting/overlay/tests/space-viewer-export.mjs": {
+      "bytes": 8624,
+      "sha256": "6658b5f024cd7299b846a9d579b3c62f5408195702d0565fdd9d3d8109b67cce"
+    },
+    "space-hosting/overlay/tests/space-viewer-install.mjs": {
+      "bytes": 5061,
+      "sha256": "9bc4936cc976e8910ed7533dcc5a6cb01610d88d494685d6bfd8a2ddb16b636a"
+    },
+    "tools/release/validate-ngs-source.sh": {
+      "bytes": 1089,
+      "sha256": "cfd27404d01e497cc9607b1a612c00060aae6bdb32379907ec97b2287b227085"
     }
   }
 }

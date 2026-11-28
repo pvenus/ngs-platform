@@ -9,8 +9,9 @@ python3 -B -m unittest discover -s tools/release -p 'test_prepare_ngs_release.py
 # The Local suite skips integrations requiring separate, intentionally
 # unavailable live/deployment services; the Local Workerd fixture is enabled.
 npm --prefix ngs-local test
+npm --prefix ngs-viewer test
 node --test --test-concurrency=1 \
-  space-hosting/overlay/tests/{space-npc-workspace,space-npc-shared-cache,space-npc-media-cache,space-file-replica}.mjs
+  space-hosting/overlay/tests/{space-npc-workspace,space-npc-shared-cache,space-npc-media-cache,space-file-replica,space-viewer-export,space-viewer-install}.mjs
 
 # Machine queue imports the Local wire contracts from the deployed overlay layout.
 hosted_queue="$(mktemp -d)"

@@ -5,8 +5,8 @@ import {validWorkspacePath,replicaUnavailable as unavailable} from './workspace-
 import {dispatchWorkspaceRead} from './workspace-read-registry.mjs';
 import {npcKeys,workspaceMediaLimit as mediaLimit} from './project-workspace-view.mjs';
 
-const uid=process.getuid(),jsonLimit=2*1024*1024,maxFiles=32768;
-const own=st=>st.uid===uid&&!(st.mode&0o077);
+const uid=process.getuid?.(),jsonLimit=2*1024*1024,maxFiles=32768;
+const own=st=>uid!==undefined&&st.uid===uid&&!(st.mode&0o077);
 const pin=s=>s&&[s.dev,s.ino,s.size,s.mtimeNs,s.ctimeNs].join(':');
 
 function stat(path){

@@ -1,0 +1,7 @@
+.viewer-panel{display:flex;flex-wrap:wrap;align-items:center;gap:.55rem .8rem;padding:.6rem clamp(.8rem,3vw,2rem);background:#242231;color:#f7f2fd;min-height:2.2rem;font:500 .85rem/1.5 system-ui,sans-serif}
+.viewer-panel-title{display:flex;align-items:baseline;gap:.5rem;margin-right:.35rem}
+.viewer-panel-title span{color:#d2c5e4;font-size:.75rem}
+.viewer-panel button{border:1px solid #817594;border-radius:.5rem;padding:.25rem .65rem;background:#3a3149;color:#fff;cursor:pointer}
+.viewer-panel button:hover:not(:disabled){background:#564268}
+.viewer-panel button:disabled{opacity:.6;cursor:default}
+#viewer-state{color:#eee2f3}
