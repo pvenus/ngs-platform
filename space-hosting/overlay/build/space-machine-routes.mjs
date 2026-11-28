@@ -9,7 +9,7 @@ export const machineTokenConfigured=validMachineToken;
 // Only call with the server-resolved participant, never browser-supplied roles.
 export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
  ['owner','editor','viewer'].includes(grant.role);
-import {cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,backgroundSourceType,cinematicSequencesRemoveType} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
+import {cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
 import {cinematicType} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
 import {propAction,validPropActions} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
@@ -161,7 +161,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
    const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeBackground?{backgroundSourceEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...await workspaceCapabilities(requestWritable),...tokens});
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&replicaReads&&workspaceReady?{audioFullLengthEnabled:true}:{}),...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeBackground?{backgroundSourceEnabled:true,backgroundPixelEnabled:true,backgroundAnimationEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...await workspaceCapabilities(requestWritable),...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));
@@ -188,7 +188,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(activeNpcBasic,404,'NPC_BASIC_PORTRAIT_UNAVAILABLE');
   if((value?.requestType==='npc.workflow'||value?.requestType==='npc.animation.regenerate')&&isPoseSelectionV2(value.payload?.schemaVersion))
    need(replicaReads&&workspaceReady&&poseSelectionV2Enabled===true,404,'NPC_POSE_SELECTION_V2_UNAVAILABLE');
-  const cinematicCapabilities={[cinematicType]:activeCinematic,[cinematicSequenceType]:activeSequence,[cinematicPlaybackUpdateType]:activePlayback,[cinematicSourceGenerateType]:activeSource,[backgroundSourceType]:activeBackground,[cinematicSequencesRemoveType]:activeRemove};
+  const cinematicCapabilities={[cinematicType]:activeCinematic,[cinematicSequenceType]:activeSequence,[cinematicPlaybackUpdateType]:activePlayback,[cinematicSourceGenerateType]:activeSource,[backgroundSourceType]:activeBackground,[backgroundPixelType]:activeBackground,[backgroundAnimationType]:activeBackground,[cinematicSequencesRemoveType]:activeRemove};
   if(Object.hasOwn(cinematicCapabilities,value?.requestType)){
    need(cinematicCapabilities[value.requestType],404,'CINEMATIC_GENERATION_UNAVAILABLE');
    await admitCinematic({userId:id,email},value);

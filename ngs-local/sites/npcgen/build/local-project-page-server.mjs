@@ -1,8 +1,9 @@
-import {fileUpdateType,fileUpdatePds,assemblyUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
-import {assemblyTypes,assemblyPath,assemblyPds,assemblyCapability,validAssemblyRequest,assemblyReachable} from './assembly-contract.mjs';
+import {fileUpdateType,fileUpdatePds} from './file-update-envelope.mjs';
+import {admitWorkspaceMapAssembly} from './workspace-map-assembly-admission.mjs';
+import {assemblyTypes,assemblyPath,assemblyPds,assemblyCapability} from './assembly-contract.mjs';
 import {assemblyWorkspaceRead} from './assembly-workspace.mjs';
-import {mapTypes,mapPds,mapCapability,validMapRequest} from './map-contract.mjs';
-import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,validNpcFolderDelete,backgroundDeleteRoot,validBackgroundFileDelete,cinematicDeleteRoot,validCinematicFileDelete,cinematicDeletePayloads,mapDeleteRoot,validMapFolderDelete,assemblyDeleteRoot,validAssemblyFolderDelete} from './prop-folder-delete-contract.mjs';
+import {mapTypes,mapPds,mapCapability} from './map-contract.mjs';
+import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,backgroundDeleteRoot,cinematicDeleteRoot,cinematicDeletePayloads,mapDeleteRoot,assemblyDeleteRoot,workspaceDeleteFamily} from './prop-folder-delete-contract.mjs';
 /** NGS browser app: serve the local replica and enqueue validated requests. */
 import {readFileSync,lstatSync,mkdirSync,realpathSync} from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -253,6 +254,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
   return motion?.posePreset==='combat'&&!Object.hasOwn(motion,'variant')&&motion.directions.filter(row=>row.path).length===8&&
    new Set(motion.directions.map(row=>row.direction)).size===8;
  }
+ const deleteReadyByAction={assemblyDeleteEnabled:assemblyDeleteReady,mapDeleteEnabled:mapDeleteReady,cinematicDeleteEnabled:cinematicDeleteReady,
+  backgroundDeleteEnabled:backgroundDeleteReady,npcFolderDeleteEnabled:npcFolderDeleteReady,propFolderDeleteEnabled:propFolderDeleteReady};
  const sourceAssets=new Map([...assets].map(([url,[type,path]])=>[url,{type,body:readFileSync(path)}]));
  sourceAssets.set('/assets/vinus-mark.png',{type:'image/png',body:brandMark(brandMarkPath)});
  const puzzle=openPuzzleBundle(localPuzzleMediaRoot);
@@ -355,92 +358,26 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      await admitCinematicRequest({openProject,command,authorize:id=>projectPermission(session.principal,id,undefined,false)});
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
-    if(assemblyTypes.includes(command.requestType)){
-     if(!await activeAssembly())throw failure('ASSEMBLY_WORKFLOW_UNAVAILABLE',404);
-     const p=command.payload;
-     if(p?.schemaVersion==='ngs.assembly-generate.v4'&&!puzzleCore)throw failure('PUZZLE_CSHARP_NOT_READY',503);
-     if(!validAssemblyRequest(p,command.requestType))throw failure('NGS_ASSEMBLY_PAYLOAD_INVALID',400);
-     const q=new URLSearchParams({projectId:p.projectId});
-     if(command.requestType==='assembly.update'){
-      q.set('item',p.assemblyId);
-      const {json:{assembly}}=await assemblyWorkspaceRead({query:q,openProject,authorize:()=>{}});
-      if(assembly.revision!==p.expectedRevision)throw failure('ASSEMBLY_REVISION_CONFLICT',409);
-      q.set('item',assembly.map.mapId);
-      const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
-      if(!assemblyReachable(map.graph,p.puzzles))throw failure('ASSEMBLY_LAYOUT_UNREACHABLE',400);
-     }else{
-      q.set('item',p.mapId);await readWorkspace('/api/map-workspace',q,()=>{});
-     }
-     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
-    }
-    if(command.requestType===fileUpdateType){
-     if(!await fileUpdateReady())throw failure('FILE_UPDATE_WORKFLOW_UNAVAILABLE',404);
-     const p=command.payload;
-     if(!validFileUpdate(p))throw failure('NGS_FILE_UPDATE_PAYLOAD_INVALID',400);
-     const q=new URLSearchParams({projectId:p.projectId});
-     if(p.target.root===assemblyUpdateRoot){
-      q.set('item',p.target.path);
-      const {json:{assembly}}=await assemblyWorkspaceRead({query:q,openProject,authorize:()=>{}});
-      if(assembly.revision!==p.expected.revision||assembly.officialRequestId!==p.expected.officialRequestId)
-       throw failure('FILE_UPDATE_REVISION_CONFLICT',409);
-      if(assembly.title!==p.content.title||assembly.map.mapId!==p.content.mapId)
-       throw failure('ASSEMBLY_IDENTITY_IMMUTABLE',409);
-      q.set('item',assembly.map.mapId);
-      const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
-      if(!assemblyReachable(map.graph,p.content.puzzles))throw failure('ASSEMBLY_LAYOUT_UNREACHABLE',400);
-     }else{
-      const {json:{backgrounds}}=await readWorkspace('/api/background-workspace',q,()=>{});
-      const available=new Map(backgrounds.filter(b=>!b.title.endsWith(' · 시네마틱 원본')).map(b=>[b.backgroundId,b.sha256]));
-      if(!p.content.regions.every(r=>available.get(r.backgroundId)===r.imageSha256))throw failure('MAP_BACKGROUND_NOT_FOUND',404);
-      q.set('item',p.target.path);
-      const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
-      if(map.revision!==p.expected.revision||map.officialRequestId!==p.expected.officialRequestId)
-       throw failure('FILE_UPDATE_REVISION_CONFLICT',409);
-      if(map.graph.title!==p.content.title)throw failure('MAP_TITLE_IMMUTABLE',409);
-     }
-     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
-    }
-    if(mapTypes.includes(command.requestType)){
-     if(!await activeMap())throw failure('MAP_WORKFLOW_UNAVAILABLE',404);
-     const p=command.payload;
-     if(!validMapRequest(p,command.requestType))throw failure('NGS_MAP_PAYLOAD_INVALID',400);
-     const q=new URLSearchParams({projectId:p.projectId});
-     const {json:{backgrounds}}=await readWorkspace('/api/background-workspace',q,()=>{});
-     const available=new Map(backgrounds.filter(b=>!b.title.endsWith(' · 시네마틱 원본')).map(b=>[b.backgroundId,b.sha256]));
-     if(!p.graph.regions.every(r=>available.get(r.backgroundId)===r.imageSha256))throw failure('MAP_BACKGROUND_NOT_FOUND',404);
-     if(command.requestType===mapTypes[1]){
-      q.set('item',p.mapId); const {json:{map}}=await readWorkspace('/api/map-workspace',q,()=>{});
-      if(map.revision!==p.expectedRevision)throw failure('MAP_REVISION_CONFLICT',409);
-      if(map.graph.title!==p.graph.title)throw failure('MAP_TITLE_IMMUTABLE',409);
-     }
+    if(assemblyTypes.includes(command.requestType)||mapTypes.includes(command.requestType)||command.requestType===fileUpdateType){
+     const family=assemblyTypes.includes(command.requestType)?[activeAssembly,'ASSEMBLY_WORKFLOW_UNAVAILABLE']:
+      mapTypes.includes(command.requestType)?[activeMap,'MAP_WORKFLOW_UNAVAILABLE']:[fileUpdateReady,'FILE_UPDATE_WORKFLOW_UNAVAILABLE'];
+     if(!await family[0]())throw failure(family[1],404);
+     await admitWorkspaceMapAssembly({command,puzzleProofReady:!!puzzleCore,read:async(path,query)=>
+      (path===assemblyPath?await assemblyWorkspaceRead({query,openProject,authorize:()=>{}}):await readWorkspace(path,query,()=>{})).json});
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
     if(command.requestType===fileDeleteType){
-     if(command.payload?.target?.root===assemblyDeleteRoot){
-      if(!await assemblyDeleteReady())throw failure('ASSEMBLY_DELETE_UNAVAILABLE',404);
-      if(!validAssemblyFolderDelete(command.payload))throw failure('NGS_ASSEMBLY_DELETE_PAYLOAD_INVALID',400);
-     }else if(command.payload?.target?.root===mapDeleteRoot){
-      if(!await mapDeleteReady())throw failure('MAP_DELETE_UNAVAILABLE',404);
-      if(!validMapFolderDelete(command.payload))throw failure('NGS_MAP_DELETE_PAYLOAD_INVALID',400);
-      // The writer checks the exact revision and request ID, including retries after replication changes.
-     }else if(command.payload?.target?.root===cinematicDeleteRoot){
-      if(!await cinematicDeleteReady())throw failure('CINEMATIC_DELETE_UNAVAILABLE',404);
-      if(!validCinematicFileDelete(command.payload))throw failure('NGS_CINEMATIC_DELETE_PAYLOAD_INVALID',400);
-     }else if(command.payload?.target?.root===backgroundDeleteRoot){
-      if(!await backgroundDeleteReady())throw failure('BACKGROUND_DELETE_UNAVAILABLE',404);
-      if(!validBackgroundFileDelete(command.payload))throw failure('NGS_BACKGROUND_DELETE_PAYLOAD_INVALID',400);
-      // Filex checks the source receipt/pin. A completed sibling request may
-      // have already moved one file, so public replica presence is not authority.
-     }else if(command.payload?.target?.root===npcDeleteRoot){
-      if(!await npcFolderDeleteReady())throw failure('NPC_FOLDER_DELETE_UNAVAILABLE',404);
-      if(!validNpcFolderDelete(command.payload))throw failure('NGS_NPC_FOLDER_DELETE_PAYLOAD_INVALID',400);
+     const family=workspaceDeleteFamily(command.payload);
+     if(!family)throw failure('NGS_FILE_DELETE_PAYLOAD_INVALID',400);
+     if(!await deleteReadyByAction[family.action]())throw failure(family.unavailable,404);
+     if(!family.valid(command.payload))throw failure(family.invalid,400);
+     if(family.action==='npcFolderDeleteEnabled'){
       const roster=(await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId:'binari'}),
         id=>projectPermission(session.principal,id,undefined,false))).json.npcs;
       const row=roster.find(x=>x.id===command.payload.target.path);
       if(!row)throw failure('NPC_FOLDER_DELETE_TARGET_NOT_FOUND',404);
       if(row.creationTaskId!==command.payload.expected.creationTaskId)throw failure('NPC_FOLDER_DELETE_TARGET_STALE',409);
-     }else{
-      if(!await propFolderDeleteReady())throw failure('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
+     }else if(family.action==='propFolderDeleteEnabled'){
       await admitPropFolderDelete({openProject,command,authorize:id=>projectPermission(session.principal,id,undefined,false)});
      }
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
@@ -553,6 +490,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      ...(poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),
      ...(queue&&npcBasicPortraitEnabled===true?{npcBasicPortraitEnabled:true}:{}),
      ...(queue&&npcScopedPortraitEnabled===true?{npcScopedPortraitEnabled:true}:{}),
+     ...(queue&&audioWorkspaceEnabled===true?{audioFullLengthEnabled:true}:{}),
      ...(queue&&audioWorkspaceEnabled===true&&audioSeparationEnabled===true?{audioSeparationEnabled:true}:{})});
    }
    if(url.pathname===replicaSyncProgressPath){

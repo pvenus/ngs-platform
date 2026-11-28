@@ -15,7 +15,7 @@ export const spaceViewerMcpTools=[
  {name:'ngs_viewer_file_chunk',description:'Read a bounded file chunk from the granted Binari replica, pinned to SHA-256.',
   inputSchema:schema({path:{type:'string'},sha256:{type:'string',pattern:'^[a-f0-9]{64}$'},offset:{type:'integer',minimum:0}},['path','sha256','offset']),
   annotations:{readOnlyHint:true,destructiveHint:false}},
- {name:'ngs_viewer_request_session',description:'Read enabled NGS request actions for the signed-in Binari team member.',inputSchema:schema({}),annotations:{readOnlyHint:true}},
+ {name:'ngs_viewer_request_session',description:'Read enabled NGS request actions for the signed-in Binari team member.',inputSchema:schema({workspaceProtocol:{type:'integer',const:2}}),annotations:{readOnlyHint:true}},
  {name:'ngs_viewer_request_status',description:'Read only this signed-in team member’s formal Space queue status.',
   inputSchema:schema({queueId:{type:'string'}}),annotations:{readOnlyHint:true}},
  {name:'ngs_viewer_request_submit',description:'Immediately submit a user-chosen formal NGS request to Space. Requires the same authenticated write grant and validation as the website.',
@@ -61,6 +61,7 @@ function base64(bytes){
 
 const validArgs=(name,a)=>name==='ngs_viewer_file_chunk'?keys(a,'offset,path,sha256'):
  name==='ngs_viewer_request_submit'?keys(a,'command')&&record(a.command):
+ name==='ngs_viewer_request_session'?keys(a,'')||keys(a,'workspaceProtocol')&&a.workspaceProtocol===2:
  name==='ngs_viewer_request_status'?keys(a,'')||keys(a,'queueId')&&typeof a.queueId==='string'&&a.queueId.length<=90:keys(a,'');
 export async function spaceViewerMcpResponse(request,options){
  const url=new URL(request.url);
@@ -91,6 +92,8 @@ export async function spaceViewerMcpResponse(request,options){
   // Tokens used to connect the canonical internal route never cross MCP.
   if(p.name==='ngs_viewer_request_session'){
    delete data.csrfToken;delete data.contextId;
+   // v1 Viewer hosts an exact session decoder; retain its wire shape until it updates.
+   if(a.workspaceProtocol!==2){delete data.backgroundPixelEnabled;delete data.backgroundAnimationEnabled;delete data.audioFullLengthEnabled;}
   }
   return rpc(id,{status:result.status,data});
  }

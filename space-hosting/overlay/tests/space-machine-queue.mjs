@@ -118,11 +118,11 @@ test('only authenticated active Binari participants can use the existing formal 
   {...command,requestType:'site.deploy'},
   {...command,requestType:'project.member.add'},
   {...command,payload:{...command.payload,projectId:'outside'}},
-  {...command,payload:{...command.payload,targetDurationSeconds:60}},
+  {...command,payload:{...command.payload,targetDurationSeconds:59}},
   {...command,actorId:'owner'},
  ]) assert.equal((await write('viewer',viewer,bad)).status,400);
- assert.equal((await write('owner',owner,{...command,payload:{...command.payload,targetDurationSeconds:60}})).status,400);
- assert.equal((await browser('/api/requests','GET',headers('owner')).then(r=>r.json())).requests.length,0);
+ assert.equal((await write('owner',owner,{...command,payload:{...command.payload,targetDurationSeconds:60}})).status,202);
+ assert.equal((await browser('/api/requests','GET',headers('owner')).then(r=>r.json())).requests.length,1);
  assert.equal((await browser('/api/requests','GET',headers('viewer')).then(r=>r.json())).requests.length,commands.length);
  for(const path of ['/api/space/audio-requests','/api/npc-one-stop','/mcp','/api/site/access']){
   assert.equal(await browser(path,'POST',headers('viewer'),command),null);
@@ -218,14 +218,14 @@ test('Space browser and machine preserve direct concept and both lyric modes',as
  const auth={...a,Origin:origin,'X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId};
  const base={...command.payload,conceptId:'direct',conceptText:'새 사운드 컨셉\n악기는 자유'};
  const lyric='  첫 줄\n\n  다음 줄 \n';
- for(const [i,payload] of [{...base,text:lyric},{...base,lyricsRequest:'이야기를 가사로'}].entries()){
+ for(const [i,payload] of [{...base,text:lyric},{...base,lyricsRequest:'이야기를 가사로',targetDurationSeconds:60}].entries()){
   const response=await browser('/api/requests','POST',auth,{...command,idempotencyKey:'lyrics-'+i,payload});
   assert.equal(response.status,202);
   const {queueId}=await response.json();
   assert.deepEqual((await queue.get({queueId})).payload,payload);
  }
  for(const payload of [{...base,text:lyric,lyricsRequest:'conflict'}, {...base,conceptText:''},
-  {...base,lyricsRequest:'이야기를 가사로',durationSeconds:23},{...base,targetDurationSeconds:60}]){
+  {...base,lyricsRequest:'이야기를 가사로',durationSeconds:23},{...base,targetDurationSeconds:61}]){
   assert.equal((await browser('/api/requests','POST',auth,{...command,idempotencyKey:'reject',payload})).status,400);
  }
 });
@@ -545,4 +545,55 @@ test('map/assembly admission uses replica pins and keeps title, revision and rea
   layout:{altar:{regionId:'start',x:50,y:50},well:{regionId:'unreachable',x:50,y:50}},
   attachments:{bowl:{x:0,y:0},lid:{x:0,y:0}},bindings:{table:slot,bowl:slot,well:slot,lid:slot}}];
  await assert.rejects(admitSpaceMapAssembly({command:assemble,read}),{status:400,message:'ASSEMBLY_LAYOUT_UNREACHABLE'});
+});
+
+
+test('Space browser and Viewer MCP share background generation and animation admission',async t=>{
+ const {spaceViewerMcpResponse}=await import('../build/space-viewer-mcp.mjs');
+ const {backgroundPixelType,backgroundPixelSchema,backgroundAnimationType,backgroundAnimationSchema,backgroundLoopPrompt,validBackgroundAnimation}=
+  await import('../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs');
+ const {backgroundLoopPlayback}=await import('../ngs-local/sites/npcgen/build/cinematic-timeline.mjs');
+ const db=store(t),seen=[],a=headers('a');
+ const opts={db,secret:token,replicaReads:true,workspaceReady:true,backgroundSourceEnabled:true,
+  authorize:async()=>true,authorizeWrite:async u=>u.userId==='a',
+  admitCinematic:async(u,command)=>{assert.equal(u.userId,'a');
+   if(command.requestType===backgroundAnimationType&&!validBackgroundAnimation(command.payload))
+    throw Object.assign(Error('NGS_CINEMATIC_PAYLOAD_INVALID'),{status:400});
+   seen.push(command.requestType);}};
+ const call=(path,method,headers,body,changes={})=>browserQueueResponse(request(path,method,headers,body),{...opts,...changes});
+ const on=await (await call('/__npcgen_session','GET',a)).json();
+ const off=await (await call('/__npcgen_session','GET',a,undefined,{backgroundSourceEnabled:false})).json();
+ assert.equal(on.backgroundPixelEnabled,true);assert.equal(on.backgroundAnimationEnabled,true);
+ assert.equal(off.backgroundPixelEnabled,undefined);
+ const macMcp=async(name,args,identity=a)=>spaceViewerMcpResponse(request('/mcp','POST',identity,
+  {jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}),{
+  authorizeParticipant:async u=>u.userId==='a',
+  requestQueue:async (url,identity,cmd)=>cmd===undefined
+   ?call(url.pathname,'GET',identity)
+   :call(url.pathname,'POST',{...identity,Origin:origin,'X-NPCGen-Csrf':on.csrfToken,
+     'X-NPCGen-Frontend-Context':on.contextId},cmd)
+ });
+ const legacyBridge=await (await macMcp('ngs_viewer_request_session',{})).json();
+ assert.equal(legacyBridge.result.structuredContent.data.backgroundSourceEnabled,true);
+ assert.equal(legacyBridge.result.structuredContent.data.backgroundPixelEnabled,undefined);
+ const bridge=await (await macMcp('ngs_viewer_request_session',{workspaceProtocol:2})).json();
+ assert.equal(bridge.result.structuredContent.data.backgroundPixelEnabled,true);
+ assert.equal(bridge.result.structuredContent.data.backgroundAnimationEnabled,true);
+ assert.equal(bridge.result.structuredContent.data.csrfToken,undefined);
+ const projectId='binari', pixel='a'.repeat(64);
+ const inputs=[
+  {requestType:backgroundPixelType,idempotencyKey:'full-background',payload:{schemaVersion:backgroundPixelSchema,projectId,
+   title:'뜰',timeOfDay:'밤',season:'가을',mood:'스산함',color:'먹색',location:'대문',requirements:'마당 확보',additionalNotes:''}},
+  {requestType:backgroundAnimationType,idempotencyKey:'loop-background',payload:{schemaVersion:backgroundAnimationSchema,projectId,
+   backgroundSha256:pixel,references:{pixel,cinematic:'b'.repeat(64)},motionPrompt:backgroundLoopPrompt('바람'),playback:backgroundLoopPlayback()}}
+ ];
+ const auth={...a,Origin:origin,'X-NPCGen-Csrf':on.csrfToken,'X-NPCGen-Frontend-Context':on.contextId};
+ for(const cmd of inputs){
+  assert.equal((await call('/api/requests','POST',auth,cmd,{backgroundSourceEnabled:false})).status,404);
+  assert.equal((await call('/api/requests','POST',auth,cmd)).status,202);
+  const bridged=await (await macMcp('ngs_viewer_request_submit',{command:cmd})).json();
+  assert.equal(bridged.result.structuredContent.status,202);
+ }
+ assert.equal((await call('/api/requests','POST',auth,{...inputs[1],payload:{...inputs[1].payload,motionPrompt:'non loop'}})).status,400);
+ assert.deepEqual(seen,inputs.flatMap(cmd=>[cmd.requestType,cmd.requestType]));
 });

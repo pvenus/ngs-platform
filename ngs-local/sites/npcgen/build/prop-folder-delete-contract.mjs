@@ -91,3 +91,16 @@ export function assemblyFolderDeletePayload({id,expected}){
 
 /** Only the existing protected, single-target queue families are allowed on Space. */
 export const validHostedRosterDelete=p=>validNpcFolderDelete(p)||validPropFolderDelete(p)||validBackgroundFileDelete(p);
+
+
+// Use the same protected target and payload classification for each intake.
+// A transport may only advertise operations with a successfully wired provider.
+const deleteFamilies=new Map([
+ [assemblyDeleteRoot,{action:'assemblyDeleteEnabled',valid:validAssemblyFolderDelete,unavailable:'ASSEMBLY_DELETE_UNAVAILABLE',invalid:'NGS_ASSEMBLY_DELETE_PAYLOAD_INVALID'}],
+ [mapDeleteRoot,{action:'mapDeleteEnabled',valid:validMapFolderDelete,unavailable:'MAP_DELETE_UNAVAILABLE',invalid:'NGS_MAP_DELETE_PAYLOAD_INVALID'}],
+ [cinematicDeleteRoot,{action:'cinematicDeleteEnabled',valid:validCinematicFileDelete,unavailable:'CINEMATIC_DELETE_UNAVAILABLE',invalid:'NGS_CINEMATIC_DELETE_PAYLOAD_INVALID'}],
+ [backgroundDeleteRoot,{action:'backgroundDeleteEnabled',valid:validBackgroundFileDelete,unavailable:'BACKGROUND_DELETE_UNAVAILABLE',invalid:'NGS_BACKGROUND_DELETE_PAYLOAD_INVALID'}],
+ [npcDeleteRoot,{action:'npcFolderDeleteEnabled',valid:validNpcFolderDelete,unavailable:'NPC_FOLDER_DELETE_UNAVAILABLE',invalid:'NGS_NPC_FOLDER_DELETE_PAYLOAD_INVALID'}],
+ [propsDeleteRoot,{action:'propFolderDeleteEnabled',valid:validPropFolderDelete,unavailable:'PROP_WORKSPACE_ACTION_UNAVAILABLE',invalid:'NGS_PROP_FOLDER_DELETE_PAYLOAD_INVALID'}],
+].map(([root,family])=>[root,Object.freeze(family)]));
+export const workspaceDeleteFamily=payload=>deleteFamilies.get(payload?.target?.root);

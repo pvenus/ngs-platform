@@ -1,7 +1,7 @@
-import {fileUpdateType,validFileUpdate} from './file-update-envelope.mjs';
-import {assemblyTypes,validAssemblyRequest} from './assembly-contract.mjs';
+import {fileUpdateType} from './file-update-envelope.mjs';
+import {assemblyTypes} from './assembly-contract.mjs';
 // Accept the reference-rendered spirit-v2 pipeline as well as frozen spirit-v1 queue rows.
-import {fileDeleteType,validCinematicFileDelete,validMapFolderDelete,validAssemblyFolderDelete,validHostedRosterDelete} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType} from './prop-folder-delete-contract.mjs';
 /** Same-Mac NGS queue -> existing official Request Service, both over MCP. */
 import {createNgsHealthRelay} from './rs-ops-ngs-health.mjs';
 import {startOpsHealthReport} from './local-ops-health-report.mjs';
@@ -20,13 +20,9 @@ import {propTypes} from './prop-workspace-contract.mjs';
 // Release together with map-contract.mjs: the relay checks map.generate v2 stage
 // options and optional start points, as well as older map and collider packets.
 // Relay v3 map decoration candidates and authored spirit puzzle metadata unchanged.
-import {mapTypes,validMapRequest} from './map-contract.mjs';
-// Bind the assembly v2 multi-puzzle intake to this relay release as well as the shared contract.
-function validateAssemblyRelay(type,payload){
- // Preserve per-role scale metadata; never normalize or discard draft coordinates on relay.
- if(type==='assembly.generate'&&!['ngs.assembly-generate.v1','ngs.assembly-generate.v2','ngs.assembly-generate.v3','ngs.assembly-generate.v4'].includes(payload?.schemaVersion))return false;
- return validAssemblyRequest(payload,type);
-}
+import {mapTypes} from './map-contract.mjs';
+import {validWorkspaceMapAssemblyCommand} from './workspace-map-assembly-admission.mjs';
+const workspaceMutations=new Set([...mapTypes,...assemblyTypes,fileUpdateType,fileDeleteType]);
 const kinds=new Set([cinematicType,...cinematicNewTypes,...Object.values(propTypes),...mapTypes,...assemblyTypes,fileDeleteType,fileUpdateType,'prop.animation.remove','npc.workflow','npc.portrait.regenerate','npc.animation.regenerate','concept.category.workflow','npc.planning.add','npc.planning.update','audio.generate','audio.delete','audio.separate','motion-preset.convert-2d']);
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -99,17 +95,11 @@ function createConsumer({callNGS,callRS,now=Date.now,observeNgs},sourceId){
   for(const row of rows){
    if(!kinds.has(row.requestType)||row.payload===null||typeof row.payload!=='object'||Array.isArray(row.payload)||
       row.payload.projectId!==projectId||Buffer.byteLength(JSON.stringify(row.payload))>90*1024||
-      (local&&row.requestType===backgroundSourceType&&!validBackgroundRequest(row.payload))||
-      (row.requestType===backgroundAnimationType&&(!local||!validBackgroundAnimation(row.payload)||
+      (row.requestType===backgroundSourceType&&!validBackgroundRequest(row.payload))||
+      (row.requestType===backgroundAnimationType&&(!validBackgroundAnimation(row.payload)||
        row.payload.playback.durationFrames===84&&row.payload.schemaVersion!==backgroundAnimationSchema))||
-      (row.requestType===backgroundPixelType&&(!local||!validBackgroundPixelRequest(row.payload)))||
-      (assemblyTypes.includes(row.requestType)&&!validateAssemblyRelay(row.requestType,row.payload))||
-      (mapTypes.includes(row.requestType)&&!validMapRequest(row.payload,row.requestType))||
-      // Includes per-region camera settings on full map file.update payloads.
-      // Relay the validated snapshot unchanged; retry only temporary failures.
-      (row.requestType===fileUpdateType&&!validFileUpdate(row.payload))||
-      (row.requestType===fileDeleteType&&!(validMapFolderDelete(row.payload)||validAssemblyFolderDelete(row.payload)||validHostedRosterDelete(row.payload)||
-       local&&validCinematicFileDelete(row.payload)))){result.rejected++;continue;}
+      (row.requestType===backgroundPixelType&&!validBackgroundPixelRequest(row.payload))||
+      (workspaceMutations.has(row.requestType)&&!validWorkspaceMapAssemblyCommand(row.requestType,row.payload))){result.rejected++;continue;}
    // Background media v2 has real scheduler stages; relay the contract unchanged,
    // just as for already-queued v1 compatibility rows.
    const stamp=fingerprint(row);

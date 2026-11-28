@@ -76,12 +76,16 @@ test('hash-pinned P2 files drive the existing project DTO, only after full insta
 
 test('Codex background mode syncs without a popup or browser, displays loss, and retains the P2 file', {skip:process.platform==='win32'},async t=>{
  const payload=Buffer.from('{"title":"비나리"}'),sha256=createHash('sha256').update(payload).digest('hex');
- let disconnected=false, calls=[], outcome;
+ let disconnected=false, calls=[], sessionArgs=[], outcome;
  const client={close(){},async tool(name,args){
   calls.push(name);
   if(disconnected)throw Error('VIEWER_CODEX_CONNECTION_REQUIRED');
-  if(name==='ngs_viewer_request_session')return {structuredContent:{status:200,data:{
-   backend:'space',state:'authenticated',readOnly:false,queueEnabled:true,workspaceReady:true,requestWritable:true}}};
+  if(name==='ngs_viewer_request_session'){
+   sessionArgs.push(args);
+   if(args.workspaceProtocol===2)throw Error('old Space rejects the new read shape');
+   return {structuredContent:{status:200,data:{
+    backend:'space',state:'authenticated',readOnly:false,queueEnabled:true,workspaceReady:true,requestWritable:true}}};
+  }
   if(name==='ngs_viewer_request_submit') {
    assert.deepEqual(args,{command:{requestType:'test',payload:{}}});
    if(outcome==='lost')throw Error('response lost');
@@ -106,6 +110,7 @@ test('Codex background mode syncs without a popup or browser, displays loss, and
  assert.deepEqual(calls,['ngs_viewer_manifest','ngs_viewer_file_chunk']);
  assert.equal((await get('/api/project-folders')).status,200);
  assert.equal((await (await get('/__npcgen_session')).json()).requestWritable,true);
+ assert.deepEqual(sessionArgs,[{workspaceProtocol:2},{}]);
  const submit=()=>get('/api/requests',{method:'POST',headers:{Origin:config.port?'http://127.0.0.1:'+config.port:'',
   'Content-Type':'application/json','X-NPCGen-Csrf':'0'.repeat(64),'X-NPCGen-Frontend-Context':'space.'+'0'.repeat(64)},
   body:JSON.stringify({requestType:'test',payload:{}})});

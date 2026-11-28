@@ -217,9 +217,9 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
+ const {audioFullLengthEnabled,npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
  if([mapReadEnabled,assemblyReadEnabled].some(v=>v!==undefined&&(v!==true||session.workspaceReady!==true)))return false;
- if([fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
+ if([audioFullLengthEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
  if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
  return session?.state==='authenticated'&&session.backend==='space'&&
@@ -689,8 +689,8 @@ async function loadWorkspace(search){
     for(const payload of backgroundDeletePayloads(row))await submitFolderDelete(submit,payload);
    }:undefined;
    await mountBackgroundWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,navigate:next,signal,deleteItem,
-    enabled:hosted&&session.backgroundSourceEnabled===true,pixelEnabled:!hosted&&session.backgroundPixelEnabled===true,
-    panel:search.get('cineTab'),animationEnabled:!hosted&&session.backgroundAnimationEnabled===true});
+    enabled:session.backgroundSourceEnabled===true,pixelEnabled:session.backgroundPixelEnabled===true,
+    panel:search.get('cineTab'),animationEnabled:session.backgroundAnimationEnabled===true});
    if(!signal.aborted)note('');
    return;
   }
@@ -802,7 +802,7 @@ async function loadWorkspace(search){
      if(!signal.aborted&&current===refreshEpoch)display(data,{force:true});
     }catch(error){if(!signal.aborted)note('게시된 BGM을 갱신하지 못했습니다.',true);throw error;}
    }
-   const library=mountAudioWorkspace({items,detail,signal,allowFullLength:!hosted,...(submit?{submit,
+   const library=mountAudioWorkspace({items,detail,signal,allowFullLength:session.audioFullLengthEnabled===true,...(submit?{submit,
     loadConcepts:legacySpace?async()=>(await request('/api/space/audio-concepts')).concepts:
      ()=>readAudioSoundConcepts({post,request,signal}),
     onAccepted:id=>{void followAcceptedAudioResult({id,post,request,signal,onChanged:refreshPublished});}}:{})});

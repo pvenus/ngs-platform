@@ -6,7 +6,7 @@ import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} 
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
 import {npcBasicSchema,validNpcBasicRequest,isSelectionSchema,validNpcMotionSelectionRequest,validNpcWorkflowIdentity,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 import {propAction,validPropPayload,propAnimationRemoveType,validPropAnimationRemove} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
-import {cinematicSequenceType,cinematicPlaybackUpdateType,validCinematicSequencePayload,validCinematicPlaybackUpdate,cinematicSourceGenerateType,validCinematicSourceGenerate,backgroundSourceType,validBackgroundRequest,cinematicSequencesRemoveType,validCinematicSequencesRemove} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
+import {cinematicSequenceType,cinematicPlaybackUpdateType,validCinematicSequencePayload,validCinematicPlaybackUpdate,cinematicSourceGenerateType,validCinematicSourceGenerate,backgroundSourceType,validBackgroundRequest,backgroundPixelType,validBackgroundPixelRequest,backgroundAnimationType,validBackgroundAnimation,cinematicSequencesRemoveType,validCinematicSequencesRemove} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
 import {cinematicType,validCinematicPayload} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
 const table='ngs_space_request_queue_v1';
 const cap=128,maxList=16,receiptTTL=24*60*60*1000;
@@ -57,6 +57,8 @@ function commandOK(cmd){
  case cinematicSequenceType:return validCinematicSequencePayload(p);
  case cinematicPlaybackUpdateType:return validCinematicPlaybackUpdate(p);
  case backgroundSourceType:return validBackgroundRequest(p);
+ case backgroundPixelType:return validBackgroundPixelRequest(p);
+ case backgroundAnimationType:return validBackgroundAnimation(p);
  case cinematicSourceGenerateType:return validCinematicSourceGenerate(p);
  case cinematicSequencesRemoveType:return validCinematicSequencesRemove(p);
  case propAnimationRemoveType:return validPropAnimationRemove(p);
@@ -94,8 +96,6 @@ export class SpaceRequestQueue{
  }
  async enqueue(actor,cmd){
   need(commandOK(cmd));
-  // The hosted relay does not yet support the local 60-second target.
-  need(cmd.requestType!=='audio.generate'||!Object.hasOwn(cmd.payload,'targetDurationSeconds'));
   const payload=canonical(cmd.payload),digest=await hash(canonical([cmd.requestType,cmd.payload])),queueId='ngs.space.'+this.uuid(),now=this.now();
   need(validQueueId(queueId),503,'SPACE_QUEUE_UNAVAILABLE');
   await this.ready();

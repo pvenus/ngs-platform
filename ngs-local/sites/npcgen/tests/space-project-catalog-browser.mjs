@@ -133,16 +133,16 @@ test('Space replica reads its own project and BGM lists without legacy compare o
  assert.match(app.node('#workspace-status').textContent,/아직 Space에 연결되지 않았습니다/);
 });
 
-test('Space project queue capability enables its audio controls but not the local 60-second option',async()=>{
+test('Space exposes the same 60-second audio controls under the existing write grant',async()=>{
  for(const requestWritable of [false,true]){
   const app=browser(url=>{
-   if(url==='/__npcgen_session')return Response.json({...readyReplica,workspaceReady:true,requestWritable});
+   if(url==='/__npcgen_session')return Response.json({...readyReplica,workspaceReady:true,requestWritable,...(requestWritable?{audioFullLengthEnabled:true}:{})});
    if(url==='/api/project-folders')return Response.json({projects:[project]});
    if(url==='/api/audio-workspace?projectId=binari')return Response.json({results:[]});
    throw Error('unexpected '+url);
   },'',{
    mountAudioWorkspace:settings=>{
-    assert.equal(settings.allowFullLength,false);
+    assert.equal(settings.allowFullLength,requestWritable);
     for(const method of ['submit','loadConcepts','onAccepted'])
      assert.equal(typeof settings[method],requestWritable?'function':'undefined');
     return dom();

@@ -84,7 +84,10 @@ export async function createViewer({root,space=binariSpace,mirror=null,codexClie
    if(background&&path==='/__viewer/status'&&method==='GET'&&!url.search)return json(200,{...state,committed:snapshot!==null});
    if(background&&path==='/__npcgen_session'&&method==='GET'&&!url.search){
     if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
-    const r=(await codexClient.tool('ngs_viewer_request_session',{}))?.structuredContent;
+    // Prefer the current response shape; older deployed Space accepts only {}.
+    let r;
+    try{r=(await codexClient.tool('ngs_viewer_request_session',{workspaceProtocol:2}))?.structuredContent;}catch{}
+    if(!r||r.status===400)r=(await codexClient.tool('ngs_viewer_request_session',{}))?.structuredContent;
     if(r?.status!==200||r.data?.state!=='authenticated'||r.data?.backend!=='space')
      throw fault('VIEWER_CODEX_CONNECTION_REQUIRED',503);
     return json(200,{...r.data,csrfToken:'0'.repeat(64),contextId:'space.'+'0'.repeat(64)});

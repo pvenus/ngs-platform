@@ -346,3 +346,30 @@ test('Local relay hands over the exact saved perspective graph in a formal file 
  assert.deepEqual(await consumer.pollOnce(),{seen:2,acknowledged:1,unresolved:0,rejected:1,deferred:0});
  assert.equal(forwarded,2);
 });
+
+test('Space relay forwards both background workflows as verified tickets',async()=>{
+ const {backgroundPixelType,backgroundPixelSchema,backgroundAnimationType,backgroundAnimationSchema,backgroundLoopPrompt}=
+  await import('../build/cinematic-sequence-contract.mjs');
+ const {backgroundLoopPlayback}=await import('../build/cinematic-timeline.mjs');
+ const p='a'.repeat(64),projectId='binari';
+ const payloads=[
+  [backgroundPixelType,{schemaVersion:backgroundPixelSchema,projectId,title:'뜰',timeOfDay:'밤',season:'가을',
+   mood:'스산함',color:'먹색',location:'대문',requirements:'마당 확보',additionalNotes:''}],
+  [backgroundAnimationType,{schemaVersion:backgroundAnimationSchema,projectId,backgroundSha256:p,references:{pixel:p,cinematic:'b'.repeat(64)},
+   motionPrompt:backgroundLoopPrompt('바람'),playback:backgroundLoopPlayback()}]
+ ];
+ const rows=payloads.map(([requestType,payload])=>{
+  const queueId=makeQueue().queueId.replace('ngs.local.','ngs.space.');
+  return {queueId,idempotencyKey:queueId,requestType,payload};
+ });
+ const proof=id=>'request.official.'+createHash('sha256').update(JSON.stringify(['request.official.v1','space','binari',id])).digest('hex');
+ const pump=createSpaceRSQueueConsumer({callNGS:async(name,args)=>{
+  if(name==='space_requests_pending')return {requests:rows};
+  assert.equal(name,'space_requests_ack');
+  return {queueId:args.queueId,status:'acknowledged'};
+ },callRS:async(name,args)=>{
+  assert.equal(name,'request_submit_space');assert.deepEqual(Object.keys(args),['queueId']);
+  return {officialRequestId:proof(args.queueId),status:'registered',registeredAt:1};
+ }});
+ assert.deepEqual(await pump.pollOnce(),{seen:2,acknowledged:2,unresolved:0,rejected:0,deferred:0});
+});
