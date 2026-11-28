@@ -97,3 +97,12 @@ test('Codex install requires team manifest before registering and has no browser
  await officialInstall(configured,{target,register,authenticate:noPopup,authenticateCodex:auth(200)});
  assert.equal(registered,1);assert.equal(closed,2);
 });
+
+test('team setup uses Codex with no legacy popup and defaults to the approved Site plugin',async()=>{
+ const {defaultTeamCodex}=await import('../setup/codex-discovery.mjs');
+ const found=defaultTeamCodex(opts,{discover:()=>'/test/codex'});
+ assert.deepEqual(found.codex,{binary:'/test/codex',server:'codex_apps',mode:'stdio'});
+ const fixed=defaultTeamCodex({...opts,codex:{binary:'/fixed/codex',server:'test',socket:'/fixed/socket'}},
+  {discover:()=>assert.fail('explicit binary should win')});
+ assert.deepEqual(fixed.codex,{binary:'/fixed/codex',server:'test',socket:'/fixed/socket',mode:'proxy'});
+});

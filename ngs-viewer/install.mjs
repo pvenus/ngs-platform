@@ -6,7 +6,8 @@ import {pathToFileURL} from 'node:url';
 import {createInterface} from 'node:readline/promises';
 import {stdin,stdout} from 'node:process';
 import {execFile} from 'node:child_process';
-import {win32} from 'node:path';
+import {win32,join} from 'node:path';
+import {homedir} from 'node:os';
 
 import {assertLoopbackRequest} from '../ngs-local/sites/npcgen/build/loopback-auth.mjs';
 import {binariSpace,viewerPort,viewerOptions,viewerSpaceOrigin} from './viewer.mjs';
@@ -14,6 +15,7 @@ import {installTarget,registerViewer} from './setup/os-targets.mjs';
 
 import {codexViewerClient} from './lib/codex-transport.mjs';
 import {codexViewerRemote} from './lib/native-mcp.mjs';
+import {defaultTeamCodex} from './setup/codex-discovery.mjs';
 import {validateMirrorManifest} from './lib/mirror.mjs';
 
 const statusError=(code,status)=>Object.assign(Error(code),{status});
@@ -123,7 +125,8 @@ async function cliOptions(){
  const io=createInterface({input:stdin,output:stdout});
  try{
   const space=(await io.question('Space 주소 ['+binariSpace+']: ')).trim()||binariSpace;
-  const root=(await io.question('P2 폴더의 절대 경로: ')).trim();
+  const defaultRoot=win32.isAbsolute(process.env.LOCALAPPDATA??'')?win32.join(process.env.LOCALAPPDATA,'NGS Viewer P2'):join(homedir(),'NGS Viewer P2');
+  const root=(await io.question('P2 폴더 ['+defaultRoot+']: ')).trim()||defaultRoot;
   const port=(await io.question('Viewer 포트 ['+viewerPort+']: ')).trim()||String(viewerPort);
   return viewerOptions(['--space',space,'--p2',root,'--port',port]);
  }finally{io.close();}
@@ -141,7 +144,7 @@ async function checkWorker(port){
 }
 if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
  try{
-  const options=await cliOptions(),target=installTarget();
+  const options=defaultTeamCodex(await cliOptions()),target=installTarget();
   const result=await officialInstall(options,{target,announce:url=>{
    console.log('아래 주소에서 Space 로그인을 승인해야 자동 실행 항목을 등록합니다.\n'+url);
    if(target.service==='launchagent')execFile('/usr/bin/open',[url],()=>{});
@@ -154,6 +157,7 @@ if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
  }catch(e){
   const friendly={
    VIEWER_ARGUMENTS:'Space 주소·P2 절대 경로·1024~65535 포트를 확인하세요.',
+   VIEWER_CODEX_BINARY_REQUIRED:'Codex 실행 파일을 찾지 못했습니다. ChatGPT/Codex를 설치하거나 --codex-bin으로 절대 경로를 지정하세요.',
    VIEWER_CODEX_CONNECTION_REQUIRED:'등록하지 않았습니다. Codex 앱 연결과 비나리 Space MCP를 확인한 뒤 다시 시도하세요.',
    VIEWER_SPACE_SIGN_IN_REQUIRED:'등록하지 않았습니다. Codex에서 비나리 Space MCP에 팀 계정으로 연결하세요.',
    VIEWER_SPACE_ORIGIN_INVALID:'이 설치 프로그램에서 승인한 비나리 Space 주소가 아닙니다.',

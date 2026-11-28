@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 367,
+  "fileCountIncludingManifest": 368,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1280,8 +1280,8 @@
       "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
     },
     "ngs-viewer/README.md": {
-      "bytes": 7872,
-      "sha256": "e2a7474d8e2866e459297511c13ae905d1b43c5cbcd45e9bb3d5d969ec1d19be"
+      "bytes": 3521,
+      "sha256": "7c81d20bd4cbe82af45e7b1439de9e9e39d21500cc8efbd1f00b0d6713fb34fa"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1360,24 +1360,24 @@
       "sha256": "dec1a02e562d6e3fdacb542a96693d2af74965872a416cc761323c344b86ceb8"
     },
     "ngs-viewer/install-windows.ps1": {
-      "bytes": 1368,
-      "sha256": "2e9f05623fc911fa4397100df2b6fd147da50816071d79368b3ccfaf10ea4bc9"
+      "bytes": 1580,
+      "sha256": "6d90606d165fd8a8640785cd1fc5a8bdbda21cf0aa944b3574063e40b183fae0"
     },
     "ngs-viewer/install.mjs": {
-      "bytes": 10444,
-      "sha256": "326c067a0d2e9b45759059be79e8388fd61aeb0fcbeb051e63a7e20e05d00cb9"
+      "bytes": 10896,
+      "sha256": "7cd7771901df514c45b2b967d9c6e7fd69a9083b274f3038884c4c3dc6fdb59e"
     },
     "ngs-viewer/setup/install-browser.mjs": {
       "bytes": 2262,
       "sha256": "6d40950fe4b42a48163b45360542a26a76c47cfa1bbd6f32d873955936b5bad3"
     },
     "ngs-viewer/setup/os-targets.mjs": {
-      "bytes": 7828,
-      "sha256": "a656e88f95b076a5951b56815751f3a241e1b0ed0d04db6fd65be60f78e9556a"
+      "bytes": 8061,
+      "sha256": "82845df82635586ff66763ed8ae754b313ef95dc2443a3a0529f73ed9d91ccbc"
     },
     "ngs-viewer/tests/install.test.mjs": {
-      "bytes": 6098,
-      "sha256": "4b5c6c76cc7ebd7bf95c389bb9346adefd9b8f9f863f8e878000cb62e9a10bb5"
+      "bytes": 6706,
+      "sha256": "e4764a7fb12a54d94c4416965e88a1085633644a85e9ffa78d38b7779fee0908"
     },
     "space-hosting/overlay/build/space-browser-auth.mjs": {
       "bytes": 1344,
@@ -1466,6 +1466,10 @@
     "ngs-viewer/tests/request-forward.test.mjs": {
       "bytes": 1974,
       "sha256": "d399e3715d97ad8b16bcf95c117d913c8089d3d854729596a91d453ebb4caf61"
+    },
+    "ngs-viewer/setup/codex-discovery.mjs": {
+      "bytes": 1126,
+      "sha256": "6d7d0a4c80a48beb5ff1165d779a52cbb99ae34bedf465228edd9bc71476a57b"
     }
   }
 }

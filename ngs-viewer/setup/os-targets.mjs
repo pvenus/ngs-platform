@@ -81,6 +81,11 @@ function stageRuntime(base,windows){
 export async function registerViewer(options,target=installTarget()){
  // Initialize/verify only the exact caller-selected P2 after authentication.
  const windows=target.service==='scheduled-task';
+ if(!windows&&!exists(options.root)){
+  const parent=dirname(options.root);
+  if(!lstatSync(parent).isDirectory()||realpathSync(parent)!==parent)throw Error('VIEWER_P2_DIRECTORY_REQUIRED');
+  mkdirSync(options.root,{mode:0o700});
+ }
  const mirror=await openMirror(options.root,{create:windows});mirror.close();
  const base=target.service==='launchagent'?join(homedir(),'Library','Application Support','VINUS','NGS Viewer'):
   join(process.env.LOCALAPPDATA??join(homedir(),'AppData','Local'),'VINUS NGS Viewer');

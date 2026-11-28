@@ -1,115 +1,74 @@
-# NGS Viewer
+# NGS Viewer 베타
 
-팀원 컴퓨터에서 실행하는 비나리용 NGS입니다. 기존 Space 워크스페이스 화면을
-공유하며, 실제로 표시되는 메뉴와 생성·수정·삭제 권한은 로그인한 팀원의
-Space 권한과 기능 설정을 따릅니다. Viewer 자체를 OPS에 등록하지 않습니다.
+팀원 PC에서 비나리 Space를 사용하는 로컬 뷰어입니다. GitHub에서 코드를
+받아 실행합니다. ZIP, 운영 키, 브라우저 쿠키, 프로젝트 파일 복사는 필요 없습니다.
 
-## 설치
+## 1. 팀원 계정 준비
 
-Node.js 24 이상이 필요합니다. 설치기는 **Space 주소, P2 절대 경로, Viewer 포트**
-(기본값 5281)를 받습니다. 주소는 이 빌드에서 승인된 비나리 Space HTTPS 주소만
-허용합니다. 아무 사이트나 인증 기관으로 지정할 수 없습니다.
+- 본인 ChatGPT 계정으로 Codex에 로그인합니다.
+- 초대받은 비나리 Space를 열 수 있는지 확인합니다.
+- 공유받은 **NPCGen 요청과 결과** 플러그인을 Codex에서 설치하고, 연결을
+  묻는 경우 본인 계정으로 한 번 승인합니다. Viewer용 별도 MCP 등록은 없습니다.
+- Node.js 24 이상과 Git이 필요합니다. Viewer를 사용하는 동안 Codex 로그인을 유지하세요.
 
-- **macOS:** 새 P2 폴더를 만든 뒤 저장소에서 `./ngs-viewer/install-macos.sh`를
-  실행하세요. 인증이 끝나면 현재 로그인 사용자 LaunchAgent로 등록합니다.
-- **Windows 10/11:** Windows용 Node.js 24 LTS를 설치한 뒤 일반 사용자
-  PowerShell에서 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ngs-viewer\install-windows.ps1`을
-  실행하세요. 기본값은 내 로컬 앱 데이터 아래의 새 P2 폴더, 승인된 비나리
-  Space 주소, 포트 5281입니다. 설치기는 팀원 인증 후에만 로컬 NTFS 폴더를
-  만들고, 현재 사용자 로그인 시 네이티브 Viewer를 실행하는 예약 작업을 등록합니다.
-  WSL2, 관리자 권한, Windows SCM 서비스 등록은 필요하지 않습니다.
-  새 P2 경로는 부모 폴더가 존재해야 하며 네트워크 드라이브, 클라우드 재분석
-  지점, 정션과 심볼릭 링크를 포함할 수 없습니다.
-
-이미 만든 macOS P2의 명령 예시:
+## 2. GitHub에서 받기
 
 ```sh
-./ngs-viewer/install-macos.sh \
-  --space 'https://vinus-npcgen.park-venus0518.chatgpt.site' \
-  --p2 '/Volumes/무제/NGS-Viewer-P2' --port 5281
+git clone --branch team-viewer --single-branch https://github.com/pvenus/ngs-platform.git
+cd ngs-platform
 ```
 
-브라우저에서 팀 계정으로 로그인해 연결을 승인하면 Space가 선택한 포트와
-설치 요청에만 유효한 5분 서명을 발급합니다. 설치기는 내장된 Space 공개키로
-이 서명을 로컬 검증한 뒤에만 OS 자동 실행 항목과 Viewer 런타임을 만듭니다.
-로그인 세션을 로컬에 복사하거나 별도의 비로그인 인증 API를 사용하지 않습니다.
+이미 저장소를 받았다면 팀 배포 기준은 `team-viewer` 브랜치입니다.
 
-## 사용
+## 3. 설치 및 실행
 
-1. 등록에 사용한 `http://127.0.0.1:<포트>`를 엽니다. LAN이나 인터넷으로
-   제공하지 않습니다.
-2. **Space 연결**을 눌러 현재 팀 계정으로 연결을 승인하세요. 로그인되지
-   않은 경우 브리지 창의 Space 링크로 로그인한 뒤 Viewer에서 다시 연결합니다.
-   연결 창은 사용 중 열어 둡니다.
-3. 파일은 지정 폴더의 `binari/`로 받습니다. 초기 동기화가 끝나면 NGS 화면이
-   열립니다. 이후 60초마다 변경을 확인하고, **P2 동기화**로 즉시 확인할 수도
-   있습니다. 다른 도구가 관리하는 기존 `binari/`를 덮어쓰지 않습니다.
-
-개발용 `npm start -- --p2 <폴더> --port <포트> --space <주소>`는
-서비스를 등록하지 않으며 Space 로그인 없이는 요청이나 파일을 받을 수 없습니다.
-
-## 데이터 흐름
-
-- 요청: 로컬 공유 UI → 승인된 Space 창 → 기존 Space 정식 요청 API.
-  요청 본문, 멱등 키 및 요청자 권한은 Space가 그대로 검증합니다. Viewer는
-  로컬 접수 큐를 만들지 않고 RS·PDS·OPS·워커를 직접 호출하지 않습니다.
-- 파일: 이미 Space에 게시된 팀원 권한 범위의 파일 → SHA-256 고정 분할 읽기
-  → P2. 팀원용 읽기 경로는 운영 업로드 자격증명이나 소유자 토큰을 사용하지
-  않습니다. 새 파일을 모두 검증하기 전에 기존 사본을 교체하지 않습니다.
-  이전 Viewer 관리 파일 중 온전한 새 목록으로 삭제가 입증된 것만 정리하며,
-  로컬 사용자가 추가하거나 수정한 파일은 건드리지 않습니다.
-- Viewer는 업로드·역동기화·로컬 워커 실행을 하지 않습니다. 로컬 P2는 원본
-  저장소가 아닙니다. Space 권한 변경은 다음 승인된 목록에서 반영되지만 이미
-  팀원이 받은 파일을 원격 회수하는 기능은 아닙니다.
-
-실제 팀 연결을 사용하려면 이 저장소의 **Space 브리지와 읽기 전용 조회
-경로가 기존 Space에 먼저 배포**되어 있어야 합니다. Viewer 배포 자체는
-OPS에서 관리하지 않습니다. 실제 팀 계정/브라우저 팝업 연결 검증은 Space
-배포 후 수행합니다.
-
-## 테스트
+**macOS** 터미널:
 
 ```sh
-npm test
-cd ..
-node --test space-hosting/overlay/tests/{space-viewer-export,space-viewer-install}.mjs
+./ngs-viewer/install-macos.sh
 ```
 
-테스트는 모의 Space 팀 로그인으로 요청 전달, 로컬 HTTP, 해시 및 저장 경계를
-검증하며 운영 계정이나 제작 요청을 사용하지 않습니다.
+**Windows 10/11** 일반 사용자 PowerShell:
 
-### 파일 동기화
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ngs-viewer\install-windows.ps1
+```
 
-뷰어는 NGS–PDS MCP의 공용 전송 엔진을 그대로 쓰고 Space를 읽기 전용 송신측, 로컬 P2를 수신측으로 연결합니다. 인벤토리 비교 → 전송 계획 → 파일 전체 SHA-256 검증 → 파일 단위 재시도 → 삭제 재확인 → 확정 순서입니다. 한 파일이 계속 실패해도 정상 파일은 반영되고 해당 파일의 기존 P2 사본은 유지됩니다.
+Space 주소, P2 경로 및 포트를 입력합니다. Space 기본값은
+`https://vinus-npcgen.park-venus0518.chatgpt.site`, 포트는 `5281`입니다.
+P2는 기존 제작용 폴더가 아닌 새 폴더를 고르세요. Windows에서는
+네트워크 드라이브·정션·공유 클라우드 경로가 아닌 로컬 NTFS 폴더여야 합니다.
 
-### 기기 인증을 사용하는 팝업 없는 동기화 (검증 브랜치)
+설치기는 Codex에서 권한이 있는 Space 파일 목록을 실제로 읽은 뒤에만 서비스
+자동 실행을 등록합니다. 설치기에서 로그인 팝업을 띄우지 않습니다. macOS는
+로그인 사용자의 LaunchAgent, Windows는 일반 사용자의 예약 작업입니다.
+Windows는 WSL2나 관리자 권한이 필요하지 않습니다. 실제 Windows PC 검증은
+아직 하지 않았습니다.
 
-운영 설치에는 아직 활성화하지 않았습니다. Space의 네이티브 MCP에서 검증된
-팀원 신원으로만 공개 대상 파일 인벤토리와 청크를 읽습니다. 이 경로는 쓰기,
-숨김 원본에는 접근할 수 없습니다. 요청 제출은 별도 도구에서 Space의 공식 요청 검사로만 처리합니다. macOS/Windows 서비스에서
-기존 PDS 전송 엔진을 재사용해 브라우저 없이 P2를 갱신할 수 있습니다.
+Codex 실행 파일을 자동으로 찾지 못하면 macOS에서
+`--codex-bin <Codex 절대 경로> --codex-mcp codex_apps`, Windows 스크립트에서는
+`-CodexBin <codex.exe 절대 경로>`로 지정하세요. 자동 탐색은 macOS 기본
+ChatGPT 설치 경로와 PATH를 사용합니다.
 
-실제 설치 연동에는 이 Viewer용으로 승인된 OAuth 공개 클라이언트와 Space의
-`/mcp` 리소스에 대한 오프라인 갱신 권한이 필요합니다. 로그인된 브라우저
-쿠키나 운영 서비스의 사이트 키로 대체하지 않습니다. 운영 환경에서 승인받은
-클라이언트로 직접 로그인·갱신을 확인하기 전까지 자동 시작하지 않습니다.
+설치 후 [로컬 Viewer](http://127.0.0.1:5281)를 엽니다. 포트를 바꿨다면
+주소의 포트도 바꿉니다. 첫 동기화가 끝나면 로컬 P2에서 화면이 열립니다.
+Viewer 탭이나 Space 팝업을 계속 열어둘 필요는 없습니다. Codex 연결이 끊기면
+오류를 표시하고 이미 내려받은 파일은 그대로 둡니다.
 
-`NGS_VIEWER_CODEX_BIN`과 `NGS_VIEWER_CODEX_MCP_NAME`을 지정하는 브랜치 검증 모드에서는
-독립 OAuth 코드 대신 로그인된 Codex의 app-server 통제 소켓을 사용합니다.
-`NGS_VIEWER_CODEX_SOCKET`은 Codex가 별도 소켓 경로를 명시한 경우에만 설정합니다.
-AI 턴을 실행하지 않으며, 파일 읽기와 사용자가 제출한 공식 요청에 한해 고정된 도구를 직접 호출합니다.
-Codex 연결이 사라지면 동기화만 멈추며, 이미 확정한 P2는 변경하지 않습니다.
-등록된 Codex 연결로 운영 확인 전에는 정식 설치 경로에 이 모드를 연결하지 않습니다.
+## 동작
 
-동기화는 한 번에 한 패스만 수행하고 패스가 끝난 후 60초를 기다립니다.
-실행 중 수동 요청은 같은 패스를 공유하며 후속 실행을 예약하지 않습니다.
-제작 요청은 동기화가 끝나기를 기다리지 않고 즉시 한 번 전달합니다. 거절
-또는 응답 유실 시 로컬에 큐·파일을 남기지 않고 자동 재전송하지 않습니다.
-응답 유실은 Space에 접수됐을 수 있으므로 실패 확정과 구분합니다.
+- 파일은 Space → 로그인된 Codex MCP → P2 방향으로만 전달합니다. 전체
+  SHA-256 검증과 스냅샷 확정을 거치며, 현재 실행이 끝난 후 60초 뒤 다시
+  확인합니다. 동기화 도중 버튼을 눌러도 중복으로 실행하지 않습니다.
+- 사용자가 제출한 제작 요청은 동기화와 별개로 Space 공식 요청 API에 즉시 한
+  번 전달합니다. 로컬 큐, 디스크 보관, 자동 재전송은 없습니다. 응답만 끊겨
+  접수 여부가 불확실하면 다시 누르기 전에 Space 요청 목록을 확인하세요.
+- Viewer는 인터넷에 로컬 포트를 노출하거나 OPS에 등록하지 않습니다.
+  기존 NGS 프로젝트 폴더·원본·생성 워커를 건드리지 않습니다.
 
-macOS 설치에서 이미 연결된 Codex MCP를 확인하려면 `--codex-bin <Codex 절대 경로>`
-및 `--codex-mcp <Codex에 등록된 MCP 이름>`을 함께 지정합니다. Codex가 전용
-제어 소켓을 제공하지 않는 경우 `--codex-mode stdio`로 Codex 자체 앱 서버를
-사용할 수 있습니다. OAuth 자격 파일을 열거나 복사하지 않으며 MAC에서 실제 팀
-목록을 읽을 수 있을 때에만 LaunchAgent를 등록합니다. 이 모드에서 기존 브라우저
-설치 방식으로 자동 전환하지 않습니다.
+## 개발용 테스트
+
+```sh
+npm --prefix ngs-viewer test
+node --test space-hosting/overlay/tests/space-viewer-{export,install}.mjs
+```

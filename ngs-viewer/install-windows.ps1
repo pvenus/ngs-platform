@@ -2,7 +2,8 @@
 param(
   [Parameter()][string]$P2,
   [Parameter()][string]$Space,
-  [Parameter()][string]$Port
+  [Parameter()][string]$Port,
+  [Parameter()][string]$CodexBin
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,5 +31,9 @@ $P2 = $P2.Trim().Trim('"')
 if ($P2 -notmatch '^[A-Za-z]:\\.+') { throw 'Choose a new folder on a local NTFS drive (for example, C:\Games\NGS-P2).' }
 $P2 = [IO.Path]::GetFullPath($P2).TrimEnd('\')
 $entry = Join-Path $PSScriptRoot 'install.mjs'
-& $node.Source $entry --space ($Space.Trim()) --p2 $P2 --port ($Port.Trim())
+$viewerArgs = @('--space', $Space.Trim(), '--p2', $P2, '--port', $Port.Trim())
+if ($CodexBin) {
+  $viewerArgs += @('--codex-bin', [IO.Path]::GetFullPath($CodexBin), '--codex-mcp', 'codex_apps', '--codex-mode', 'stdio')
+}
+& $node.Source $entry @viewerArgs
 exit $LASTEXITCODE
