@@ -1,4 +1,5 @@
 // Share the exact Workspace and audio response schemas; data comes only from P2.
+import {openObjectWorkspaceProject} from '../../ngs-local/sites/npcgen/build/object-workspace-read-storage.mjs';
 import {openLocalWorkspaceProject} from '../../ngs-local/sites/npcgen/build/local-project-workspace.mjs';
 import {dispatchWorkspaceRead,workspaceReadResource,workspaceReadRoute} from '../../ngs-local/sites/npcgen/build/workspace-read-registry.mjs';
 import {cinematicVideoResponse} from '../../ngs-local/sites/npcgen/build/cinematic-workspace.mjs';
@@ -76,15 +77,45 @@ function objectView(local){
  };
 }
 
-export async function localProjection({root,snapshot,url,method,range,openProject}){
+// Audio uses the same replica files; use the committed manifest to enumerate
+// candidates for historical reads while the shared live D1 index is ahead.
+function pinnedObject(replica,snapshot){
+ const object=replica.atVersion(snapshot.version);
+ return {...object,async audioIndex({projectId,resultId,cursor}){
+  const boundary=cursor?parseAudioCursor(cursor):null;
+  if(!boundary&&cursor)throw fault('NGS_AUDIO_CURSOR_INVALID',400);
+  const index=new Map(snapshot.files.map(row=>[row.path,row]));
+  const rows=[];
+  for(const [path,entry] of index){
+   const pick=audioIndexPath(path);
+   if(!pick||pick[2]!=='metadata.json'||entry.size>65536||resultId&&pick[1]!==resultId)continue;
+   const id=pick[1],wav=index.get('audio/'+id+'/audio.wav');
+   if(!wav)continue;
+   const meta=await object.get(path);
+   if(meta?.customMetadata?.sha256!==entry.sha256){await meta?.body?.cancel();continue;}
+   const summary=readAudioIndexBytes(new Uint8Array(await meta.arrayBuffer()),id,entry.sha256);
+   if(summary&&wav.sha256===summary.sha256&&wav.size===summary.bytes)
+    rows.push({id,generated_at:summary.generatedAt,title:summary.title,bpm:summary.bpm,separated:summary.separated,
+      metadata_audio_sha:summary.sha256,duration_seconds:summary.durationSeconds});
+  }
+  if(resultId)return {projectId,result:rows[0]?audioIndexResult(rows[0]):null};
+  const sorted=rows.sort((a,b)=>b.generated_at-a.generated_at||b.id.localeCompare(a.id))
+   .filter(row=>!boundary||row.generated_at<boundary.date||row.generated_at===boundary.date&&row.id<boundary.id);
+  const page=sorted.slice(0,audioPageSize);
+  return {projectId,results:page.map(audioIndexResult),nextCursor:sorted.length>page.length?audioCursor(page.at(-1)):null};
+ }};
+}
+
+export async function localProjection({root,snapshot,url,method,range,openProject,replica}){
  const path=url.pathname,section=workspaceReadRoute(path);
  if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
+ const r2=replica?pinnedObject(replica,snapshot):null;
  const resources=new Set(snapshot.resources), project=(id,resource)=>{
   if(id!=='binari'||!resources.has(resource))throw fault('PROJECT_OR_RESOURCE_DENIED',403);
  };
  if(section){
   if(method!=='GET')throw fault('METHOD_NOT_ALLOWED',405);
-  const local=view(root,snapshot.files,openProject);
+  const local=r2?openObjectWorkspaceProject(r2,'binari'):view(root,snapshot.files,openProject);
   const result=await dispatchWorkspaceRead({pathname:path,query:url.searchParams,openProject:id=>id==='binari'?local:null,
    authorize:(id,resource)=>project(id,section==='prop'||section==='cinematic'?resource:
      section==='map'||section==='background'?'cinematics':section==='assembly'?'assembly':
@@ -97,7 +128,7 @@ export async function localProjection({root,snapshot,url,method,range,openProjec
   return new Response(result.bytes,{headers:{'Content-Type':result.mime,'Content-Length':String(result.bytes.length)}});
  }
  if(!['GET','HEAD'].includes(method))throw fault('METHOD_NOT_ALLOWED',405);
- const object=objectView(view(root,snapshot.files,openProject));
+ const object=r2??objectView(view(root,snapshot.files,openProject));
  if(path==='/api/project-folders'){
   project('binari','project');
   if(url.search)throw fault('PROJECT_FOLDER_QUERY_INVALID',400);

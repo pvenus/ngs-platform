@@ -11,11 +11,10 @@ const invalid=()=>Error('VIEWER_MCP_SYNC_INVALID');
 const require=value=>{if(!value)throw invalid();};
 const match=(item,meta)=>item.path===meta.path&&item.sha256===meta.sha256&&item.size===meta.size;
 
-export async function pullSpaceToP2({mirror,remote,signal,parallelism=viewerDownloadFileLimit,sourceParallelism=parallelism,onFileError=()=>{}}){
- const rows=new Map(),failed=new Set(),removed=new Set(),plannedFiles=new Map();
- const chunkSlot=shareFileTransferSlot(sourceParallelism), transferSlot=shareFileTransferSlot(parallelism);
- const syncId='ngs.sync.'+randomUUID();
- let manifest,active,comparisonCount=0,last;
+function viewerPullSource(remote,sourceParallelism){
+ const rows=new Map();
+ const chunkSlot=shareFileTransferSlot(sourceParallelism);
+ let manifest,comparisonCount=0;
  const pds=createFolderMcpClient({call:async(name,args)=>{
   if(name==='npc_project_folders_list')return {projects:[scope]};
   require(args.scope===scope);
@@ -51,6 +50,43 @@ export async function pullSpaceToP2({mirror,remote,signal,parallelism=viewerDown
     nextOffset:offset+len===row.size?null:offset+len};
   });
  }});
+ return {pds,rows,get manifest(){return manifest;}};
+}
+
+export async function pullSpaceToObject({replica,remote,signal,parallelism=viewerDownloadFileLimit,sourceParallelism=parallelism,onFileError=()=>{},onManifest=()=>{}}){
+ const source=viewerPullSource(remote,sourceParallelism);
+ const fileSlot=shareFileTransferSlot(parallelism);
+ let failed=0,removed=0;
+ const ngs=async(name,args)=>{
+  if(name==='ngs_file_sync_plan')onManifest(source.manifest);
+  if(name==='ngs_file_sync_file_failed')failed++;
+  // Never remove an old path in a pass with an unpublished replacement.
+  if(name==='ngs_file_sync_remove'){
+   if(failed)return {removed:false};
+   require(!source.rows.has(args.path));
+  }
+  const result=await replica.call(name,args);
+  if(name==='ngs_file_sync_remove'&&result.removed)removed++;
+  return result;
+ };
+ const upload=async(args,body)=>replica.receiveWholeFile(args,body());
+ const result=await pushProjectFiles({scope,pds:source.pds,ngs,upload,signal,fileSlot,parallelism,onFileError});
+ if(result.failed)return {...result,files:source.manifest.files.length,removed:0,changed:result.written,snapshot:null};
+ const inventory=new Map((await replica.list()).map(row=>[row.path,row.sha256]));
+ require(source.manifest.files.every(row=>inventory.get(row.path)===row.sha256));
+ const allowed=new Set(source.manifest.resources);
+ require([...inventory.keys()].every(path=>!allowed.has(replicaPathResource(path))||source.rows.has(path)));
+ return {...result,files:source.manifest.files.length,removed,changed:result.written,
+  snapshot:{...source.manifest,version:await replica.checkpoint()}};
+}
+
+export async function pullSpaceToP2({mirror,remote,signal,parallelism=viewerDownloadFileLimit,sourceParallelism=parallelism,onFileError=()=>{}}){
+ const failed=new Set(),removed=new Set(),plannedFiles=new Map();
+ const transferSlot=shareFileTransferSlot(parallelism);
+ const syncId='ngs.sync.'+randomUUID();
+ const source=viewerPullSource(remote,sourceParallelism);
+ const {pds,rows}=source;
+ let active,last;
  const ngs=async(name,args)=>{
   if(name==='ngs_file_sync_begin'){
    require(args.scope===scope);
@@ -62,8 +98,8 @@ export async function pullSpaceToP2({mirror,remote,signal,parallelism=viewerDown
    return {ok:true};
   }
   if(name==='ngs_file_sync_plan'){
-   require(!active&&manifest);
-   const minted=mirror.begin(manifest);active=minted.syncId;
+   require(!active&&source.manifest);
+   const minted=mirror.begin(source.manifest);active=minted.syncId;
    require(minted.files.length===args.totalFiles);
    for(const item of minted.files)plannedFiles.set(item.path,item);
    return {ok:true};

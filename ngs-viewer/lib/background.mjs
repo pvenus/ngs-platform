@@ -1,7 +1,8 @@
-import {pullSpaceToP2} from './sync.mjs';
+import {pullSpaceToP2,pullSpaceToObject} from './sync.mjs';
 
 /** Single serial pull loop, independent of the browser and request relay. */
-export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot=()=>{},onState=()=>{}}){
+export function backgroundViewerSync({mirror,replica,remote,intervalMs=60_000,onSnapshot=()=>{},onState=()=>{}}){
+ let granted=null;
  let control=null,timer=null,closed=false,pending=null,paused=false;
  const start=()=>{
   if(closed||paused||pending)return pending;
@@ -11,7 +12,9 @@ export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot
   pending=Promise.resolve().then(async()=>{
    onState({state:'running'});
    try{
-    const result=await pullSpaceToP2({mirror,signal,remote:async path=>{
+    const result=await (replica?pullSpaceToObject:pullSpaceToP2)({mirror,replica,signal,onManifest:manifest=>{
+     if(granted?.some(r=>!manifest.resources.includes(r))){granted=null;onSnapshot(null);}
+    },remote:async path=>{
      let response;
      try{response=await remote(path,{signal});}
      catch(e){
@@ -25,7 +28,8 @@ export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot
      return response;
     }});
     signal.throwIfAborted();
-    onSnapshot(mirror.snapshot());
+    const verified=replica?result.snapshot:mirror.snapshot();
+    if(verified){granted=verified.resources;onSnapshot(verified);}
     onState({state:'completed',files:result.files,changed:result.changed,failed:result.failed,removed:result.removed});
    }catch(e){
     if(closed)return;

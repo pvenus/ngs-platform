@@ -3,7 +3,7 @@ import {createObjectReplica} from './object-replica.mjs';
 import {parseWholeFileHeaders,wholeFileError} from './replica-whole-file-wire.mjs';
 
 const json=(value,status=200)=>Response.json(value,{status});
-const api=new Set(['call','list','head','get','progress','audioIndex','cache-version','cache-read','cache-store','verified-png']);
+const api=new Set(['checkpoint','call','list','head','get','progress','audioIndex','cache-version','cache-read','cache-store','verified-png']);
 const info=o=>({size:o.size,etag:o.etag,customMetadata:o.customMetadata??{}});
 function permitted(r,env){
  const cap=r.headers.get('x-ngs-internal');
@@ -14,7 +14,9 @@ export default {async fetch(r,env){
  if(!permitted(r,env)||r.method!=='POST')return new Response(null,{status:403});
  const url=new URL(r.url);
  if(url.search||!['/call','/raw'].includes(url.pathname))return new Response(null,{status:404});
- const replica=createObjectReplica({db:env.DB,bucket:env.BUCKET,fixedLengthStream:n=>new FixedLengthStream(n),cacheOrigin:url.origin});
+ const pin=r.headers.get('X-NGS-Read-Version');
+ if(pin!==null&&(!/^\d{1,16}$/.test(pin)||!Number.isSafeInteger(Number(pin))||url.pathname==='/raw'))return new Response(null,{status:400});
+ const replica=createObjectReplica({db:env.DB,bucket:env.BUCKET,fixedLengthStream:n=>new FixedLengthStream(n),cacheOrigin:pin===null?url.origin:undefined,readVersion:pin===null?null:Number(pin)});
  if(url.pathname==='/raw'){
   try{
    const args=parseWholeFileHeaders(name=>r.headers.get(name));
@@ -24,6 +26,7 @@ export default {async fetch(r,env){
  }
  try{
   const value=await r.json(),op=value?.op,args=value?.args;
+  if(pin!==null&&!['get','head','list'].includes(op))return json({error:'NGS_MINIFLARE_INVALID'},400);
   if(!api.has(op)||!Array.isArray(args)||args.length>3)return json({error:'NGS_MINIFLARE_INVALID'},400);
   if(op==='verified-png'){
    const bytes=await replica.readVerifiedPng(...args);

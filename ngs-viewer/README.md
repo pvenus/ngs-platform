@@ -1,6 +1,6 @@
 # NGS Viewer 베타
 
-팀원 PC에서 비나리 Space를 사용하는 로컬 뷰어입니다. GitHub에서 코드를
+팀원 PC에서 비나리 Space를 사용하는 로컬 뷰어입니다. Mac과 Windows 모두 같은 검증본을 GitHub에서
 받아 실행합니다. ZIP, 운영 키, 브라우저 쿠키, 프로젝트 파일 복사는 필요 없습니다.
 
 ## 1. 팀원 계정 준비
@@ -42,7 +42,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ngs-viewer\install-win
 
 Space 주소, P2 경로 및 포트를 입력합니다. Space 기본값은
 `https://vinus-npcgen.park-venus0518.chatgpt.site`, 포트는 `5281`입니다.
-P2는 기존 제작용 폴더가 아닌 새 폴더를 고르세요. Windows에서는
+저장 위치는 기존 제작용 폴더가 아닌 별도 폴더를 고르세요. 설치 시 잠금 파일 기준으로 Miniflare를 설치하고 그 폴더 안에 로컬 R2/D1을 초기화합니다. 기존 Viewer 사본 파일을 가져오지 않고 Space에서 첫 동기화를 수행합니다. Windows에서는
 네트워크 드라이브·정션·공유 클라우드 경로가 아닌 로컬 NTFS 폴더여야 합니다.
 
 설치기는 Codex에서 권한이 있는 Space 파일 목록을 실제로 읽은 뒤에만 서비스
@@ -61,7 +61,11 @@ ChatGPT 설치 경로와 PATH를 사용합니다.
 Viewer 탭이나 Space 팝업을 계속 열어둘 필요는 없습니다. Codex 연결이 끊기면
 오류를 표시하고 이미 내려받은 파일은 그대로 둡니다.
 
-## Windows 업데이트
+## 업데이트
+
+macOS: 저장소에서 `node ngs-viewer/update-macos.mjs`를 실행하세요. 기본 포트가 아니면 `--port`를 지정합니다. 이전 업데이트 대기 기능이 없는 실행본은 먼저 동기화와 제작 요청이 끝난 것을 확인한 뒤 `--allow-legacy-idle`을 한 번 사용하세요.
+
+Windows:
 
 처음 스크립트를 받으려면 저장소에서 `git pull --ff-only origin team-viewer-stable`을
 한 번 실행하세요. 이후 아래 스크립트가 최신 검증 버전을 확인합니다.
@@ -81,8 +85,8 @@ P2, 포트, Codex 연결은 그대로 유지됩니다. 포트가 5281이 아니�
 
 ## 동작
 
-- 파일은 Space → 로그인된 Codex MCP → P2 방향으로만 전달합니다. 전체
-  SHA-256 검증과 스냅샷 확정을 거칩니다. 서로 다른 파일은 최대 10개까지
+- 파일은 Space R2 → 로그인된 Codex MCP → Miniflare 로컬 R2 방향으로만 전달합니다. D1 목록과 R2 수신 엔진은 로컬 NGS와 같은 모듈을 사용합니다. 전체
+  SHA-256 검증과 스냅샷 확정을 거칩니다. 일부 파일이 실패하면 기존 경로 삭제는 미루고 이전에 확정한 읽기 상태를 유지합니다. 서로 다른 파일은 최대 10개까지
   동시에 받지만 같은 파일의 청크는 순서대로 하나씩 받습니다. 현재 실행이
   끝난 후 60초 뒤 다시
   확인합니다. 동기화 도중 버튼을 눌러도 중복으로 실행하지 않습니다.
@@ -95,6 +99,7 @@ P2, 포트, Codex 연결은 그대로 유지됩니다. 포트가 5281이 아니�
 ## 개발용 테스트
 
 ```sh
+npm ci --prefix ngs-local/local-miniflare --ignore-scripts --no-audit --no-fund
 npm --prefix ngs-viewer test
 node --test space-hosting/overlay/tests/space-viewer-{export,install}.mjs
 ```

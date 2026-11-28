@@ -60,12 +60,15 @@ New-Item -ItemType Directory -Path $runtime | Out-Null
 $bundle = Join-Path $runtime 'update-source.tar'
 $paused=$false; $stopIssued=$false; $changed=$false; $done=$false
 try {
-  $paths = @('ngs-viewer','ngs-local/sites/npcgen/build','space-hosting/overlay/build/shared-ngs-assets.ts','space-hosting/overlay/build/shared-ngs-response.mjs')
+  $paths = @('ngs-viewer','ngs-local/sites/npcgen/build','ngs-local/dev','ngs-local/local-miniflare/package.json','ngs-local/local-miniflare/package-lock.json','space-hosting/overlay/build/shared-ngs-assets.ts','space-hosting/overlay/build/shared-ngs-response.mjs')
   & $git -C $repo archive --format=tar "--output=$bundle" $sha @paths
   if ($LASTEXITCODE -ne 0) { throw 'Cannot stage the tested version.' }
   & $tar -xf $bundle -C $runtime
   if ($LASTEXITCODE -ne 0) { throw 'Cannot extract the Viewer.' }
   Remove-Item -LiteralPath $bundle
+  $npmCli = Join-Path (Split-Path $old.Execute -Parent) 'node_modules\npm\bin\npm-cli.js'
+  & $old.Execute $npmCli ci --ignore-scripts --no-audit --no-fund --prefix (Join-Path $runtime 'ngs-local\local-miniflare')
+  if ($LASTEXITCODE -ne 0) { throw 'Miniflare installation failed; previous Viewer remains installed.' }
   $entry = Join-Path $runtime 'ngs-viewer\viewer.mjs'
   & $old.Execute --check $entry
   if ($LASTEXITCODE -ne 0) { throw 'Staged Viewer failed validation.' }
@@ -100,7 +103,7 @@ try {
   Start-ScheduledTask -TaskName $name -TaskPath '\'
   for ($i=0; $i -lt 24; $i++) {
     try { $live = Get-ViewerConfig } catch { $live = $null }
-    if ($live -and $live.port -eq $Port -and $live.spaceOrigin -eq $space -and $live.backend -eq 'codex' -and $live.releaseCommit -eq $sha) {
+    if ($live -and $live.port -eq $Port -and $live.spaceOrigin -eq $space -and $live.backend -eq 'codex' -and $live.storage -eq 'miniflare-r2' -and $live.releaseCommit -eq $sha) {
       $done=$true; break
     }
     Start-Sleep -Milliseconds 500

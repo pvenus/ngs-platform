@@ -2,9 +2,8 @@ import {execFileSync} from 'node:child_process';
 import {closeSync,cpSync,lstatSync,mkdirSync,openSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {dirname,join,win32} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {openMirror} from '../lib/mirror.mjs';
 import {verifyNtfsRoot,windowsCommand,windowsPowerShell} from '../lib/windows-storage.mjs';
 
 const repo=fileURLToPath(new URL('../../',import.meta.url));
@@ -61,19 +60,26 @@ Write-Output $c.name`;
  return {name,encoded:windowsCommand(script).at(-1)};
 }
 
-function stageRuntime(base,windows){
+export function stageRuntime(base,windows){
  const destination=join(base,'runtime-'+randomUUID());
  if(windows)mkdirSync(destination,{mode:0o700});
  else makeOwned(destination);
  try{
   const runtimePaths=['ngs-viewer/viewer.mjs','ngs-viewer/lib','ngs-viewer/public',
-   'ngs-local/sites/npcgen/build','space-hosting/overlay/build/shared-ngs-assets.ts','space-hosting/overlay/build/shared-ngs-response.mjs'];
+   'ngs-local/sites/npcgen/build','ngs-local/dev','ngs-local/local-miniflare/package.json','ngs-local/local-miniflare/package-lock.json','space-hosting/overlay/build/shared-ngs-assets.ts','space-hosting/overlay/build/shared-ngs-response.mjs'];
   for(const rel of runtimePaths){
    const target=join(destination,rel);
    mkdirSync(dirname(target),{recursive:true,mode:0o700});
    cpSync(join(repo,rel),target,{recursive:true,dereference:false,force:false,errorOnExist:true,
     filter:source=>{if(lstatSync(source).isSymbolicLink())throw Error('VIEWER_RUNTIME_SYMLINK');return true;}});
   }
+  const deps=join(destination,'ngs-local','local-miniflare');
+  const npmArgs=['ci','--ignore-scripts','--no-audit','--no-fund','--prefix',deps];
+  const config={stdio:'pipe',windowsHide:true,timeout:240_000};
+  if(windows){
+   const cli=join(dirname(process.execPath),'node_modules','npm','bin','npm-cli.js');
+   execFileSync(process.execPath,[cli,...npmArgs],config);
+  }else execFileSync('npm',npmArgs,config);
   try{
    const options={cwd:repo,encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','ignore']};
    const sha=execFileSync('git',['rev-parse','HEAD'],options).trim();
@@ -93,7 +99,7 @@ export async function registerViewer(options,target=installTarget()){
   if(!lstatSync(parent).isDirectory()||realpathSync(parent)!==parent)throw Error('VIEWER_P2_DIRECTORY_REQUIRED');
   mkdirSync(options.root,{mode:0o700});
  }
- const mirror=await openMirror(options.root,{create:windows});mirror.close();
+ if(windows)verifyNtfsRoot(options.root,{create:true});
  const base=target.service==='launchagent'?join(homedir(),'Library','Application Support','VINUS','NGS Viewer'):
   join(process.env.LOCALAPPDATA??join(homedir(),'AppData','Local'),'VINUS NGS Viewer');
  if(windows)verifyNtfsRoot(base,{create:true});
@@ -110,6 +116,8 @@ export async function registerViewer(options,target=installTarget()){
  const dest=stageRuntime(base,windows),entry=join(dest,'ngs-viewer','viewer.mjs');
  let bootstrapped=false, registered=false, createdConfig=false;
  try{
+  const {openViewerReplica:openStaged}=await import(pathToFileURL(join(dest,'ngs-viewer','lib','replica.mjs')).href);
+  const storage=await openStaged(options.root);await storage.close();
   if(target.service==='launchagent'){
    // Preserve an existing user log. Create safely rather than following a link.
    if(!exists(log)){const fd=openSync(log,'wx',0o600);closeSync(fd);}
