@@ -1240,8 +1240,8 @@
       "sha256": "d9026e7f4c88b3bba9ff5c0474822f127dc02a44995c50307388616d4d47a667"
     },
     "ngs-viewer/README.md": {
-      "bytes": 5288,
-      "sha256": "8019d0031b09c7855ed79b5c2f120c171135038fbac77da41a16816e932104ff"
+      "bytes": 5199,
+      "sha256": "301b969b7af0e7ed6cf43d4d9a1f9cff0e6a4990a53a1b5fe46a4337d0e4feda"
     },
     "ngs-viewer/install-macos.sh": {
       "bytes": 215,
@@ -1252,8 +1252,8 @@
       "sha256": "2e9f05623fc911fa4397100df2b6fd147da50816071d79368b3ccfaf10ea4bc9"
     },
     "ngs-viewer/install.mjs": {
-      "bytes": 9764,
-      "sha256": "fae61a235ad2cadbffd55571ca8cb9d932bb3057a3faf4b5810baa0dd0b361b1"
+      "bytes": 9253,
+      "sha256": "e0aad8757c578bfb5e6fa182020469abe626006a08d8315c43e3e53395bd2106"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1300,8 +1300,8 @@
       "sha256": "176e4a27786e2f628588692008843b1240f36f695beff416b7dec258cbb98816"
     },
     "ngs-viewer/tests/install.test.mjs": {
-      "bytes": 4874,
-      "sha256": "a188e37d7572ef815390bd64c07c83e30189f322d50fdb333306916c2755cfa3"
+      "bytes": 4812,
+      "sha256": "34143e80eb11f8007c6e898e8e021e0c831d25f49975e0788d87e5292d4f83db"
     },
     "ngs-viewer/tests/mirror.test.mjs": {
       "bytes": 9995,
@@ -1324,8 +1324,8 @@
       "sha256": "097a9d4af745f708fadc2e97311a025d0479200c8ca81a2d67aeab87a1e70b95"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
-      "bytes": 13532,
-      "sha256": "2dd96cf335576622e63cfe30fe39b6344473d80adf93ded3b215db4fcd67470a"
+      "bytes": 13661,
+      "sha256": "fa80b78771c4c3c99f4eba35fd877ad95186b9614598119a0f0d548e79473da7"
     },
     "space-hosting/overlay/build/space-browser-auth.mjs": {
       "bytes": 1344,
@@ -1356,12 +1356,12 @@
       "sha256": "b8ce31775b9bc07bc9c9b1cb8839bd2ddfdeacdeaa0afbf9b5907396cf015872"
     },
     "space-hosting/overlay/build/space-viewer-install.d.mts": {
-      "bytes": 216,
-      "sha256": "0f6e48fd45c1e4c1b6b248ab70e08a685bf663a37d02414258a7579573cab458"
+      "bytes": 237,
+      "sha256": "92cefc2f1702765092d1eb9617109743bcfe2039ab68c25f7e9dabbabc09923a"
     },
     "space-hosting/overlay/build/space-viewer-install.mjs": {
-      "bytes": 4262,
-      "sha256": "19bb88170f8e5bcec4c5588b6e705688b85e5e197ec0fd7ed86a1c44f4334324"
+      "bytes": 3521,
+      "sha256": "539bd1fb547cbedee5cda247c71638de9ba6717a4fb139d09597e86e6f6ca35f"
     },
     "space-hosting/overlay/tests/space-file-replica.mjs": {
       "bytes": 18865,
@@ -1372,8 +1372,8 @@
       "sha256": "6658b5f024cd7299b846a9d579b3c62f5408195702d0565fdd9d3d8109b67cce"
     },
     "space-hosting/overlay/tests/space-viewer-install.mjs": {
-      "bytes": 5061,
-      "sha256": "9bc4936cc976e8910ed7533dcc5a6cb01610d88d494685d6bfd8a2ddb16b636a"
+      "bytes": 5311,
+      "sha256": "8693a8b579dc5d46b862f5c13e64d5d16a865cb1e8b0228981209d767f05555f"
     },
     "tools/release/validate-ngs-source.sh": {
       "bytes": 1089,

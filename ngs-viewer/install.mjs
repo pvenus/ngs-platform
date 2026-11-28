@@ -1,6 +1,6 @@
 /** Official installation: no Viewer registration until a Space challenge is verified. */
 import {createServer} from 'node:http';
-import {createHash,randomBytes,timingSafeEqual} from 'node:crypto';
+import {createHash,createPublicKey,randomBytes,timingSafeEqual,verify} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {createInterface} from 'node:readline/promises';
@@ -16,8 +16,9 @@ const statusError=(code,status)=>Object.assign(Error(code),{status});
 const close=s=>new Promise(resolve=>{s.close(()=>resolve());s.closeIdleConnections();});
 const addr=port=>'http://127.0.0.1:'+port;
 const exact=(v,key)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===1&&Object.hasOwn(v,key);
-const proofPattern=/^v1\.[1-9]\d{12}\.[0-9a-f]{64}$/u;
-export const installVerifyPath='/api/viewer/install/verify';
+const proofPattern=/^v2\.([1-9]\d{12})\.([0-9a-f]{128})$/u;
+const pinnedIssuerKey='MCowBQYDK2VwAyEArX9IfWhYyMZCnd7VHG5sG4iPCQlQ/L9lkm9i9nqBmVY=';
+const trustedKey=createPublicKey({key:Buffer.from(pinnedIssuerKey,'base64'),format:'der',type:'spki'});
 const authGuard="default-src 'none'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 const html='<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NGS Viewer 설치</title>'+
  '<main><h1>NGS Viewer 설치 확인</h1><p>Space 팀원 인증을 통과해야 이 컴퓨터의 자동 실행 항목을 등록합니다.</p>'+
@@ -26,27 +27,16 @@ const html='<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="vie
  '<script type="module" src="/install-browser.mjs"></script></html>';
 const script=()=>readFileSync(new URL('./setup/install-browser.mjs',import.meta.url),'utf8');
 
-function verifyAddress(space){return new URL(installVerifyPath,viewerSpaceOrigin(space));}
-export async function probeInstall({space},request=fetch){
- let r;
- try{r=await request(verifyAddress(space),{method:'GET',redirect:'manual',credentials:'omit',signal:AbortSignal.timeout(8000)});}
- catch{throw Error('VIEWER_SPACE_INSTALL_UNAVAILABLE');}
- if(r.status!==405)throw Error('VIEWER_SPACE_INSTALL_UNAVAILABLE');
- const problem=await r.json().catch(()=>null);
- if(!exact(problem,'error')||problem.error!=='METHOD_NOT_ALLOWED')throw Error('VIEWER_SPACE_INSTALL_UNAVAILABLE');
-}
-export async function verifySpaceProof({space,port,verifier,proof},request=fetch){
- if(typeof proof!=='string'||!proofPattern.test(proof)||typeof verifier!=='string'||!/^[0-9a-f]{64}$/u.test(verifier))return false;
- let r;
- try{r=await request(verifyAddress(space),{method:'POST',redirect:'error',credentials:'omit',
-  signal:AbortSignal.timeout(12_000),headers:{'Content-Type':'application/json'},body:JSON.stringify({port,verifier,proof})});}
- catch{return false;}
- if(r.status!==200)return false;
- const result=await r.json().catch(()=>null);
- return exact(result,'authorized')&&result.authorized===true;
+export function verifySpaceProof({space,port,challengeSha256,proof},{publicKey=trustedKey,now=Date.now}={}){
+ const parsed=typeof proof==='string'&&proofPattern.exec(proof);
+ if(!parsed||typeof challengeSha256!=='string'||!/^[0-9a-f]{64}$/u.test(challengeSha256))return false;
+ const expiry=Number(parsed[1]),time=now();
+ if(expiry<=time||expiry>time+5*60_000+30_000)return false;
+ const input=Buffer.from(JSON.stringify(['ngs.viewer.install.v2',space,'binari',port,challengeSha256,expiry]));
+ return verify(null,input,publicKey,Buffer.from(parsed[2],'hex'));
 }
 
-export async function waitForInstallProof(options,{request=fetch,announce=()=>{},waitMs=600_000,listen=options.port}={}){
+export async function waitForInstallProof(options,{announce=()=>{},waitMs=600_000,listen=options.port,publicKey=trustedKey,now=Date.now}={}){
  const verifier=randomBytes(32).toString('hex'),key=randomBytes(32).toString('hex');
  const challengeSha256=createHash('sha256').update(verifier,'utf8').digest('hex');
  let ready,fail,checking=false,authorized=false,challenges=0;
@@ -80,7 +70,7 @@ export async function waitForInstallProof(options,{request=fetch,announce=()=>{}
     const packet=JSON.parse(Buffer.concat(pieces).toString('utf8'));
     if(!exact(packet,'proof')||typeof packet.proof!=='string'||!proofPattern.test(packet.proof))throw statusError('VIEWER_INSTALL_INVALID',400);
     challenges++;
-    const ok=await verifySpaceProof({...options,port,verifier,proof:packet.proof},request);
+    const ok=verifySpaceProof({...options,port,challengeSha256,proof:packet.proof},{publicKey,now});
     if(!ok)return json(403,{error:'VIEWER_INSTALL_AUTH_FAILED'});
     authorized=true;
     res.once('finish',ready);
@@ -104,12 +94,11 @@ export async function waitForInstallProof(options,{request=fetch,announce=()=>{}
  }
 }
 
-export async function officialInstall(options,{request=fetch,register=registerViewer,target=installTarget(),
- authenticate=waitForInstallProof,probe=probeInstall,announce}={}){
+export async function officialInstall(options,{register=registerViewer,target=installTarget(),
+ authenticate=waitForInstallProof,announce}={}){
  // Canonical issuer validation before any network request or local registration.
  viewerSpaceOrigin(options.space);
- await probe(options,request);
- await authenticate(options,{request,announce});
+ await authenticate(options,{announce});
  return register(options,target);
 }
 async function cliOptions(){
