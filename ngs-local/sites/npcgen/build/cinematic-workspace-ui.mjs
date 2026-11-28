@@ -289,9 +289,6 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
  for(const [id,legacy] of [...sequences.map(id=>[id,false]),...clips.map(id=>[id,true])]){
   const row=make('li',null,'cinematic-version'),link=make('a',null,'cinematic-animation-select'),label=labelFor(id,legacy);
   link.href=go({cineTab:'animations',item:id});link.setAttribute('aria-current','false');rowLinks.set(id,link);
-  if(!legacy){
-   const still=make('img');still.alt='';still.src=url(projectId,{sequence:id,frame:0});still.loading='lazy';link.append(still);
-  }
   const text=make('span',null,'cinematic-row-label');text.append(make('strong',label),make('span',legacy?'기존 MP4':enhanced.has(id)?'2× 업스케일':'PNG 프레임','meta'));
   link.append(text);link.addEventListener('click',event=>{
    if(event.button!==undefined&&event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;

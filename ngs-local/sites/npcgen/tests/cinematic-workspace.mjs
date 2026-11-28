@@ -229,6 +229,7 @@ test('prop-style scene controls create a single original and add only versions o
  assert.ok(boxes.every(x=>x.hidden));assert.equal(walk(versions.detail,x=>x.textContent==='수정').length,0);
  assert.ok(walk(versions.detail,x=>x.textContent==='처마의 종').length);
  assert.equal(walk(versions.detail,x=>x.className==='cinematic-animation-split').length,1);
+ assert.equal(walk(versions.detail,x=>x.tag==='img').length,0);
  const modify=walk(versions.detail,x=>x.attrs['aria-label']==='목록 편집')[0];modify.click();
  assert.ok(boxes.every(x=>!x.hidden));
  const remove=walk(versions.detail,x=>x.textContent==='선택 삭제')[0];assert.ok(remove.disabled);
