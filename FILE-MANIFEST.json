@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 412,
+  "fileCountIncludingManifest": 414,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1261,7 +1261,7 @@
     },
     "ngs-local/source-manifest.json": {
       "bytes": 20222,
-      "sha256": "d5f1ddc174b1b5e4b4b7c6e04e66fa8da9b4d215665659168259675a6e603ea5"
+      "sha256": "d2152dadfb92db336510a5d1485b113518409815471848fc69ee8a16c1100bc5"
     },
     "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
       "bytes": 15831,
@@ -1280,8 +1280,8 @@
       "sha256": "9dadf4244223e01be5a6228a165478eba71847a87a765f26dd84eccdc9623e80"
     },
     "ngs-viewer/README.md": {
-      "bytes": 6221,
-      "sha256": "62051b8384c4c687f48a919aae0d50d88998d55c4d61d1d762a98aaec678351f"
+      "bytes": 6506,
+      "sha256": "d5cdccdd135574c4d58d8afde276b6570e5290da285a35e05471a4ea8be5ce76"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2689,
@@ -1568,16 +1568,16 @@
       "sha256": "4a56d37113981ef4090b30fd5edee303992bfb29ce66694543d13d614987fb70"
     },
     "ngs-local/sites/npcgen/build/local-miniflare-runtime.mjs": {
-      "bytes": 7616,
-      "sha256": "49c9c817b60a5bffc67ead2e4666394b372ce8c19d74ce187b755f3fde3fc6f9"
+      "bytes": 7199,
+      "sha256": "95e18083073c40b52090b969034b4a018dfba0959afcbd29b42e92ab2bcab944"
     },
     "ngs-local/sites/npcgen/build/local-miniflare-worker.mjs": {
-      "bytes": 2996,
-      "sha256": "0de8df053a7ea153de7e59e04bc96b8b3e3f3b7d52d828f4a523a7b0a236f639"
+      "bytes": 2630,
+      "sha256": "be0a551b301320d33e33557e349078a04a06ae4e401eacefa6b59a0abb862bb5"
     },
     "ngs-viewer/lib/replica.mjs": {
-      "bytes": 2219,
-      "sha256": "fbb4e817542275cd8b2c6114c7653fd6e672eb0cdb4e7347bd1b11567c9bd0ba"
+      "bytes": 2189,
+      "sha256": "efc63f2b7266ebf79803c663df2eb7f46623494a2e7a8a9aa0341ea17f930e82"
     },
     "ngs-viewer/tests/replica-r2.test.mjs": {
       "bytes": 2984,
@@ -1646,6 +1646,14 @@
     "tools/puzzle-core/release-browser-pack.py": {
       "bytes": 1653,
       "sha256": "220c841983ceb5a2b4f721d96403f93658eef6c6fc383698d4b3fbcc497e0308"
+    },
+    "ngs-viewer/lib/viewer-miniflare-runtime.mjs": {
+      "bytes": 7310,
+      "sha256": "8a7f6d2e11fcddd75789f017c31781197f53d48ce37904d3e65d5258a01fc02a"
+    },
+    "ngs-viewer/lib/viewer-miniflare-worker.mjs": {
+      "bytes": 2996,
+      "sha256": "0de8df053a7ea153de7e59e04bc96b8b3e3f3b7d52d828f4a523a7b0a236f639"
     }
   }
 }

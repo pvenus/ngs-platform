@@ -1,7 +1,7 @@
 /** Viewer owns an independent instance of the same R2/D1 replica as Local NGS. */
 import {mkdirSync,lstatSync,realpathSync,rmdirSync,readFileSync,unlinkSync,writeFileSync} from 'node:fs';
 import {dirname,isAbsolute,join,resolve} from 'node:path';
-import {openLocalMiniflareReplica} from '../../ngs-local/sites/npcgen/build/local-miniflare-runtime.mjs';
+import {openViewerMiniflareReplica} from './viewer-miniflare-runtime.mjs';
 import {verifyNtfsRoot} from './windows-storage.mjs';
 
 const nativeWindows=process.platform==='win32';
@@ -36,7 +36,7 @@ export async function openViewerReplica(root,{create=false,load}={}){
  privateFolder(storage,true);
  const release=lock(storage);
  try{
-  const object=await openLocalMiniflareReplica({persistRoot:storage,verifyRoot:path=>privateFolder(path,false),load});
+  const object=await openViewerMiniflareReplica({persistRoot:storage,verifyRoot:path=>privateFolder(path,false),load});
   return {replica:object.replica,close:async()=>{try{await object.close();}finally{release();}}};
  }catch(e){release();throw e;}
 }

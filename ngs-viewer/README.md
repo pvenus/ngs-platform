@@ -103,3 +103,8 @@ npm ci --prefix ngs-local/local-miniflare --ignore-scripts --no-audit --no-fund
 npm --prefix ngs-viewer test
 node --test space-hosting/overlay/tests/space-viewer-{export,install}.mjs
 ```
+
+## 공용 C# 브라우저 모듈
+
+Viewer는 설치한 NGS 버전의 WASM 모듈을 사용합니다. Local·Space와 모듈 해시가 동일하며
+Windows와 macOS용 별도 WASM 빌드는 없습니다. Space와 호환되는 버전에서만 C# 검증 조립 요청을 보여줍니다.
