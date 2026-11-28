@@ -173,3 +173,25 @@ test('Local and Space wire the identical portable browser source, not two runtim
  assert.match(space,/import propPackageContract from "\.\.\/ngs-local\/sites\/npcgen\/build\/prop-package-contract\.mjs\?raw"/u);
  assert.match(space,/\/prop-package-contract\.mjs", \{type: javascript, body: propPackageContract\}/u);
 });
+
+test('v2 placement uses only registered scales while v1 and independent animation canvas remain readable',async()=>{
+ const {pack,baseDetail,detail,pixel}=fixture();
+ const scaled=giflikePng(6,6),scaledMedia=media(scaled,6,6,[]);
+ const v2={...pack,schemaVersion:'ngs.prop-package.v2',revision:2,
+  officialRequestId:'request.official.'+'4'.repeat(64),parentSha256:(await propPackageReceipt(pack)).slice(-64),
+  media:{detail:pack.media.detail},interaction:{...pack.interaction,pixelOpen:{action:'open',x:1,y:1,width:3,height:3}},
+  scaleVariants:[{scalePercent:20,pixel:scaledMedia,spirit:scaledMedia}],defaultScalePercent:20,animationPixelSize:{width:16,height:16}};
+ assert.deepEqual(parsePropPackage(v2),v2);
+ assert.equal(parsePropPackage(pack).media.pixel.assetId,pack.media.pixel.assetId);
+ for(const wrong of [{...v2,media:pack.media},{...v2,defaultScalePercent:50},{...v2,scaleVariants:[]},
+  {...v2,animationPixelSize:{width:15,height:16}}])assert.throws(()=>parsePropPackage(wrong));
+ const pin={propId:pack.propId,revision:2,sha256:(await propPackageReceipt(v2)).slice(-64)};
+ const byId=new Map([[pack.media.detail.assetId,baseDetail],[scaledMedia.assetId,scaled],
+  [pack.animations[0].media.detail.assetId,detail],[pack.animations[0].media.pixel.assetId,pixel]]);
+ const read=[];
+ const state=await resolvePropPlayback({puzzleBinding:{propRef:pin,placement:{x:.5,y:.5},start:'manual',animationId:'initial'},readPackage:()=>v2,
+  readAsset:({assetId})=>{read.push(assetId);return byId.get(assetId);}});
+ assert.equal(read.includes(pack.media.pixel.assetId),false);
+ assert.equal(projectPropPlayer(state).playback.pixel.assetId,scaledMedia.assetId);
+ assert.equal(projectPropPlayer(state).playback.pixel.animationAssetId,pack.animations[0].media.pixel.assetId);
+});

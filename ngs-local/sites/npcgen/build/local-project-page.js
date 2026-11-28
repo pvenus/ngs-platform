@@ -24,7 +24,7 @@ const queueLabel={
  'cinematic.source.generate':'시네마틱 원본 이미지 생성','background.source.generate':'배경 원본 이미지 생성','cinematic.sequences.remove':'시네마틱 애니메이션 제거','prop.animation.remove':'프랍 애니메이션 제거',
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
  'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제','audio.separate':'BGM 반주 만들기',
- [motionPresetConvertType]:'2D 마네킹 프리셋 변환','prop.generate':'프랍 종합 생성','prop.regenerate':'프랍 재생성','prop.scale.generate':'프랍 배율 추가','prop.animation.generate':'프랍 애니메이션 생성',
+ [motionPresetConvertType]:'2D 마네킹 프리셋 변환','prop.generate':'프랍 종합 생성','prop.regenerate':'프랍 재생성','prop.scale.generate':'프랍 배율 추가','prop.metadata.compact':'프랍 배율 메타 정리','prop.animation.generate':'프랍 애니메이션 생성',
 };
 const queueTime=new Intl.DateTimeFormat('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 let queueSession,queueRefresh=()=>{};

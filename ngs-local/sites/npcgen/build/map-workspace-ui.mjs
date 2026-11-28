@@ -3,9 +3,9 @@ import {fileUpdateType,fileUpdateSchema,mapUpdateRoot,validFileUpdate} from './f
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {orderedMapChain} from './map-warp.mjs';
 import {mountAssemblyActor,rearAvatar} from './assembly-actor.mjs';
-import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations,decorationZOrder,propImageVariantArt,missingDecorationImage} from './assembly-sprite-layout.mjs';
+import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations,decorationZOrder,propImageVariantArt,propPlacementScaleOptions,defaultPropPlacementScale,missingDecorationImage} from './assembly-sprite-layout.mjs';
 import {hashBrowserMap,validMapPerspective} from './map-contract.mjs';
-import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,validPropZOrder,propZMin,propZMax,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates,propImageScalePercents} from './map-contract.mjs';
+import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,validPropZOrder,propZMin,propZMax,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
@@ -577,6 +577,21 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     img.src=imgAsset.url;status.textContent=imageScale.value?imageScale.value+'% 배치 이미지 미리보기':art.detail?'비픽셀 원본 미리보기':'비픽셀 배치 이미지 미리보기';sample.append(img);
    };
    let selectedSource,sampleStatus;
+   function paintScaleOptions(){
+    if(!selection)return;
+    const variants=propPlacementScaleOptions(sourceArt,vis.value),allOptions=propPlacementScaleOptions(sourceArt,'pixel');
+    const chosen=Number(selection.imageScalePercent);
+    const defaultScale=defaultPropPlacementScale(sourceArt,variants);
+    const selectedScale=variants.includes(chosen)?chosen:defaultScale;
+    imageScale.replaceChildren();
+    if(!variants.length){
+     const label=allOptions.length?'이 표시 모드의 배율 없음':'배율 미등록 · 기존 프랍';
+     const o=el('option',label);o.value='';imageScale.append(o);
+    }else for(const scale of variants){const o=el('option',scale+'%');o.value=String(scale);imageScale.append(o);}
+    imageScale.value=selectedScale===undefined?'':String(selectedScale);
+    selection.imageScalePercent=imageScale.value;
+    imageScale.disabled=selector.disabled||variants.length<2;
+   }
    const showSample=async()=>{
     const ticket=++version,selected=rows.find(p=>p.propId===selector.value);
     sample.hidden=!selected;sample.replaceChildren();loaded=false;imageScale.disabled=true;imageScale.replaceChildren();updateAction();
@@ -586,17 +601,14 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     const prop=pinProp(selected),art=(await decorArt.load([{prop}])).get(mapDecorPinKey(prop));
     if(signal?.aborted||sample.isConnected===false||ticket!==version)return;
     sourceArt=art;loaded=true;selectedSource=selected;sampleStatus=status;
-    const options=['',...propImageScalePercents.filter(p=>art?.variants?.has(p)).map(String)];
-    for(const scale of options){const o=el('option',scale?scale+'%':'기존 배치 이미지');o.value=scale;imageScale.append(o);}
-    imageScale.value=options.includes(selection?.imageScalePercent)?selection.imageScalePercent:'';
-    imageScale.disabled=selector.disabled||options.length===1;
+    paintScaleOptions();
     updateAction();paintSample(selected,status);
    };
    selector.onchange=()=>{
     if(selection){selection.propId=selector.value;selection.imageScalePercent='';}
     void showSample();
    };
-   vis.onchange=()=>{if(selection)selection.visibility=vis.value;updateAction();if(loaded&&selectedSource)paintSample(selectedSource,sampleStatus);};
+   vis.onchange=()=>{if(selection)selection.visibility=vis.value;updateAction();if(loaded&&selectedSource){paintScaleOptions();updateAction();paintSample(selectedSource,sampleStatus);}};
    imageScale.onchange=()=>{if(selection)selection.imageScalePercent=imageScale.value;updateAction();if(selectedSource)paintSample(selectedSource,sampleStatus);};
    const row=el('div',undefined,'map-row');
    row.append(label('사용할 프랍',selector),label('표시 모드',vis),imageScaleField,action);host.append(row,sample);

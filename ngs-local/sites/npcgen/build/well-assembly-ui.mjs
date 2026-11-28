@@ -1,9 +1,9 @@
 import {browserRequestId} from './browser-request-id.mjs';
 import {fileUpdateType,fileUpdateSchema,assemblyUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
-import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,decorationArt,decorationsLoader,renderMapDecorations,paintPropDepth,puzzleZOrder,propImageVariantArt} from './assembly-sprite-layout.mjs';
+import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,decorationArt,decorationsLoader,renderMapDecorations,paintPropDepth,puzzleZOrder,propImageVariantArt,propPlacementScaleOptions,defaultPropPlacementScale} from './assembly-sprite-layout.mjs';
 import {assemblyReachable,bowlStates,validPortalConditions} from './assembly-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
-import {validMapState,validPropZOrder,propZMin,propZMax,mapDecorPinKey,propImageScalePercents,validImageScalePercent} from './map-contract.mjs';
+import {validMapState,validPropZOrder,propZMin,propZMax,mapDecorPinKey,validImageScalePercent} from './map-contract.mjs';
 import {wellDemoId,wellDemoTitle,wellAssemblySlots,mountWellPuzzleDemo,spiritDemoId,spiritDemoTitle,mountSpiritManifestation,prepareWellPuzzle} from './well-puzzle-demo.mjs';
 
 const slots=Object.entries(wellAssemblySlots),spiritSlots=[['spirit','영물']],allSlots=[...slots,...spiritSlots];
@@ -143,7 +143,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   const z=el('input');z.type='number';z.min=String(propZMin);z.max=String(propZMax);z.step='1';z.value=String(puzzleZOrder(null,role));
   z.setAttribute('aria-label',label+' Z Order');zInputs[role]=z;
   const imageScale=el('select');imageScale.disabled=true;imageScale.setAttribute('aria-label',label+' 이미지 배율');
-  imageScale.append(option('','기존 배치 이미지'));imageScaleInputs[role]=imageScale;
+  imageScale.append(option('','배율 확인 중'));imageScaleInputs[role]=imageScale;
   const latest=control('최신 프랍으로 연결');latest.hidden=true;latestButtons[role]=latest;
   latest.addEventListener('click',()=>{
    if(!selected||busy)return;
@@ -392,13 +392,17 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   const input=imageScaleInputs[role],chosen=preset.imageScales?.[role],pin=preset.pinned?.[role];
   const latest=props.find(p=>p.propId===pin?.propId);
   latestButtons[role].hidden=!latest||(pin.revision===latest.revision&&pin.sha256===latest.sha256);
-  const options=propImageScalePercents.filter(percent=>{
-   const v=art?.variants?.get(percent);return v?.pixel&&(role!=='spirit'||v.cinematic);
-  });
-  input.replaceChildren(option('','기존 배치 이미지'),...options.map(percent=>option(String(percent),percent+'%')));
-  if(validImageScalePercent(chosen)&&!options.includes(chosen))input.append(option(String(chosen),chosen+'% (읽을 수 없음)'));
-  input.value=validImageScalePercent(chosen)?String(chosen):'';
-  input.disabled=!preset.bindings[role]||(!options.length&&chosen===undefined);
+  const options=propPlacementScaleOptions(art,role==='spirit'?'both':'pixel');
+  let value=chosen;
+  if(chosen===undefined&&options.length){
+   value=defaultPropPlacementScale(art,options);
+   preset.imageScales={...preset.imageScales,[role]:value};
+  }
+  input.replaceChildren(...options.map(percent=>option(String(percent),percent+'%')));
+  if(validImageScalePercent(value)&&!options.includes(value))input.append(option(String(value),value+'% (읽을 수 없음)'));
+  if(!options.length&&value===undefined)input.append(option('',art?'배율 미등록 · 기존 프랍':'배율 확인 중'));
+  input.value=validImageScalePercent(value)?String(value):'';
+  input.disabled=!preset.bindings[role]||options.length<2;
  }
  async function paintArt(preset,role){
   const key=preset.id+':'+role,pin=pins.get(key),id=preset.bindings[role];

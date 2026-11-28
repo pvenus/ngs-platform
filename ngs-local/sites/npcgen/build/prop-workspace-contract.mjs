@@ -1,9 +1,9 @@
 /** Same formal prop request envelopes in Local, Space and fixture. */
 export const propWorkspacePath='/api/prop-workspace';
 export const propTypes=Object.freeze({
- generate:'prop.generate',animation:'prop.animation.generate',scale:'prop.scale.generate',
+ generate:'prop.generate',animation:'prop.animation.generate',scale:'prop.scale.generate',compact:'prop.metadata.compact',
 });
-const schema={generate:'ngs.prop-generate.v1',animation:'ngs.prop-animation-generate.v1',scale:'ngs.prop-scale-generate.v1'};
+const schema={generate:'ngs.prop-generate.v1',animation:'ngs.prop-animation-generate.v1',scale:'ngs.prop-scale-generate.v1',compact:'ngs.prop-metadata-compact.v1'};
 const names=Object.keys(propTypes);
 // Older authenticated Space sessions may still list the retired action. It never maps to an active request.
 const knownCapabilityNames=[...names,'regenerate'];
@@ -31,6 +31,7 @@ export function validPropActions(v){
 export function validPropPayload(type,p){
  const k=propAction(type),base=['schemaVersion','projectId','propId'];
  if(!k||p?.schemaVersion!==schema[k]||p.projectId!=='binari'||!propSlug(p.propId))return false;
+ if(k==='compact')return exactPropKeys(p,[...base,'source'])&&source(p.source);
  if(k==='scale')return exactPropKeys(p,[...base,'source','scalePercents'])&&source(p.source)&&validPropScalePercents(p.scalePercents);
  if(k==='generate'){
   const scales=Object.hasOwn(p,'scalePercents'),reference=Object.hasOwn(p,'reference'),profile=Object.hasOwn(p,'presentationProfile');

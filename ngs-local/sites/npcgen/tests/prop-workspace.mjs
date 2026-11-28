@@ -476,3 +476,29 @@ test('new scale assets are visible, exact previous revision and asset stay reada
  cmd.payload.scalePercents=[10,50];
  await admitPropRequest({...options,authorize:(id,scope)=>{assert.equal(scope,'props');},actions:['scale'],command:cmd});
 });
+
+test('scaled-only head and historical pinned original expose different immutable asset sets',async()=>{
+ const scaledBytes=png(8,8),scaled=still(8,scaledBytes);
+ const v2={...release,schemaVersion:'ngs.prop-package.v2',revision:2,parentSha256:source.sha256,
+  officialRequestId:'request.official.'+'2'.repeat(64),media:{detail:media.detail},animations:[],
+  interaction:{pixelOpen:null,detailTrigger:null},defaultScalePercent:20,scaleVariants:[{scalePercent:20,pixel:scaled,spirit:scaled}]};
+ const data=Buffer.from(canonicalPropPackage(v2)),head={revision:2,sha256:digest(data)};
+ const store=new Map(fixture);
+ store.set(p+'/metadata.json',Buffer.from(JSON.stringify({...pointer,...head})));
+ store.set(p+'/releases/2/manifest.json',data);store.set(p+'/assets/'+scaled.assetId,scaledBytes);
+ const oldPixel=png(20,20);store.set(p+'/assets/'+media.pixel.assetId,oldPixel);
+ const setup={authorize:()=>{},openProject:()=>({readBytes:async key=>store.get(key)??null})};
+ const get=q=>propWorkspaceRead({...setup,query:new URLSearchParams({projectId:'binari',propId,...q})});
+ const result=(await get()).json.prop;
+ assert.deepEqual(Object.keys(result.media),['detail']);
+ assert.equal(result.defaultScalePercent,20);
+ assert.equal((await get(source)).json.prop.media.pixel.width,media.pixel.width);
+ assert.deepEqual((await get({...head,asset:scaled.sha256})).bytes,scaledBytes);
+ assert.deepEqual((await get({...source,asset:media.pixel.sha256})).bytes,oldPixel);
+ await assert.rejects(get({...head,asset:media.pixel.sha256}),{status:404});
+ const cmd={requestType:propTypes.compact,payload:propPayload('compact',{propId,source:head})};
+ assert.equal(validPropPayload(propTypes.compact,cmd.payload),true);
+ assert.equal(validPropPayload(propTypes.compact,{...cmd.payload,scalePercents:[20]}),false);
+ await admitPropRequest({...setup,actions:['compact'],command:cmd});
+ await assert.rejects(admitPropRequest({...setup,actions:['compact'],command:{...cmd,payload:{...cmd.payload,source}}}),{status:409});
+});

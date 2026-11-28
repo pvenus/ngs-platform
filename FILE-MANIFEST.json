@@ -1244,8 +1244,8 @@
       "sha256": "76269a5f26a4acdfd24e8120537df2c7e81ac9074a5260716283809a896f8ab4"
     },
     "ngs-local/sites/npcgen/build/map-workspace-ui.mjs": {
-      "bytes": 79607,
-      "sha256": "5607ea0af018130d1739efb6b3cf13d3d9afea2cf4a5e203d661f6f2a0f17c75"
+      "bytes": 80224,
+      "sha256": "74bc83ecbbf634ecf2d6b98d5393fd28de00efe9534f92fc8f046e02eab5addd"
     },
     "ngs-local/sites/npcgen/build/well-puzzle-demo.mjs": {
       "bytes": 23161,
@@ -1261,11 +1261,11 @@
     },
     "ngs-local/source-manifest.json": {
       "bytes": 20686,
-      "sha256": "8acd12afbda34c20157a90a5c67aed2c588220767cc1208a8e4ccd2d59d8e58d"
+      "sha256": "2b78964d899b725e53ba715cbf8535e67daff74487086d61a4b22af841ebba9b"
     },
     "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
-      "bytes": 16390,
-      "sha256": "8f8c37571677852e3db80f226ee4ae827f3f21cf887fcf1462177576523ef7ab"
+      "bytes": 16678,
+      "sha256": "7e73ecb7422734c03e1195c019bf621db02e3fa1268d615946a90b22ab4437af"
     },
     "ngs-local/sites/npcgen/tests/rs-mcp.mjs": {
       "bytes": 23814,
@@ -1492,8 +1492,8 @@
       "sha256": "217aff3a712360effb528f793f6d52e22932ba6abbccb373d9031469fd8e1694"
     },
     "ngs-local/sites/npcgen/build/local-project-page.js": {
-      "bytes": 51228,
-      "sha256": "fa1cb727948a9bbcfac68346d3760654addfc1cfe937c26c03fc0bca2bcc1531"
+      "bytes": 51282,
+      "sha256": "4b3f49ee436d06c71b38da41cd0e08a8ecac2592351189956a919316eebe55fc"
     },
     "ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs": {
       "bytes": 7864,
@@ -1528,20 +1528,20 @@
       "sha256": "c5a6d2f38c387b50efbcfd4e76e2ca25543e435e31f8db63765c003fe2ac0a96"
     },
     "ngs-local/sites/npcgen/build/prop-workspace.mjs": {
-      "bytes": 8165,
-      "sha256": "e7ce31e7bd047f2ddefef80c26358639e200daddee01088ed9a97b6f8e60ce08"
+      "bytes": 8280,
+      "sha256": "0bb5f471566d70559ea64751f8ef56e9814601a3049629a9527b39979a364ce3"
     },
     "ngs-local/sites/npcgen/tests/local-folder-delete-intake.mjs": {
       "bytes": 2252,
       "sha256": "75919098ffa60f9c9eb2fa22c5ed3d9616c69b88b3f3d16581472952699f3449"
     },
     "ngs-local/sites/npcgen/tests/prop-workspace.mjs": {
-      "bytes": 32846,
-      "sha256": "a9e8f7a3f2f114dfababe9bdd5082e474cd094f7c03d73bfb8116bb629f5ed10"
+      "bytes": 34855,
+      "sha256": "1c1e9f57e5a137fcf5bc1609c9343b5f605a04b70be915cbd04403956cdd5e9a"
     },
     "ngs-local/sites/npcgen/build/prop-workspace-contract.mjs": {
-      "bytes": 4375,
-      "sha256": "f3629a61d0052898c6e9360b8df4cf8e2b4072e248366221a03a085fe4ceabe6"
+      "bytes": 4526,
+      "sha256": "3368cfd34e9368e19fef2ac1eddd823799a4bcb29788ad7c1b196ce8b05e83ce"
     },
     "ngs-local/sites/npcgen/build/workspace-release-capabilities.mjs": {
       "bytes": 1001,
@@ -1668,32 +1668,32 @@
       "sha256": "ad48227b6941cc7437de41ae57aa25fbaad9a433fb1c0514f956250c75198ad6"
     },
     "ngs-local/sites/npcgen/build/well-assembly-ui.mjs": {
-      "bytes": 50199,
-      "sha256": "951205cc4fe63bd6f3bf6b940429fba93e05db0466304cade471e57be829a586"
+      "bytes": 50387,
+      "sha256": "29971356606280640969b23c1817576d276bec58a77ac1cd66b4d3352c6547d2"
     },
     "ngs-local/docs/prop-workspace.md": {
-      "bytes": 6651,
-      "sha256": "1ae792ee7cf8373b12a27863343223c19cdbe5b5eac3788a467969ef404dcfba"
+      "bytes": 7575,
+      "sha256": "329ae2a693303e9bf19cfeb62494aedd22f10aa102b23fcc6106a5ed046e8d2b"
     },
     "ngs-local/sites/npcgen/tests/prop-scale-placement.mjs": {
-      "bytes": 10166,
-      "sha256": "04df5dc0e582f1f1086e8e08189a357cdd2c7b6ea0dab39b2e8d4db6ea412ab6"
+      "bytes": 10210,
+      "sha256": "83b3a7893c4ae3c9aba1c104b12914edb7c51930197b84e45149d1250a10d1b1"
     },
     "ngs-local/sites/npcgen/build/prop-package-contract.mjs": {
-      "bytes": 19144,
-      "sha256": "2149cff7c72550b7d679d084af76ba0565b149b71c5bf30eb3fdf726ba38a522"
+      "bytes": 20446,
+      "sha256": "f45b426c6bf00f1174ebd7303c76f167e7ee0ad1ed322f6a9e2c7e8dcdd337f8"
     },
     "ngs-local/sites/npcgen/build/assembly-contract.mjs": {
       "bytes": 9503,
       "sha256": "bdc1b5af3bc76dfcb1d92f6e2ea706a2fbc6e2f37d4195cfa59f11436d3a0b37"
     },
     "ngs-local/sites/npcgen/build/prop-workspace-ui.mjs": {
-      "bytes": 29253,
-      "sha256": "021b9aed38bca14d02fe4253d66473c85e8e341a935702144ce88e2f63ab7a3e"
+      "bytes": 29453,
+      "sha256": "16a31cea6d3520dd27cfb1c577e8a5293f6aa3af08efb6c6883b21190c15b87a"
     },
     "ngs-local/sites/npcgen/build/assembly-sprite-layout.mjs": {
-      "bytes": 5897,
-      "sha256": "ebdc6c789ed7bde35fd5ee76e8af5a19572fca46e40ab03ac61ebb8b5094bc43"
+      "bytes": 6568,
+      "sha256": "cc997b7266fd925a0176a0c48a8492bfffeef32e589b1793c285aa1c1f14f746"
     }
   }
 }

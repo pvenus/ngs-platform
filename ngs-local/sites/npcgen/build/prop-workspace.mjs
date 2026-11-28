@@ -85,7 +85,7 @@ function publicMedia(pointer,media){
  return {url:url(pointer,sha256),width,height,mediaType,frameDurationsMs};
 }
 function publicPair(pointer,media){
- return {detail:publicMedia(pointer,media.detail),pixel:publicMedia(pointer,media.pixel),
+ return {detail:publicMedia(pointer,media.detail),...(media.pixel?{pixel:publicMedia(pointer,media.pixel)}:{}),
   ...(media.spirit?{spirit:publicMedia(pointer,media.spirit)}:{})};
 }
 
@@ -135,6 +135,7 @@ export async function propWorkspaceRead({query,openProject,authorize}){
  }
  return {json:{prop:{propId,title:p.title,source:{revision:p.revision,sha256:p.sha256},
   media:publicPair(p,row.media),interaction:row.interaction,
+  ...(row.defaultScalePercent===undefined?{}:{defaultScalePercent:row.defaultScalePercent}),
   ...(row.scaleVariants?{scaleVariants:row.scaleVariants.map(v=>({scalePercent:v.scalePercent,pixel:publicMedia(p,v.pixel),spirit:publicMedia(p,v.spirit)}))}:{}),
   animations:row.animations.map(a=>({id:a.id,title:a.title,media:publicPair(p,a.media)}))}}};
 }

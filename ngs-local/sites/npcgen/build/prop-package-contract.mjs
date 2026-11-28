@@ -1,7 +1,7 @@
 import {sha256Hex} from './browser-sha256.mjs';
 import {validPropScalePercent} from './prop-workspace-contract.mjs';
 /** Browser/Node portable shared v1 contract. Storage and renderer are injected authority ports. */
-export const propPackageSchema='ngs.prop-package.v1';
+export const propPackageSchema='ngs.prop-package.v1', scaledPropPackageSchema='ngs.prop-package.v2';
 export const propPackageMediaLimit=16*1024*1024;
 const digestPattern=/^[a-f0-9]{64}$/u;
 const requestPattern=/^request\.official\.[a-f0-9]{64}$/u;
@@ -63,12 +63,14 @@ function pair(value,motion){
  return {detail,pixel,spirit};
 }
 export function parsePropPackage(v){
+ const scaled=v?.schemaVersion===scaledPropPackageSchema;
  insist(keys(v,['schemaVersion','projectId','propId','revision','officialRequestId','requestSha256','designContextSha256',
-  'title','parentSha256','media','interaction','animations',...(v&&Object.hasOwn(v,'scaleVariants')?['scaleVariants']:[]),...(v&&Object.hasOwn(v,'scaleSourcePixel')?['scaleSourcePixel']:[])])&&v.schemaVersion===propPackageSchema&&v.projectId==='binari'&&id(v.propId)&&
+  'title','parentSha256','media','interaction','animations',...(v&&Object.hasOwn(v,'scaleVariants')?['scaleVariants']:[]),...(v&&Object.hasOwn(v,'scaleSourcePixel')?['scaleSourcePixel']:[]),
+  ...(scaled?['defaultScalePercent',...(Object.hasOwn(v,'animationPixelSize')?['animationPixelSize']:[])]:[])])&&(scaled||v.schemaVersion===propPackageSchema)&&v.projectId==='binari'&&id(v.propId)&&
   ints(v.revision,1,maxRevision)&&official(v.officialRequestId)&&hex(v.requestSha256)&&hex(v.designContextSha256)&&title(v.title)&&
   (v.revision===1?v.parentSha256===null:hex(v.parentSha256))&&Array.isArray(v.animations)&&v.animations.length<=1024,
   'PROP_PACKAGE_INVALID');
- const media=pair(v.media,'still');
+ const media=scaled?(insist(keys(v.media,['detail']),'PROP_PACKAGE_MEDIA'),{detail:parseMedia(v.media.detail,'detail','still')}):pair(v.media,'still');
  const scaleSourcePixel=Object.hasOwn(v,'scaleSourcePixel')?parseMedia(v.scaleSourcePixel,'variant','still'):undefined;
  const scales=Object.hasOwn(v,'scaleVariants')?v.scaleVariants:undefined;
  let scaleVariants;
@@ -85,8 +87,14 @@ export function parsePropPackage(v){
    return {scalePercent:p,pixel,spirit};
   });
  }
+ const defaultVariant=scaled?scaleVariants?.find(x=>x.scalePercent===v.defaultScalePercent):null;
+ if(scaled)insist(defaultVariant,'PROP_PACKAGE_DEFAULT_SCALE');
+ const placementPixel=scaled?defaultVariant.pixel:media.pixel;
+ const animationPixelSize=scaled?v.animationPixelSize:undefined;
+ if(animationPixelSize!==undefined)insist(keys(animationPixelSize,['width','height'])&&
+  ['width','height'].every(k=>ints(animationPixelSize[k],12,512)),'PROP_PACKAGE_ANIMATION_GEOMETRY');
  insist(keys(v.interaction,['pixelOpen','detailTrigger']),'PROP_PACKAGE_HOTSPOT');
- const pixelOpen=rect(v.interaction.pixelOpen,'open',media.pixel),detailTrigger=rect(v.interaction.detailTrigger,'activate',media.detail);
+ const pixelOpen=rect(v.interaction.pixelOpen,'open',placementPixel),detailTrigger=rect(v.interaction.detailTrigger,'activate',media.detail);
  if(v.revision===1)insist(v.animations.length<=1,'PROP_PACKAGE_INITIAL_ANIMATION');
  const ids=new Set(),requests=new Set();
  const animations=v.animations.map(a=>{
@@ -96,13 +104,15 @@ export function parsePropPackage(v){
    'PROP_PACKAGE_INITIAL_ANIMATION');
   ids.add(a.id);requests.add(a.officialRequestId);
   const clip=pair(a.media,'subtle');
-  for(const lane of ['detail','pixel'])insist(clip[lane].width===media[lane].width&&clip[lane].height===media[lane].height,
+  const pixelCanvas=animationPixelSize??placementPixel;
+  for(const [lane,canvas] of [['detail',media.detail],['pixel',pixelCanvas]])insist(clip[lane].width===canvas.width&&clip[lane].height===canvas.height,
    'PROP_PACKAGE_ANIMATION_GEOMETRY');
   return {id:a.id,title:a.title,officialRequestId:a.officialRequestId,requestSha256:a.requestSha256,media:clip};
  });
  const {schemaVersion,projectId,propId,revision,officialRequestId,requestSha256,designContextSha256,title:label,parentSha256}=v;
  return {schemaVersion,projectId,propId,revision,officialRequestId,requestSha256,designContextSha256,title:label,parentSha256,
-  media,interaction:{pixelOpen,detailTrigger},animations,...(scaleVariants?{scaleVariants}:{}),...(scaleSourcePixel?{scaleSourcePixel}:{})};
+  media,interaction:{pixelOpen,detailTrigger},animations,...(scaleVariants?{scaleVariants}:{}),...(scaleSourcePixel?{scaleSourcePixel}:{}),
+  ...(scaled?{defaultScalePercent:v.defaultScalePercent,...(animationPixelSize?{animationPixelSize}:{})}:{})};
 }
 export function canonicalPropPackage(v){
  const text=canonical(parsePropPackage(v));
@@ -283,18 +293,20 @@ export async function resolvePropPlayback({projectId='binari',puzzleBinding,read
   await propPackageReceipt(manifest)===suffix+pin.sha256,'PROP_PACKAGE_PIN_MISMATCH');
  const selected=binding.animationId===null?null:manifest.animations.find(a=>a.id===binding.animationId);
  insist(binding.animationId===null||selected,'PROP_PACKAGE_ANIMATION_MISSING');
- const materialize=async pair=>{
+ const materialize=async (pair,scaledPixel=false)=>{
   const result={};
   for(const lane of ['detail','pixel']){
    const descriptor=pair[lane];
    const expected={projectId,...pin,assetId:descriptor.assetId,assetSha256:descriptor.sha256,byteLimit:descriptor.bytes};
    const raw=await readAsset(expected);
-   await verifyPropMedia(raw,descriptor);
+   await verifyPropMedia(raw,descriptor,{variant:scaledPixel&&lane==='pixel'});
    result[lane]={descriptor,bytes:raw};
   }
   return result;
  };
- const verified={package:manifest,binding,media:await materialize(manifest.media),
+ const scaled=manifest.schemaVersion===scaledPropPackageSchema;
+ const material=scaled?{detail:manifest.media.detail,pixel:manifest.scaleVariants.find(v=>v.scalePercent===manifest.defaultScalePercent).pixel}:manifest.media;
+ const verified={package:manifest,binding,media:await materialize(material,scaled),
   animation:selected?{id:selected.id,media:await materialize(selected.media)}:null};
  // Projection is the sealed snapshot, hence subsequent mutation of an output
  // DTO or a fabricated object cannot inject paths, commands or coordinates.

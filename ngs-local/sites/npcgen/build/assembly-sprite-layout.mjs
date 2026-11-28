@@ -1,4 +1,4 @@
-import {mapDecorPinKey,mapDecorationRotation,validPropZOrder,propZMin,validImageScalePercent} from './map-contract.mjs';
+import {mapDecorPinKey,mapDecorationRotation,validPropZOrder,propZMin,validImageScalePercent,propImageScalePercents} from './map-contract.mjs';
 /** Convert source PNG pixels to map units; viewport zoom never changes a placement. */
 export const spriteRoles=['table','bowl','well','lid'];
 export const spriteParents={table:'altar',bowl:'altar',well:'well',lid:'well',spirit:'spirit'};
@@ -26,7 +26,18 @@ export function applyAssemblySpriteBox(element,box){
 
 /** A published variant is a resource choice, not a render transform. */
 const lane=x=>x?.mediaType==='image/png'&&imageSize(x)&&typeof x.url==='string'&&x.url.startsWith('/api/prop-workspace?')?x:null;
-export const propImageVariantArt=(art,scalePercent)=>scalePercent===undefined?art:art?.variants?.get(scalePercent)??null;
+export function propPlacementScaleOptions(art,visibility='both'){
+ return propImageScalePercents.filter(n=>{
+  const lane=art?.variants.get(n);
+  return lane&&(visibility==='both'?lane.pixel&&lane.cinematic:lane[visibility]);
+ });
+}
+export function defaultPropPlacementScale(art,options=propPlacementScaleOptions(art)){
+ return options.includes(art?.defaultScalePercent)?art.defaultScalePercent:
+  [...options].sort((a,b)=>Math.abs(a-20)-Math.abs(b-20)||a-b)[0];
+}
+export const propImageVariantArt=(art,scalePercent)=>scalePercent===undefined?
+ (art?.defaultScalePercent===undefined?art:art.variants.get(art.defaultScalePercent)??null):art?.variants?.get(scalePercent)??null;
 export function decorationArt(prop,pin){
  if(prop?.propId!==pin.propId||prop.source?.revision!==pin.revision||prop.source?.sha256!==pin.sha256)return null;
  const variants=new Map();
@@ -35,7 +46,7 @@ export function decorationArt(prop,pin){
   const pixel=lane(v.pixel),cinematic=lane(v.spirit);
   if(pixel||cinematic)variants.set(v.scalePercent,{pixel,cinematic});
  }
- return {pixel:lane(prop.media?.pixel),cinematic:lane(prop.media?.spirit),detail:lane(prop.media?.detail),variants};
+ return {pixel:lane(prop.media?.pixel),cinematic:lane(prop.media?.spirit),detail:lane(prop.media?.detail),variants,...(variants.has(prop.defaultScalePercent)?{defaultScalePercent:prop.defaultScalePercent}:{})};
 }
 export function decorationBox(row,art,region,spirit){
  const mode=spirit?'cinematic':'pixel';

@@ -111,12 +111,12 @@ test('assembly inspector previews and submits the selected variant independently
   document.querySelector('[data-preset=water]').click();
   const input=[...document.querySelectorAll('select[aria-label]')].find(el=>el.getAttribute('aria-label').endsWith('이미지 배율')&&el.closest('.well-assembly-role').querySelector('input').value==='150');
   await until(()=>Array.from(input.options).some(o=>o.value==='20'),'variant not offered');
-  input.value='20';input.dispatchEvent(new Event('change',{bubbles:true}));
+  if(input.value!=='20'||Array.from(input.options).some(o=>!o.value))throw Error('legacy choice exposed or 20% not selected');
   await until(()=>document.querySelector('img[data-role=bowl]:not([hidden])')?.src.endsWith('scale-20'),'wrong preview');
   [...document.querySelectorAll('button')].find(n=>n.textContent==='변경 적용').click();
   await until(()=>calls.length===1,'file.update did not submit');
   const p=calls[0].payload.content.puzzles[0];
-  if(p.bindings.bowl.imageScalePercent!==20||p.scale.bowl!==150||p.bindings.well.imageScalePercent!==undefined)throw Error('wrong saved variants');
+  if(p.bindings.bowl.imageScalePercent!==20||p.scale.bowl!==150||p.bindings.well.imageScalePercent!==20)throw Error('wrong saved variants');
   if(published.puzzles[0].bindings.bowl.imageScalePercent!==undefined)throw Error('published data mutated');
   result.textContent='PASS';
  }catch(e){result.textContent=e.message;}

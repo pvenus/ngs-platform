@@ -160,12 +160,14 @@ export function rsPropActions(list){
  const branches=input?.oneOf;
  if(!Array.isArray(types)||!Array.isArray(branches))return [];
  const matchesKeys=(values,keys)=>Array.isArray(values)&&values.length===keys.length&&keys.every(k=>values.includes(k));
- return ['generate','animation','scale'].filter(action=>{
-  const type=propTypes[action],schema='ngs.prop-'+(action==='animation'?'animation-generate':action==='scale'?'scale-generate':action)+'.v1';
+ return ['generate','animation','scale','compact'].filter(action=>{
+  const type=propTypes[action],schema='ngs.prop-'+(action==='animation'?'animation-generate':action==='scale'?'scale-generate':action==='compact'?'metadata-compact':action)+'.v1';
   const exactBranches=branches.filter(x=>x?.properties?.requestType?.const===type);
   const payload=exactBranches[0]?.properties?.payload,fields=payload?.properties;
   if(types.filter(x=>x===type).length!==1||exactBranches.length!==1||
    fields?.schemaVersion?.const!==schema||fields?.projectId?.const!=='binari')return false;
+  if(action==='compact')return payload.type==='object'&&payload.additionalProperties===false&&
+   matchesKeys(payload.required,['schemaVersion','projectId','propId','source'])&&exact(fields,['schemaVersion','projectId','propId','source']);
   if(action==='scale'){
    const keys=['schemaVersion','projectId','propId','source','scalePercents'];
    const list=fields.scalePercents;

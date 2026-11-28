@@ -208,6 +208,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   const section=node('section',null,'prop-surface'), select=node('select'), images=node('div',null,'prop-preview-pair');
   section.append(node('h4','게시된 배율 이미지','npc-media-heading'));
   for(const row of rows){const option=node('option',row.scalePercent+'%');option.value=String(row.scalePercent);select.append(option);}
+  select.value=String(prop.defaultScalePercent??rows.find(row=>row.scalePercent===20)?.scalePercent??rows[0].scalePercent);
   function preview(){
    const row=rows.find(v=>String(v.scalePercent)===select.value);
    if(!row)return;
@@ -256,7 +257,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
    enlarge.onclick=()=>openOriginal(prop,enlarge);
   }else original.art.append(original.image);
   placement.art.append(placement.image);
-  if(spiritSize&&verifiedURL(prop.media.spirit)&&placement.image.tagName==='IMG'){
+  if(!prop.scaleVariants?.length&&spiritSize&&verifiedURL(prop.media.spirit)&&placement.image.tagName==='IMG'){
    preview.classList.add('prop-spirit-previews');
    const switcher=node('button','서진 능력 사용','prop-control prop-spirit-toggle');
    switcher.type='button';switcher.setAttribute('aria-pressed','false');
@@ -275,7 +276,7 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
     placement.image.alt=prop.title+(active?' 시네마틱 배치 미리보기':' 픽셀 배치 미리보기');
    };
   }
-  preview.append(original.block,placement.block);
+  preview.append(original.block);if(!prop.scaleVariants?.length)preview.append(placement.block);
   card.append(preview);panel.append(card);
   if(prop.interaction?.pixelOpen||prop.interaction?.detailTrigger){
    const interaction=node('section',null,'prop-surface prop-interaction');
