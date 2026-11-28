@@ -199,6 +199,8 @@ test('prop-style scene controls create a single original and add only versions o
  assert.match(walk(basic.detail,x=>x.tag==='img')[0].src,new RegExp(sourceSha256));
  assert.equal(walk(basic.detail,x=>x.tag==='form').length,0);
  assert.equal(walk(basic.detail,x=>x.attrs.role==='tab').length,2);
+ assert.equal(walk(basic.detail,x=>x.textContent==='원본 이미지').length,1);
+ assert.equal(walk(basic.detail,x=>x.textContent==='애니메이션 보기'||x.textContent?.startsWith('이 장면에서는 게시된 원본')).length,0);
  const cropRequests=[];
  const cropView=async(width,height)=>mount({source:sourceSha256,panel:'source',cropEnabled:true,
   request:async path=>path.includes('sourceInfo=2')?{sourceSha256,width,height}:{scenes:sceneList},
@@ -211,6 +213,12 @@ test('prop-style scene controls create a single original and add only versions o
  assert.match(cropButton.style.cssText,/background:#087f86/);
  cropButton.click();
  const cropForm=walk(crop.detail,x=>x.tag==='form')[0];
+ assert.match(cropForm.parentElement.className,/cinematic-crop-dialog/);
+ const viewport=walk(cropForm,x=>x.className==='cinematic-crop-viewport')[0];
+ const preview=walk(viewport,x=>x.tag==='img')[0];
+ assert.equal(preview.parentElement.style.width,'1536px');
+ assert.equal(preview.width,1536);
+ assert.equal(preview.height,512);
  assert.equal(walk(cropForm,x=>x.textContent==='상단 자르기').length,0);
  walk(cropForm,x=>x.textContent==='좌우 자르기')[0].click();
  const lines=walk(cropForm,x=>x.style.cssText?.includes('#ff3434'));

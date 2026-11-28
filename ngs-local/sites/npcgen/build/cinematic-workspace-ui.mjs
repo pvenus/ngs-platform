@@ -40,9 +40,10 @@ function dialog(parent,heading,signal,afterClose){
  return modal;
 }
 
-function requestForm(parent,{caption,send,makePayload,isValid,signal,body,notice}){
+function requestForm(parent,{caption,send,makePayload,isValid,signal,body,notice,modalClass}){
  const child=new AbortController();
  const modal=dialog(parent,caption,signal,()=>child.abort()),form=make('form'),info=statusLine();
+ if(modalClass)modal.classList.add(modalClass);
  const submit=make('button','요청 보내기','prop-control prop-primary-control');
  submit.type='submit';
  const footer=make('div',null,'prop-actions');
@@ -180,9 +181,7 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
  if(tab==='source'){
   const card=make('section',null,'prop-surface');
   const img=make('img',null,'cinematic-source-image');img.src=url(projectId,{source:currentSource});img.alt=sceneLabel(selected);
-  const next=make('a','애니메이션 보기','prop-control cinematic-refresh');next.href=go({cineTab:'animations'});
-  card.append(make('h4','원본 이미지','npc-media-heading'),img,
-   make('p','이 장면에서는 게시된 원본 한 장을 그대로 사용해 애니메이션을 추가해요.','meta'),next);
+  card.append(img);
   if(cropEnabled&&typeof submit==='function')void request(url(projectId,{source:currentSource,sourceInfo:'2'})).then(info=>{
    if(signal.aborted||info?.sourceSha256!==currentSource)return;
    const presets=cinematicCropPresets(info.width,info.height);
@@ -191,12 +190,14 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
     let payload;
     const rawTitle=sceneLabel(selected).trim();
     const title=[...rawTitle].slice(0,108).join('')+' · 2:1';
-    requestForm(detail,{caption:'시네마틱 원본 2:1 자르기',send:queueAction(submit,cinematicCropType),notice,signal,
+    requestForm(detail,{caption:'시네마틱 원본 2:1 자르기',modalClass:'cinematic-crop-dialog',send:queueAction(submit,cinematicCropType),notice,signal,
      makePayload:()=>payload,isValid:validCinematicCrop,body:(form,changed,formSignal)=>{
-      const frame=make('div');frame.style.cssText='position:relative;width:100%;overflow:hidden';
-      const preview=make('img');preview.src=img.src;preview.alt='자르기 전 원본';preview.style.cssText='display:block;width:100%;height:auto';
+      const viewport=make('div',null,'cinematic-crop-viewport');
+      viewport.tabIndex=0;viewport.setAttribute('role','region');viewport.setAttribute('aria-label','원본 크기 자르기 미리보기');
+      const frame=make('div',null,'cinematic-crop-frame');frame.style.width=info.width+'px';
+      const preview=make('img');preview.src=img.src;preview.alt='자르기 전 원본';preview.width=info.width;preview.height=info.height;
       const overlay=make('div');overlay.style.cssText='position:absolute;inset:0;pointer-events:none';overlay.setAttribute('aria-hidden','true');
-      frame.append(preview,overlay);
+      frame.append(preview,overlay);viewport.append(frame);
       const line=make('p','프리셋을 선택하면 잘리는 경계가 빨간색으로 표시돼요.','meta');
       const choices=make('div',null,'prop-actions'),buttons=[];
       for(const {label,...box} of presets){
@@ -215,7 +216,7 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
        },formSignal);
        button.setAttribute('aria-pressed','false');buttons.push(button);choices.append(button);
       }
-      form.append(frame,choices,line);
+      form.append(choices,line,viewport);
      }});
    },signal,'prop-control cinematic-crop-action');
    cropButton.style.cssText='background:#087f86;color:#fff;border:1px solid #3ccfd1;font-weight:700;align-self:flex-start;margin:.25rem 0 .5rem';
