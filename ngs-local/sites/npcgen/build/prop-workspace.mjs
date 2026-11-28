@@ -1,4 +1,3 @@
-import {validPropFolderDelete} from './prop-folder-delete-contract.mjs';
 /** Folder identity, latest pointer and immutable package; never a generic file browser. */
 import {propWorkspacePath,propSlug,propRevision,propSha,propAction,validPropPayload,validPropAnimationRemove} from './prop-workspace-contract.mjs';
 import {hashReplicaBytes,readReplicaObject,workspaceItemIds} from './workspace-read-storage.mjs';
@@ -78,17 +77,6 @@ export async function admitPropAnimationRemove({openProject,command,authorize}){
  if(current.revision!==p.source.revision||current.sha256!==p.source.sha256)throw fail('PROP_WORKSPACE_SOURCE_STALE',409);
  const ids=new Set(row.animations.map(a=>a.id));
  if(!p.motionIds.every(id=>ids.has(id)))throw fail('PROP_WORKSPACE_MOTION_NOT_FOUND',404);
-}
-
-export async function admitPropFolderDelete({openProject,command,authorize}){
- const p=command?.payload;
- if(!validPropFolderDelete(p))throw invalid();
- if(await authorize?.(p.projectId,'props')===false)throw fail('PROJECT_OR_RESOURCE_DENIED',403);
- const project=await openProject(p.projectId);
- if(!project)throw unavailable();
- const {p:current}=await selected(project,p.target.path);
- if(current.revision!==p.expected.revision||current.sha256!==p.expected.sha256)
-  throw fail('PROP_WORKSPACE_SOURCE_STALE',409);
 }
 
 function publicMedia(pointer,media){

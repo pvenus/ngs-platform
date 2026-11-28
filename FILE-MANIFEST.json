@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 382,
+  "fileCountIncludingManifest": 385,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1260,8 +1260,8 @@
       "sha256": "a67071f139e415caf9cc5b1823ad6212e6177974d0e14baa2414c2252da245b4"
     },
     "ngs-local/source-manifest.json": {
-      "bytes": 19496,
-      "sha256": "444ef269b222ca080069428496c6bf0bbba09d0d777197addae2b3bf9dbc3293"
+      "bytes": 19621,
+      "sha256": "2988ce8a8c0d66f75c30000ee583e693d76f9e65f3edcd472554834ea048d885"
     },
     "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
       "bytes": 15831,
@@ -1488,8 +1488,8 @@
       "sha256": "ccd5e54c6c54154e3b1d122a17cf3e9e9977919a6ad8f48b5fa46b5cf2461ac8"
     },
     "ngs-local/sites/npcgen/build/local-project-page-server.mjs": {
-      "bytes": 46786,
-      "sha256": "f513d34cd6f5d0cb540e31d1c79005ae44e9730f5c5b97e4d20aad26921a81ad"
+      "bytes": 46227,
+      "sha256": "33b219feb6df1a37a521f0d065c61cde95bd7c4ca273d7071e9e679a6883aded"
     },
     "ngs-local/sites/npcgen/build/local-project-page.js": {
       "bytes": 51062,
@@ -1526,6 +1526,18 @@
     "ngs-local/sites/npcgen/tests/cinematic-workspace.mjs": {
       "bytes": 19272,
       "sha256": "c5a6d2f38c387b50efbcfd4e76e2ca25543e435e31f8db63765c003fe2ac0a96"
+    },
+    "ngs-local/sites/npcgen/build/prop-workspace.mjs": {
+      "bytes": 7205,
+      "sha256": "c0134617e11711c44a930502e53791f5414491285084348e6ed18d964998c07d"
+    },
+    "ngs-local/sites/npcgen/tests/local-folder-delete-intake.mjs": {
+      "bytes": 2252,
+      "sha256": "75919098ffa60f9c9eb2fa22c5ed3d9616c69b88b3f3d16581472952699f3449"
+    },
+    "ngs-local/sites/npcgen/tests/prop-workspace.mjs": {
+      "bytes": 26770,
+      "sha256": "5cd829799f689318edc251d3ee83df9449e357bace917cfb3bc43727fc41d491"
     }
   }
 }

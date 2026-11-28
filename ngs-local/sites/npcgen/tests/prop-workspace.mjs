@@ -114,11 +114,12 @@ test('exact no-preset named request, current pin, double submission protection d
  assert.equal((await post(deletion,fileDeleteType)).status,404);
  deleteEnabled=true;
  assert.equal((await (await call('/__npcgen_session',{headers:{cookie}})).json()).propFolderDeleteEnabled,true);
- assert.equal((await post({...deletion,expected:{...source,revision:2}},fileDeleteType)).status,409);
+ const staleDelete={...deletion,expected:{...source,revision:2}};
+ assert.equal((await post(staleDelete,fileDeleteType)).status,202);
  assert.equal((await post({...deletion,target:{...deletion.target,path:'../npcs'}},fileDeleteType)).status,400);
  assert.equal((await post(deletion,fileDeleteType,'invalid')).status,403);
  assert.equal((await post(deletion,fileDeleteType)).status,202);
- assert.deepEqual(sent[1],{requestType:fileDeleteType,idempotencyKey:'isolated-fixture',payload:deletion});
+ assert.deepEqual(sent.slice(1).map(c=>c.payload),[staleDelete,deletion]);
  assert.equal((await call(api+'&propId='+propId,{headers:{cookie}})).status,200);
 });
 

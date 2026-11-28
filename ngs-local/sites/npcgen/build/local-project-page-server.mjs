@@ -26,7 +26,7 @@ import {cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerat
 import {cinematicPath,cinematicType} from './cinematic-contract.mjs';
 import {admitCinematicRequest,cinematicVideoResponse} from './cinematic-workspace.mjs';
 import {propAction,validPropActions} from './prop-workspace-contract.mjs';
-import {admitPropRequest,admitPropAnimationRemove,admitPropFolderDelete} from './prop-workspace.mjs';
+import {admitPropRequest,admitPropAnimationRemove} from './prop-workspace.mjs';
 import {createRSPropReadiness} from './rs-mcp.mjs';
 import {dispatchWorkspaceRead,workspaceReadRoute} from './workspace-read-registry.mjs';
 import {parseRequestSubmission} from './local-request-submission.mjs';
@@ -371,15 +371,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      if(!family)throw failure('NGS_FILE_DELETE_PAYLOAD_INVALID',400);
      if(!await deleteReadyByAction[family.action]())throw failure(family.unavailable,404);
      if(!family.valid(command.payload))throw failure(family.invalid,400);
-     if(family.action==='npcFolderDeleteEnabled'){
-      const roster=(await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId:'binari'}),
-        id=>projectPermission(session.principal,id,undefined,false))).json.npcs;
-      const row=roster.find(x=>x.id===command.payload.target.path);
-      if(!row)throw failure('NPC_FOLDER_DELETE_TARGET_NOT_FOUND',404);
-      if(row.creationTaskId!==command.payload.expected.creationTaskId)throw failure('NPC_FOLDER_DELETE_TARGET_STALE',409);
-     }else if(family.action==='propFolderDeleteEnabled'){
-      await admitPropFolderDelete({openProject,command,authorize:id=>projectPermission(session.principal,id,undefined,false)});
-     }
+     // No replica preflight: the common delete worker/authority checks the
+     // exact pinned target against the original immediately before mutation.
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
     if(command.requestType==='prop.animation.remove'){
