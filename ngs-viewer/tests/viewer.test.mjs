@@ -39,13 +39,30 @@ test('hash-pinned P2 files drive the existing project DTO, only after full insta
  const data=Buffer.from(JSON.stringify({title:'비나리'}));
  const item={path:'project.json',sha256:createHash('sha256').update(data).digest('hex'),size:data.length};
  const manifest={projectId:'binari',resources:['project'],files:[item]};
- const begin=await write('begin',manifest);assert.equal(begin.status,200);
- const {syncId,files}=await begin.json();assert.deepEqual(files,[item]);
+ const start=await write('sync/start',{});assert.equal(start.status,202);
+ const {id}=await start.json();
  assert.equal((await get('/api/project-folders')).status,503);
- const href='chunk?'+new URLSearchParams({path:item.path,syncId,offset:'0'});
- const ack=await write(href,data,{'Content-Type':'application/octet-stream'});
- assert.equal(ack.status,200);assert.equal((await ack.json()).offset,data.length);
- assert.equal((await write('finish',{syncId})).status,200);
+ let outcome;
+ for(let i=0;i<100;i++){
+  const r=await (await write('sync/poll',{id})).json();
+  if(r.state!=='running'){outcome=r;break;}
+  for(const job of r.jobs){
+   const headers={'Content-Type':'application/octet-stream','x-ngs-viewer-upstream-status':'200'};
+   const route=new URL(job.path,'http://127.0.0.1');
+   let bytes;
+   if(route.pathname==='/api/viewer/manifest')bytes=Buffer.from(JSON.stringify(manifest));
+   else{
+    assert.equal(route.pathname,'/api/viewer/file');
+    assert.equal(route.searchParams.get('path'),item.path);
+    assert.equal(route.searchParams.get('offset'),'0');
+    bytes=data;
+    Object.assign(headers,{'x-ngs-file-size':String(item.size),'x-ngs-file-sha256':item.sha256,'x-ngs-file-offset':'0'});
+   }
+   assert.equal((await write('sync/reply?'+new URLSearchParams({id,job:job.id}),bytes,headers)).status,200);
+  }
+  await new Promise(resolve=>setTimeout(resolve,5));
+ }
+ assert.equal(outcome?.state,'completed',JSON.stringify(outcome));
  assert.deepEqual(await readFile(join(root,'binari','project.json')),data);
  assert.deepEqual(await (await get('/api/project-folders')).json(),
    {projects:[{projectId:'binari',name:'비나리',iconUrl:null,needsRefresh:false}]});

@@ -210,10 +210,10 @@ export async function openMirror(root){
   assert(exact(plan,['id','ops'])&&passRE.test(plan.id)&&Array.isArray(plan.ops)&&plan.ops.length<=maxFiles*2,
    'VIEWER_P2_UNSAFE_JOURNAL');
   for(const [i,op] of [...plan.ops.entries()].reverse()){
-   assert(exact(op,['path','old','next'])&&validWorkspacePath(op.path)&&
+   assert((exact(op,['path','old','next'])||exact(op,['path','old','next','staged'])&&integer(op.staged,0,maxFiles*2))&&validWorkspacePath(op.path)&&
     (op.old===null||hashRE.test(op.old))&&(op.next===null||hashRE.test(op.next)),
     'VIEWER_P2_UNSAFE_JOURNAL');
-   const backup=join(stage,'backup-'+i), staged=join(stage,'change-'+i);
+   const backup=join(stage,'backup-'+i), staged=join(stage,'change-'+(op.staged??i));
    const original=inspect(backup,{digests:true});
    const p=target(op.path);
    if(original){
@@ -333,35 +333,77 @@ export async function openMirror(root){
   }catch(e){work.failed=true;throw e;}finally{closeSync(fd);}
   return {offset:work.offset};
  }
- function finish(id){
+ function inventory(){
+  scoped();
+  const rows=[];
+  for(const row of current?.managed??[]){
+   const p=target(row.path),disk=p&&inspect(p);
+   if(!disk)continue;
+   if(disk.pin!==row.pin)assert(inspect(p,{digests:true}).sha256===row.sha256,'VIEWER_P2_LOCALLY_EDITED_FILE');
+   rows.push({path:row.path,sha256:row.sha256});
+  }
+  return rows;
+ }
+ function reset(id,path){
+  const a=pass(id),work=a.changes.get(path);
+  assert(work,'VIEWER_MIRROR_UNKNOWN_FILE');
+  const staged=join(a.stage,'change-'+work.index);
+  if(inspect(staged))unlinkSync(staged);
+  work.offset=0;work.stream=hash();work.sealed=false;work.failed=false;delete work.pin;
+  if(work.size===0){
+   assert(work.stream.digest('hex')===work.sha256,'VIEWER_MIRROR_HASH_MISMATCH',400);
+   writeFileSync(staged,Buffer.alloc(0),{flag:'wx',mode:0o600});
+   work.sealed=true;
+  }
+ }
+ function finish(id,{failed=new Set(),confirmed=null}={}){
   const a=pass(id);
   assert(directory(a.stage),'VIEWER_P2_UNSAFE_STAGE');
-  const checked=new Set();
-  for(const item of [...a.entries,...a.ops]){
+  const checked=new Set(),previous=new Map((current?.managed??[]).map(row=>[row.path,row]));
+  const ops=a.ops.flatMap((op,staged)=>op.next===null?
+   confirmed&&!confirmed.has(op.path)?[]:[{...op,staged}]:
+   failed.has(op.path)?[]:[{...op,staged}]);
+  const manifestFiles=[];
+  for(const item of a.entries){
+   const {path,size,sha256}=item;
+   if(!failed.has(path)){manifestFiles.push({path,size,sha256});continue;}
+   // A definite transfer failure does not suppress independent successful files
+   // or advertise its uninstalled replacement.
+   const prior=previous.get(path);
+   if(prior&&item.disk){a.kept.set(path,prior);manifestFiles.push({path,size:prior.size,sha256:prior.sha256});}
+   else a.kept.delete(path);
+  }
+  if(confirmed)for(const op of a.ops){
+   if(op.next!==null||confirmed.has(op.path))continue;
+   const prior=previous.get(op.path);
+   if(prior&&op.disk){a.kept.set(op.path,prior);manifestFiles.push({path:prior.path,size:prior.size,sha256:prior.sha256});}
+  }
+  for(const item of [...a.entries,...ops]){
    if(checked.has(item.path))continue;checked.add(item.path);
    const p=target(item.path),got=p&&inspect(p);
    assert((got?.pin??null)===(item.disk?.pin??null),'VIEWER_P2_FILE_CHANGED');
   }
   for(const work of a.changes.values()){
+   if(failed.has(work.path))continue;
    const staged=inspect(join(a.stage,'change-'+work.index));
    assert(work.sealed&&!work.failed&&staged&&staged.size===work.size&&(!work.pin||staged.pin===work.pin),
     'VIEWER_MIRROR_TRANSFER_INCOMPLETE');
   }
-  const journal={id,ops:a.ops.map(({path,old,next})=>({path,old,next}))};
+  const journal={id,ops:ops.map(({path,old,next,staged})=>({path,old,next,staged}))};
   atomicJson(join(a.stage,'commit.json'),journal);
   try{
-   for(const [i,op] of a.ops.entries()){
+   for(const [i,op] of ops.entries()){
     const p=target(op.path,op.next!==null);
     const observed=p&&inspect(p);
     assert((observed?.pin??null)===(op.disk?.pin??null),'VIEWER_P2_FILE_CHANGED');
     if(observed)renameSync(p,join(a.stage,'backup-'+i));
     if(op.next!==null){
-     renameSync(join(a.stage,'change-'+i),p);
+     renameSync(join(a.stage,'change-'+op.staged),p);
      const {path,size,sha256}=a.changes.get(op.path);
      a.kept.set(path,{path,size,sha256,pin:inspect(p).pin});
     }
    }
-   const state={id,manifest:a.m,managed:[...a.kept.values()]};
+   const manifest={...a.m,files:manifestFiles},state={id,manifest,managed:[...a.kept.values()]};
    validateState(state);
    atomicJson(statePath,state);current=state;
   }catch(error){
@@ -371,7 +413,7 @@ export async function openMirror(root){
   }
   active=null;
   try{clean(a.stage);}catch{/* Next open removes committed staging. */}
-  return {files:a.m.files.length,changed:a.changes.size,removed:a.ops.length-a.changes.size};
+  return {files:manifestFiles.length,changed:ops.filter(op=>op.next!==null).length,removed:ops.filter(op=>op.next===null).length};
  }
  function abort(id){
   const a=pass(id);clean(a.stage);active=null;
@@ -381,5 +423,5 @@ export async function openMirror(root){
   try{if(active&&!poisoned)abort(active.id);}
   finally{closed=true;unlock();}
  }
- return Object.freeze({projectRoot,begin,append,finish,abort,close,snapshot:()=>current?structuredClone(current.manifest):null});
+ return Object.freeze({projectRoot,inventory,begin,append,reset,finish,abort,close,snapshot:()=>current?structuredClone(current.manifest):null});
 }

@@ -29,12 +29,14 @@ test('approved Space popup receives only the native request envelope and returns
    deliver(202,{status:'pending'});
   }
  };
+ let polled=0;
  const window={
   fetch:async(path,params)=>{
    if(path==='/__viewer/config')return Response.json({spaceOrigin:space,guardKey:'f'.repeat(64)});
    localWrites.push(path);assert.equal(params.headers['x-ngs-viewer-key'],'f'.repeat(64));
-   if(path==='/__viewer/begin')return Response.json({syncId:'abc',files:[]});
-   if(path==='/__viewer/finish')return Response.json({files:0,changed:0,removed:0});
+   if(path==='/__viewer/sync/start')return Response.json({id:'abc'},{status:202});
+   if(path==='/__viewer/sync/poll')return Response.json(++polled===1?{state:'running',jobs:[{id:'j1',path:'/api/viewer/manifest'}]}:{state:'completed',result:{files:0,changed:0,removed:0}});
+   if(path==='/__viewer/sync/reply?id=abc&job=j1')return Response.json({ok:true});
    assert.equal(path,'/__viewer/disconnect');return Response.json({ok:true});
   },
   addEventListener:(name,fn)=>events.set(name,fn),
@@ -43,7 +45,7 @@ test('approved Space popup receives only the native request envelope and returns
  let started;
  const booted=new Promise(resolve=>{started=resolve;});
  await runInNewContext('(async()=>{'+code+'})()',{
-  ArrayBuffer,crypto,URL,URLSearchParams,Response,Error,location:{origin:local},window,
+  ArrayBuffer,performance,crypto,URL,URLSearchParams,Response,Error,location:{origin:local},window,
   setTimeout:(cb,ms)=>ms>=20_000?0:setTimeout(cb,ms),clearTimeout,
   Request:class extends Request{constructor(input,init){super(new URL(input,local),init);}},
   sessionStorage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)},
@@ -63,5 +65,5 @@ test('approved Space popup receives only the native request envelope and returns
  assert.equal(result.status,202);
  assert.deepEqual(await result.json(),{status:'pending'});
  assert.equal(sent.filter(msg=>msg.path==='/api/requests').length,1);
- assert.deepEqual(localWrites,['/__viewer/disconnect','/__viewer/begin','/__viewer/finish']);
+ assert.deepEqual(localWrites,['/__viewer/disconnect','/__viewer/sync/start','/__viewer/sync/poll','/__viewer/sync/reply?id=abc&job=j1','/__viewer/sync/poll']);
 });

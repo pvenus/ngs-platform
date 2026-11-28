@@ -9,6 +9,7 @@ import {assertLoopbackRequest} from '../ngs-local/sites/npcgen/build/loopback-au
 import {viewerAssets} from './lib/assets.mjs';
 import {localProjection,viewerReadRoute} from './lib/projections.mjs';
 import {openMirror} from './lib/mirror.mjs';
+import {createViewerSyncQueue} from './lib/sync.mjs';
 
 export const viewerPort=5281;
 export const validViewerPort=port=>Number.isInteger(port)&&port>=1024&&port<=65535;
@@ -56,7 +57,9 @@ export async function createViewer({root,space=binariSpace,mirror=null}={}){
  const origin=viewerSpaceOrigin(space);
  const assets=viewerAssets(), guardKey=randomBytes(32).toString('hex'), validKey=comparator(guardKey);
  const receiver=mirror??await openMirror(root);
- let publishing=false,snapshot=null;
+ let snapshot=null;
+ const sync=createViewerSyncQueue(receiver,{onFinish:()=>{snapshot=receiver.snapshot();},onAccessLost:()=>{snapshot=null;}});
+
  const server=createServer(async(req,res)=>{
   for(const [k,v] of Object.entries(sourceHeaders))res.setHeader(k,v);
   const json=(status,value)=>{res.statusCode=status;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(value));};
@@ -70,29 +73,30 @@ export async function createViewer({root,space=binariSpace,mirror=null}={}){
     return json(200,{spaceOrigin:origin,guardKey,committed:snapshot!==null,port});
    if(path.startsWith('/__viewer/')&&method==='POST'){
     if(!validKey(req.headers['x-ngs-viewer-key']))throw fault('VIEWER_WRITE_DENIED',403);
-    if(path==='/__viewer/begin'&&!url.search)return json(200,await receiver.begin(await jsonBody(req)));
-    if(path==='/__viewer/chunk'){
-     const q=url.searchParams, offset=q.get('offset');
-     if([...q.keys()].sort().join(',')!=='offset,path,syncId'||!(/^(0|[1-9]\d{0,15})$/u.test(offset??''))||
-        req.headers['content-type']!=='application/octet-stream')throw fault('VIEWER_CHUNK_INVALID',400);
-     return json(200,await receiver.append(q.get('syncId'),q.get('path'),Number(offset),await body(req,oneMiB)));
-    }
-    if((path==='/__viewer/finish'||path==='/__viewer/abort')&&!url.search){
+    if(path==='/__viewer/sync/start'&&!url.search){
      const v=await jsonBody(req);
-     if(!v||Object.keys(v).join(',')!=='syncId')throw fault('VIEWER_SYNC_INVALID',400);
-     if(path.endsWith('/abort')){await receiver.abort(v.syncId);return json(200,{ok:true});}
-     if(publishing)throw fault('VIEWER_SYNC_BUSY',409);
-     publishing=true;
-     try{const result=await receiver.finish(v.syncId);snapshot=await receiver.snapshot();return json(200,result);}
-     catch(e){snapshot=null;throw e;}
-     finally{publishing=false;}
+     if(!v||Object.keys(v).length!==0)throw fault('VIEWER_SYNC_INVALID',400);
+     return json(202,sync.start());
     }
-    if(path==='/__viewer/disconnect'&&!url.search){snapshot=null;return json(200,{ok:true});}
+    if(path==='/__viewer/sync/poll'&&!url.search){
+     const v=await jsonBody(req);
+     if(!v||Object.keys(v).join(',')!=='id'||typeof v.id!=='string')throw fault('VIEWER_SYNC_INVALID',400);
+     return json(200,sync.poll(v.id));
+    }
+    if(path==='/__viewer/sync/reply'){
+     const q=url.searchParams,status=Number(req.headers['x-ngs-viewer-upstream-status']);
+     if([...q.keys()].sort().join(',')!=='id,job'||!Number.isInteger(status)||status<200||status>599||
+        req.headers['content-type']!=='application/octet-stream')throw fault('VIEWER_SYNC_INVALID',400);
+     const bytes=await body(req);
+     return json(200,sync.respond(q.get('id'),q.get('job'),{status,bytes,
+      fileSize:req.headers['x-ngs-file-size'],fileSha256:req.headers['x-ngs-file-sha256'],fileOffset:req.headers['x-ngs-file-offset']}));
+    }
+    if(path==='/__viewer/disconnect'&&!url.search){sync.close();snapshot=null;return json(200,{ok:true});}
     throw fault('NOT_FOUND',404);
    }
    if(viewerReadRoute(path)){
     if(!['GET','HEAD'].includes(method))throw fault('METHOD_NOT_ALLOWED',405);
-    if(!snapshot||publishing)throw fault('VIEWER_SYNC_REQUIRED',503);
+    if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
     return await send(res,await localProjection({root,snapshot,url,method,range:req.headers.range}),method);
    }
    const asset=assets.get(path);
@@ -106,7 +110,7 @@ export async function createViewer({root,space=binariSpace,mirror=null}={}){
    return json(status,{error:/^[A-Z0-9_]+$/u.test(e?.message??'')?e.message:'VIEWER_LOCAL_UNAVAILABLE'});
   }
  });
- server.on('close',()=>{void receiver.close?.();});
+ server.on('close',()=>{sync.close();void receiver.close?.();});
  return server;
 }
 
