@@ -146,3 +146,18 @@ The independent `NGS_POSE_SELECTION_V2_ENABLED` defaults off. Existing
 selected NPC full/replacement and animation-only forms then send v1; their
 server admission paths reject unapproved v2. Do not enable it merely to
 deploy audio features.
+
+
+### Local NGS with the house-network listener
+
+The Mac executor verifies exclusive listener ownership for ports 5274/5275.
+If the optional home-LAN proxy shares :5274 on a separate interface, take
+only that proxy offline for the controlled deployment; do not stop OPS or
+remove existing LaunchAgent configuration. Verify the loopback NGS alone
+owns both ports before applying. Restore the proxy and verify the LAN route
+after the apply result is known, whether the deployment succeeds or fails.
+
+An ownership failure before the executor saves a rollback receipt does **not**
+qualify for the same-SHA rollback-retry path. Preserve the failure receipt,
+resolve the listener collision, and use a freshly attested release through
+the ordinary OPS flow. Do not manufacture a rollback record.
