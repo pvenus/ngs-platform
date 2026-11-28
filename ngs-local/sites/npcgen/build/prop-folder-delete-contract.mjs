@@ -45,7 +45,23 @@ export function backgroundDeletePayloads({id,expected}){
 export const cinematicDeleteRoot='canonical-files/binari/cinematics';
 const seq=/^sequences\/request\.official\.[a-f0-9]{64}$/u;
 const legacy=/^results\/request\.official\.[a-f0-9]{64}\.(?:mp4|json)$/u;
+export function validCinematicSequenceFolderDelete(p){
+ const t=p?.target,e=p?.expected;
+ return exact(p,['schemaVersion','projectId','target','expected'])&&p.schemaVersion===fileDeleteSchema&&p.projectId==='binari'&&
+  exact(t,['root','path','kind'])&&t.root===cinematicDeleteRoot&&t.kind==='directory'&&
+  exact(e,['sourceSha256','sequenceId'])&&propSha(e.sourceSha256)&&officialId(e.sequenceId)&&
+  (t.path==='sequences/'+e.sequenceId||t.path==='scenes/'+e.sourceSha256+'/sequences/'+e.sequenceId);
+}
+export function cinematicSequenceDeletePayload({sourceSha256,sequenceId,sceneFolder}){
+ if(typeof sceneFolder!=='boolean')throw Error('NGS_CINEMATIC_DELETE_PAYLOAD_INVALID');
+ const path=(sceneFolder?'scenes/'+sourceSha256+'/':'')+'sequences/'+sequenceId;
+ const payload={schemaVersion:fileDeleteSchema,projectId:'binari',target:{root:cinematicDeleteRoot,path,kind:'directory'},
+  expected:{sourceSha256,sequenceId}};
+ if(!validCinematicSequenceFolderDelete(payload))throw Error('NGS_CINEMATIC_DELETE_PAYLOAD_INVALID');
+ return payload;
+}
 export function validCinematicFileDelete(p){
+ if(validCinematicSequenceFolderDelete(p))return true;
  const t=p?.target,e=p?.expected;
  return exact(p,['schemaVersion','projectId','target','expected'])&&p.schemaVersion===fileDeleteSchema&&p.projectId==='binari'&&
   exact(t,['root','path','kind'])&&t.root===cinematicDeleteRoot&&typeof t.path==='string'&&

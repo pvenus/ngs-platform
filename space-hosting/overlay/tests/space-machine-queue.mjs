@@ -578,7 +578,7 @@ test('Space browser and Viewer MCP share background generation and animation adm
 });
 
 test('cinematic scene folder deletion uses one protected file.delete for every team role',async t=>{
- const {cinematicSceneDeletePayload}=await import('../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs');
+ const {cinematicSceneDeletePayload,cinematicSequenceDeletePayload}=await import('../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs');
  const db=store(t),seen=[];
  const opts={db,secret:token,replicaReads:true,workspaceReady:true,cinematicSceneDeleteEnabled:true,
   authorize:async()=>true,authorizeWrite:async()=>true,mapAssemblyGrant:async u=>['editor','viewer'].includes(u.userId)?{projectId:'binari',role:u.userId}:null,
@@ -588,14 +588,22 @@ test('cinematic scene folder deletion uses one protected file.delete for every t
   const h=headers(actor),s=await (await call('/__npcgen_session','GET',h)).json();
   assert.equal(s.cinematicDeleteEnabled,['editor','viewer'].includes(actor)?true:undefined);
   return call('/api/requests','POST',{...h,Origin:origin,'X-NPCGen-Csrf':s.csrfToken,'X-NPCGen-Frontend-Context':s.contextId},
-   {requestType:'file.delete',idempotencyKey:'cinematic-scene',payload});
+   {requestType:'file.delete',idempotencyKey:'cinematic-delete-'+(payload.expected.sequenceId??'scene'),payload});
  };
  const payload=cinematicSceneDeletePayload('a'.repeat(64));
  assert.equal((await send('other',payload)).status,403);
  assert.equal((await send('editor',{...payload,target:{...payload.target,path:'scenes/'+'b'.repeat(64)}})).status,400);
  assert.equal((await send('editor',payload)).status,202);
  assert.equal((await send('viewer',payload)).status,202);
- assert.deepEqual(seen.map(command=>command.payload),[payload,payload]);
+ const sequenceId='request.official.'+'b'.repeat(64);
+ const animation=cinematicSequenceDeletePayload({sourceSha256:'a'.repeat(64),sequenceId,sceneFolder:true});
+ assert.equal((await send('other',animation)).status,403);
+ assert.equal((await send('editor',{...animation,expected:{...animation.expected,sequenceId:'request.official.'+'c'.repeat(64)}})).status,400);
+ assert.equal((await send('editor',animation)).status,202);
+ assert.equal((await send('viewer',animation)).status,202);
+ const legacy={...payload,target:{...payload.target,path:'results/'+sequenceId+'.mp4',kind:'file'}};
+ assert.equal((await send('editor',legacy)).status,400);
+ assert.deepEqual(seen.map(command=>command.payload),[payload,payload,animation,animation]);
 });
 
 

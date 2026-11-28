@@ -97,7 +97,7 @@
     "sites/npcgen/build/pds-mcp-file-sync.mjs": "d9026e7f4c88b3bba9ff5c0474822f127dc02a44995c50307388616d4d47a667",
     "sites/npcgen/build/project-workspace-view.mjs": "6812535a7f09bfe0459330c2c493eb6071f5b8d8a393d6a461579f62d8719f7f",
     "sites/npcgen/build/prop-design-pin.mjs": "a8ae3a15f992124635e54005ae220477b60177b6fab4374dca37c9707df2dd53",
-    "sites/npcgen/build/prop-folder-delete-contract.mjs": "ac9bd0f76312c96c021e3c6a19835ef11a7162c43cf0a1052b59c9167448b492",
+    "sites/npcgen/build/prop-folder-delete-contract.mjs": "48d9aac7080d647457452a595fc1ffda9244860ebdde69c2ef371fe093be08ac",
     "sites/npcgen/build/prop-package-contract.mjs": "f45b426c6bf00f1174ebd7303c76f167e7ee0ad1ed322f6a9e2c7e8dcdd337f8",
     "sites/npcgen/build/prop-workspace-contract.mjs": "3368cfd34e9368e19fef2ac1eddd823799a4bcb29788ad7c1b196ce8b05e83ce",
     "sites/npcgen/build/prop-workspace-ui.mjs": "16a31cea6d3520dd27cfb1c577e8a5293f6aa3af08efb6c6883b21190c15b87a",

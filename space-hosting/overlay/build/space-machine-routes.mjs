@@ -1,3 +1,4 @@
+import {validCinematicSequenceFolderDelete} from '../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs';
 /** Explicit Site routes for one project. Native visitors and Mac relay have separate identities. */
 import {csrf,sameToken} from './space-browser-auth.mjs';
 import {mapAssemblyAction,spaceMapAssemblyCapabilities,validSpaceMapAssemblyCommand} from './space-map-assembly.mjs';
@@ -171,7 +172,8 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(validSpaceMapAssemblyCommand(value.requestType,value.payload),400,'SPACE_REQUEST_INVALID');
    const caps=await workspaceCapabilities(true);
    need(caps[mapAction]===true,403,'SPACE_MAP_ASSEMBLY_ACTION_DENIED');
-   if(mapAction==='cinematicDeleteEnabled')need(value.payload.target.path==='scenes/'+value.payload.expected.sourceSha256,400,'SPACE_REQUEST_INVALID');
+   if(mapAction==='cinematicDeleteEnabled')need(value.payload.target.path==='scenes/'+value.payload.expected.sourceSha256||
+    validCinematicSequenceFolderDelete(value.payload),400,'SPACE_REQUEST_INVALID');
    await admitMapAssembly(participant,value);
   }
 
