@@ -322,6 +322,11 @@ ul{padding:0;list-style:none}
 .prop-control.prop-primary-control:not(:disabled):hover{background:#245442;color:var(--card)}
 .prop-form-field{display:grid;gap:.35rem;margin-block:.8rem;color:var(--primary);font-size:.86rem}
 .prop-form-field :is(input,select,textarea){width:100%;box-sizing:border-box;font:inherit;border:1px solid #cbd9ca;border-radius:7px;padding:7px 9px;background:var(--card);color:var(--foreground)}
+.prop-scale-options{margin-block:.8rem;border:1px solid var(--border);border-radius:8px;padding:.65rem;color:var(--primary)}
+.prop-scale-options legend{font-size:.86rem}
+.prop-scale-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(5.1rem,1fr));gap:.35rem}
+.prop-scale-grid label{display:flex;align-items:center;gap:.35rem;white-space:nowrap;font-size:.82rem}
+.prop-scale-grid input{width:1rem;height:1rem;margin:0;flex:none}
 .prop-workspace-dialog{width:min(34rem,calc(100vw - 2rem));max-height:calc(100dvh - 2rem);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;padding:18px 22px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--foreground)}
 .prop-workspace-dialog::backdrop{background:#172e22a8}
 .prop-workspace-dialog h3{color:#103d30;font-size:1.2rem}

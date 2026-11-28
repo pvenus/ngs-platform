@@ -1,4 +1,5 @@
 import {sha256Hex} from './browser-sha256.mjs';
+import {validPropScalePercent} from './prop-workspace-contract.mjs';
 /** Browser/Node portable shared v1 contract. Storage and renderer are injected authority ports. */
 export const propPackageSchema='ngs.prop-package.v1';
 export const propPackageMediaLimit=16*1024*1024;
@@ -27,9 +28,9 @@ function canonical(v){
 const sha=sha256Hex;
 
 function parseMedia(m,role,motion){
- const max=role==='detail'?2048:512;
+ const scale=role==='variant',max=role==='detail'||scale?2048:512,min=scale?1:12;
  insist(keys(m,['assetId','sha256','bytes','width','height','mediaType','frameDurationsMs'])&&hex(m.sha256)&&
-  m.assetId===m.sha256+'.png'&&ints(m.bytes,57,propPackageMediaLimit)&&ints(m.width,12,max)&&ints(m.height,12,max)&&
+  m.assetId===m.sha256+'.png'&&ints(m.bytes,57,propPackageMediaLimit)&&ints(m.width,min,max)&&ints(m.height,min,max)&&
   Array.isArray(m.frameDurationsMs),'PROP_PACKAGE_MEDIA');
  const d=m.frameDurationsMs;
  if(motion==='still')insist(m.mediaType==='image/png'&&d.length===0,'PROP_PACKAGE_MOTION_MISMATCH');
@@ -63,11 +64,27 @@ function pair(value,motion){
 }
 export function parsePropPackage(v){
  insist(keys(v,['schemaVersion','projectId','propId','revision','officialRequestId','requestSha256','designContextSha256',
-  'title','parentSha256','media','interaction','animations'])&&v.schemaVersion===propPackageSchema&&v.projectId==='binari'&&id(v.propId)&&
+  'title','parentSha256','media','interaction','animations',...(v&&Object.hasOwn(v,'scaleVariants')?['scaleVariants']:[]),...(v&&Object.hasOwn(v,'scaleSourcePixel')?['scaleSourcePixel']:[])])&&v.schemaVersion===propPackageSchema&&v.projectId==='binari'&&id(v.propId)&&
   ints(v.revision,1,maxRevision)&&official(v.officialRequestId)&&hex(v.requestSha256)&&hex(v.designContextSha256)&&title(v.title)&&
   (v.revision===1?v.parentSha256===null:hex(v.parentSha256))&&Array.isArray(v.animations)&&v.animations.length<=1024,
   'PROP_PACKAGE_INVALID');
  const media=pair(v.media,'still');
+ const scaleSourcePixel=Object.hasOwn(v,'scaleSourcePixel')?parseMedia(v.scaleSourcePixel,'variant','still'):undefined;
+ const scales=Object.hasOwn(v,'scaleVariants')?v.scaleVariants:undefined;
+ let scaleVariants;
+ if(scales!==undefined){
+  insist(Array.isArray(scales)&&scales.length>=1&&scales.length<=11,'PROP_PACKAGE_SCALE_VARIANTS');
+  const seen=new Set();
+  scaleVariants=scales.map(row=>{
+   const p=row?.scalePercent;
+   insist(keys(row,['scalePercent','pixel','spirit'])&&validPropScalePercent(p)&&!seen.has(p),'PROP_PACKAGE_SCALE_VARIANTS');
+   seen.add(p);
+   const width=Math.max(1,Math.round(media.detail.width*p/100)),height=Math.max(1,Math.round(media.detail.height*p/100));
+   const pixel=parseMedia(row.pixel,'variant','still'),spirit=parseMedia(row.spirit,'variant','still');
+   insist([pixel,spirit].every(a=>a.width===width&&a.height===height),'PROP_PACKAGE_SCALE_GEOMETRY');
+   return {scalePercent:p,pixel,spirit};
+  });
+ }
  insist(keys(v.interaction,['pixelOpen','detailTrigger']),'PROP_PACKAGE_HOTSPOT');
  const pixelOpen=rect(v.interaction.pixelOpen,'open',media.pixel),detailTrigger=rect(v.interaction.detailTrigger,'activate',media.detail);
  if(v.revision===1)insist(v.animations.length<=1,'PROP_PACKAGE_INITIAL_ANIMATION');
@@ -85,7 +102,7 @@ export function parsePropPackage(v){
  });
  const {schemaVersion,projectId,propId,revision,officialRequestId,requestSha256,designContextSha256,title:label,parentSha256}=v;
  return {schemaVersion,projectId,propId,revision,officialRequestId,requestSha256,designContextSha256,title:label,parentSha256,
-  media,interaction:{pixelOpen,detailTrigger},animations};
+  media,interaction:{pixelOpen,detailTrigger},animations,...(scaleVariants?{scaleVariants}:{}),...(scaleSourcePixel?{scaleSourcePixel}:{})};
 }
 export function canonicalPropPackage(v){
  const text=canonical(parsePropPackage(v));
@@ -151,11 +168,16 @@ export async function validatePropSuccessor(previous,next,{operation,animationId
   }
  }else if(operation==='append-animation'){
   insist(id(animationId)&&preserved&&b.animations.length===a.animations.length+1&&
-   ['media','title','interaction','designContextSha256'].every(k=>canonical(a[k])===canonical(b[k])),
+   ['media','title','interaction','designContextSha256','scaleVariants','scaleSourcePixel'].every(k=>canonical(a[k])===canonical(b[k])),
    'PROP_PACKAGE_ANIMATION_PRESERVATION');
   const clip=b.animations[a.animations.length];
   insist(clip.id===animationId&&clip.officialRequestId===b.officialRequestId&&clip.requestSha256===b.requestSha256,
    'PROP_PACKAGE_ANIMATION_LINEAGE');
+ }else if(operation==='append-scales'){
+  const old=a.scaleVariants??[],next=b.scaleVariants??[],byScale=new Map(next.map(row=>[row.scalePercent,row]));
+  insist(animationId===undefined&&next.length>old.length&&
+   ['media','title','interaction','designContextSha256','animations','scaleSourcePixel'].every(k=>canonical(a[k])===canonical(b[k]))&&
+   old.every(row=>canonical(row)===canonical(byScale.get(row.scalePercent))),'PROP_PACKAGE_SCALE_PRESERVATION');
  }else fail('PROP_PACKAGE_OPERATION');
  return b;
 }
@@ -218,7 +240,7 @@ function paeth(a,b,c){
  const p=a+b-c,da=Math.abs(p-a),db=Math.abs(p-b),dc=Math.abs(p-c);
  return da<=db&&da<=dc?a:db<=dc?b:c;
 }
-async function verifyDecodedAlpha(parts,width,height){
+async function verifyDecodedAlpha(parts,width,height,variant=false){
  const len=height*(1+width*4),data=new Uint8Array(len);
  const stream=new Blob(parts).stream().pipeThrough(new DecompressionStream('deflate'));
  const reader=stream.getReader();let total=0;
@@ -242,13 +264,13 @@ async function verifyDecodedAlpha(parts,width,height){
   }
   const swap=a;a=b;b=swap;
  }
- insist(on>0&&off>0,'PROP_PACKAGE_ALPHA_CONTENT');
+ insist(on>0&&(variant||off>0),'PROP_PACKAGE_ALPHA_CONTENT');
 }
-export async function verifyPropMedia(input,descriptor){
- const media=parseMedia(descriptor,'detail',descriptor?.mediaType==='image/apng'?'subtle':'still');
+export async function verifyPropMedia(input,descriptor,{variant=false}={}){
+ const media=parseMedia(descriptor,variant?'variant':'detail',descriptor?.mediaType==='image/apng'?'subtle':'still');
  insist(input instanceof Uint8Array&&input.length===media.bytes&&input.length<=propPackageMediaLimit&&
   await sha(input)===media.sha256,'PROP_PACKAGE_MEDIA_HASH');
- for(const image of pngFrames(input,media))await verifyDecodedAlpha(image,media.width,media.height);
+ for(const image of pngFrames(input,media))await verifyDecodedAlpha(image,media.width,media.height,variant);
  return input;
 }
 

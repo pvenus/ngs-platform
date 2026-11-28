@@ -1,5 +1,5 @@
 import {exactScale} from './assembly-sprite-layout.mjs';
-import {mapFields,officialId,mapText,regionId,validRoleZOrder} from './map-contract.mjs';
+import {mapFields,officialId,mapText,regionId,validRoleZOrder,validImageScalePercent} from './map-contract.mjs';
 import {propSlug,propSha,propRevision} from './prop-workspace-contract.mjs';
 export const assemblyTypes=['assembly.generate','assembly.update'];
 export const assemblyPath='/api/assembly-workspace',assemblyRoot='cinematics/assemblies';
@@ -17,11 +17,12 @@ export function permitsAssemblyPortal(conditions,id,propState){
  const matches=(conditions??[]).filter(c=>c.portalId===id);
  return matches.every(c=>propState(c.propRole)===c.requiredState);
 }
+const validBindingPin=q=>mapFields(q,['propId','revision','sha256',...(q&&Object.hasOwn(q,'imageScalePercent')?['imageScalePercent']:[])])&&
+ propSlug(q.propId)&&propRevision(q.revision)&&propSha(q.sha256)&&(!Object.hasOwn(q,'imageScalePercent')||validImageScalePercent(q.imageScalePercent));
 const validManifestation=p=>mapFields(p,['id','type','layout','attachments','bindings',...(p&&Object.hasOwn(p,'zOrder')?['zOrder']:[]),...(p&&Object.hasOwn(p,'scale')?['scale']:[])])&&
  typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&
  mapFields(p.layout,['spirit'])&&mapFields(p.layout.spirit,['regionId','x','y'])&&regionId(p.layout.spirit.regionId)&&coordinate(p.layout.spirit,10,90)&&
- mapFields(p.attachments,[])&&mapFields(p.bindings,['spirit'])&&mapFields(p.bindings.spirit,['propId','revision','sha256'])&&
- propSlug(p.bindings.spirit.propId)&&propRevision(p.bindings.spirit.revision)&&propSha(p.bindings.spirit.sha256)&&
+ mapFields(p.attachments,[])&&mapFields(p.bindings,['spirit'])&&validBindingPin(p.bindings.spirit)&&
  (!Object.hasOwn(p,'zOrder')||validRoleZOrder(p.zOrder,['spirit']))&&
  (!Object.hasOwn(p,'scale')||mapFields(p.scale,['spirit'])&&exactScale(p.scale.spirit));
 const actions=['pickup','drop','activate'],modules=['inventory.move.v1','prop.interact.v1','switch.v1'];
@@ -73,7 +74,7 @@ export function validAssemblyPuzzle(p){
   (!Object.hasOwn(p,'scale')||mapFields(p.scale,roleNames)&&roleNames.every(k=>exactScale(p.scale[k])))&&typeof p.id==='string'&&/^[a-z0-9][a-z0-9-]{0,63}$/u.test(p.id)&&p.type===assemblyPuzzleType&&
   mapFields(p.layout,['altar','well'])&&['altar','well'].every(k=>mapFields(p.layout[k],['regionId','x','y'])&&regionId(p.layout[k].regionId)&&coordinate(p.layout[k],10,90))&&
   mapFields(p.attachments,['bowl','lid'])&&['bowl','lid'].every(k=>mapFields(p.attachments[k],['x','y'])&&coordinate(p.attachments[k],-12,12))&&
-  mapFields(p.bindings,roleNames)&&roleNames.every(k=>{const q=p.bindings[k];return mapFields(q,['propId','revision','sha256'])&&propSlug(q.propId)&&propRevision(q.revision)&&propSha(q.sha256);});
+  mapFields(p.bindings,roleNames)&&roleNames.every(k=>validBindingPin(p.bindings[k]));
 }
 export const puzzleList=p=>Array.isArray(p)&&p.length<=16&&p.every(validAssemblyPuzzle)&&new Set(p.map(q=>q.id)).size===p.length;
 export function validAssemblyRequest(p,type){

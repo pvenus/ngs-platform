@@ -3,9 +3,9 @@ import {fileUpdateType,fileUpdateSchema,mapUpdateRoot,validFileUpdate} from './f
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {orderedMapChain} from './map-warp.mjs';
 import {mountAssemblyActor,rearAvatar} from './assembly-actor.mjs';
-import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations,decorationZOrder} from './assembly-sprite-layout.mjs';
+import {decorationsLoader,decorationBox,paintDecoration,renderMapDecorations,decorationZOrder,propImageVariantArt,missingDecorationImage} from './assembly-sprite-layout.mjs';
 import {hashBrowserMap,validMapPerspective} from './map-contract.mjs';
-import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,validPropZOrder,propZMin,propZMax,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates} from './map-contract.mjs';
+import {mapTypes,mapGenerateDecorSchema,backgroundId,validMapGraph,validMapState,validMapRequest,mapRect,mapPoint,mapCanonical,maxMapColliders,mapColliderShape,mapColliderRotation,mapDecorationRotation,validPropZOrder,propZMin,propZMax,mapDecorPinKey,mapDecorPropPin,maxMapDecorations,maxMapDecorationCandidates,propImageScalePercents} from './map-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,fn,cls='prop-control')=>{const b=el('button',text,cls);b.type='button';b.onclick=fn;return b;};
@@ -222,7 +222,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
  const decorationDesign={mode:'none',notes:'',candidates:[],...saved?.decorationDesign};
  const decorArt=decorationsLoader(request,projectId);
  let decorRegion=null,decorId=null,decorPreview=false,warpSight=false,propRows=null,propLoading=false,propLoadFailed=false,decorAdding=false;
- const decorSelection={propId:'',visibility:'both'};
+ const decorSelection={propId:'',visibility:'both',imageScalePercent:''};
  let decorListScroll=0;
  const newDecorationId=()=> 'd-'+browserRequestId().replaceAll('-','').slice(0,20);
  const showDecorationMode=visibility=>{if(visibility!=='both')decorPreview=visibility==='cinematic';};
@@ -554,35 +554,52 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    const rows=propRows.filter(p=>!excluded.has(p.propId));
    const selector=setOptions(['',...rows.map(p=>p.propId)],rows.some(p=>p.propId===selection?.propId)?selection.propId:'',id=>id?rows.find(p=>p.propId===id).title:'프랍 선택');
    const vis=setOptions(Object.keys(visibilityLabels),selection?.visibility??'both',value=>visibilityLabels[value]);
-   const action=button('프랍 추가',()=>{if(locked||decorAdding||action.disabled)return;const row=rows.find(p=>p.propId===selector.value);if(row)void onAdd(pinProp(row),vis.value);});
+   const imageScale=el('select'),imageScaleField=label('이미지 배율',imageScale);
+   imageScaleField.hidden=!selection;imageScale.disabled=true;
+   let sourceArt,loaded=false;
+   const updateAction=()=>{action.disabled=selector.disabled||!selector.value||Boolean(selection&&(!loaded||
+    missingDecorationImage({visibility:vis.value,imageScalePercent:imageScale.value?Number(imageScale.value):undefined},sourceArt)));};
+   const action=button('프랍 추가',()=>{if(locked||decorAdding||action.disabled)return;const row=rows.find(p=>p.propId===selector.value);if(row)void onAdd(pinProp(row),vis.value,imageScale.value?Number(imageScale.value):undefined);});
    selector.disabled=vis.disabled=locked||decorAdding||!rows.length;
-   action.disabled=selector.disabled||!selector.value;
+   updateAction();
    const sample=el('div',undefined,'map-decoration-source-preview');
    sample.setAttribute('aria-label','추가할 프랍 미리보기');
    sample.hidden=true;
    let version=0;
+   const paintSample=(selected,status)=>{
+    const art=propImageVariantArt(sourceArt,imageScale.value?Number(imageScale.value):undefined);
+    const imgAsset=imageScale.value?(vis.value==='pixel'?art?.pixel:art?.cinematic??art?.pixel):(art?.detail??art?.cinematic);
+    sample.replaceChildren(status);
+    if(!imgAsset){status.textContent='이 프랍의 미리보기를 불러올 수 없어요.';return;}
+    const img=el('img');img.alt=selected.title+' 미리보기';img.draggable=false;
+    img.width=imgAsset.width;img.height=imgAsset.height;
+    img.onerror=()=>{img.hidden=true;status.textContent='이 프랍의 미리보기를 불러올 수 없어요.';};
+    img.src=imgAsset.url;status.textContent=imageScale.value?imageScale.value+'% 배치 이미지 미리보기':art.detail?'비픽셀 원본 미리보기':'비픽셀 배치 이미지 미리보기';sample.append(img);
+   };
+   let selectedSource,sampleStatus;
    const showSample=async()=>{
     const ticket=++version,selected=rows.find(p=>p.propId===selector.value);
-    sample.hidden=!selected;sample.replaceChildren();
+    sample.hidden=!selected;sample.replaceChildren();loaded=false;imageScale.disabled=true;imageScale.replaceChildren();updateAction();
     if(!selected)return;
     const status=el('p','프랍 이미지 불러오는 중…','meta');
     status.setAttribute('role','status');sample.append(status);
     const prop=pinProp(selected),art=(await decorArt.load([{prop}])).get(mapDecorPinKey(prop));
     if(signal?.aborted||sample.isConnected===false||ticket!==version)return;
-    const imgAsset=art?.detail??art?.cinematic;
-    if(!imgAsset){status.textContent='이 프랍의 비픽셀 미리보기를 불러올 수 없어요.';return;}
-    const img=el('img');img.alt=selected.title+' 비픽셀 미리보기';img.draggable=false;
-    img.width=imgAsset.width;img.height=imgAsset.height;
-    img.onerror=()=>{img.hidden=true;status.textContent='이 프랍의 비픽셀 미리보기를 불러올 수 없어요.';};
-    img.src=imgAsset.url;status.textContent=art.detail?'비픽셀 원본 미리보기':'비픽셀 배치 이미지 미리보기';sample.append(img);
+    sourceArt=art;loaded=true;selectedSource=selected;sampleStatus=status;
+    const options=['',...propImageScalePercents.filter(p=>art?.variants?.has(p)).map(String)];
+    for(const scale of options){const o=el('option',scale?scale+'%':'기존 배치 이미지');o.value=scale;imageScale.append(o);}
+    imageScale.value=options.includes(selection?.imageScalePercent)?selection.imageScalePercent:'';
+    imageScale.disabled=selector.disabled||options.length===1;
+    updateAction();paintSample(selected,status);
    };
    selector.onchange=()=>{
-    if(selection)selection.propId=selector.value;
-    action.disabled=selector.disabled||!selector.value;void showSample();
+    if(selection){selection.propId=selector.value;selection.imageScalePercent='';}
+    void showSample();
    };
-   vis.onchange=()=>{if(selection)selection.visibility=vis.value;};
+   vis.onchange=()=>{if(selection)selection.visibility=vis.value;updateAction();if(loaded&&selectedSource)paintSample(selectedSource,sampleStatus);};
+   imageScale.onchange=()=>{if(selection)selection.imageScalePercent=imageScale.value;updateAction();if(selectedSource)paintSample(selectedSource,sampleStatus);};
    const row=el('div',undefined,'map-row');
-   row.append(label('사용할 프랍',selector),label('표시 모드',vis),action);host.append(row,sample);
+   row.append(label('사용할 프랍',selector),label('표시 모드',vis),imageScaleField,action);host.append(row,sample);
    if(selector.value)queueMicrotask(()=>void showSample());
   }
   const decorPaintTicket=new WeakMap();
@@ -606,19 +623,19 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
    toggle.setAttribute('aria-label','꾸미기 서진 능력 미리보기');toggle.setAttribute('aria-pressed',String(decorPreview));
    const controls=el('div',undefined,'map-row');controls.append(label('꾸밀 구역',room));decoration.append(controls);
    const rows=graph.decorations??[], here=rows.filter(p=>p.regionId===decorRegion),chosen=here.find(p=>p.id===decorId);
-   if(rows.length<maxMapDecorations)availableProps(decoration,new Set(),async(prop,visibility)=>{
+   if(rows.length<maxMapDecorations)availableProps(decoration,new Set(),async(prop,visibility,imageScalePercent)=>{
     if(decorAdding||locked)return;
     const regionId=decorRegion;
     decorAdding=true;render();
     const id=newDecorationId();
-    const row={id,regionId,prop,anchor:{x:500,y:650},scale:100,visibility};
+    const row={id,regionId,prop,anchor:{x:500,y:650},scale:100,visibility,...(imageScalePercent===undefined?{}:{imageScalePercent})};
     const art=(await decorArt.load([row])).get(mapDecorPinKey(prop));decorAdding=false;
     if(signal?.aborted)return;
-    if(!art||(visibility==='both'?!(art.pixel&&art.cinematic):!art[visibility])){
+    if(missingDecorationImage(row,art)){
      bark.textContent='선택한 프랍에 표시 모드에 필요한 이미지가 없어요.';render();return;
     }
     graph.decorations=[...(graph.decorations??[]),row];decorRegion=regionId;decorId=id;
-    decorSelection.propId='';decorListScroll=Number.MAX_SAFE_INTEGER;showDecorationMode(visibility);changed();
+    decorSelection.propId='';decorSelection.imageScalePercent='';decorListScroll=Number.MAX_SAFE_INTEGER;showDecorationMode(visibility);changed();
    },decorSelection);else decoration.append(el('p','맵 하나에 꾸미기 프랍을 최대 '+maxMapDecorations+'개까지 배치할 수 있어요.','meta'));
    const workspace=el('div',undefined,'map-decoration-editor');
    const mapPane=el('div',undefined,'map-preview map-decoration-map');
@@ -693,7 +710,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
      const missing=el('p',undefined,'meta');missing.hidden=true;decoration.append(missing);
      const report=()=>{const count=here.filter(row=>{
       const art=decorArt.cache.get(mapDecorPinKey(row.prop));
-      return !art||(row.visibility==='both'?!(art.pixel&&art.cinematic):!art[row.visibility]);
+      return missingDecorationImage(row,art);
      }).length;missing.hidden=count===0;missing.textContent=count?'배치 이미지 '+count+'개를 읽을 수 없어요. 프랍의 게시 버전과 표시 모드를 확인해 주세요.':'';};
      queueMicrotask(paint);void decorArt.load(here).then(()=>{paint();report();});
     }
@@ -707,7 +724,7 @@ function mountMapEditor({detail,maps,assets,request,projectId,navigate,signal,st
     const next=visibility.value;
     const art=(await decorArt.load([chosen])).get(mapDecorPinKey(chosen.prop));
     if(signal?.aborted)return;
-    if(!art||(next==='both'?!(art.pixel&&art.cinematic):!art[next])){
+    if(missingDecorationImage({...chosen,visibility:next},art)){
      visibility.value=chosen.visibility;bark.textContent='이 표시 모드에 필요한 배치 이미지가 없어요.';return;
     }
     chosen.visibility=next;showDecorationMode(next);changed();

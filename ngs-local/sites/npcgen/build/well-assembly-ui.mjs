@@ -1,9 +1,9 @@
 import {browserRequestId} from './browser-request-id.mjs';
 import {fileUpdateType,fileUpdateSchema,assemblyUpdateRoot,validFileUpdate} from './file-update-envelope.mjs';
-import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,decorationArt,decorationsLoader,renderMapDecorations,paintPropDepth,puzzleZOrder} from './assembly-sprite-layout.mjs';
+import {assemblySpriteBox,applyAssemblySpriteBox,exactScale,scaleOf,imageSize,decorationArt,decorationsLoader,renderMapDecorations,paintPropDepth,puzzleZOrder,propImageVariantArt} from './assembly-sprite-layout.mjs';
 import {assemblyReachable,bowlStates,validPortalConditions} from './assembly-contract.mjs';
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
-import {validMapState,validPropZOrder,propZMin,propZMax,mapDecorPinKey} from './map-contract.mjs';
+import {validMapState,validPropZOrder,propZMin,propZMax,mapDecorPinKey,propImageScalePercents,validImageScalePercent} from './map-contract.mjs';
 import {wellDemoId,wellDemoTitle,wellAssemblySlots,mountWellPuzzleDemo,spiritDemoId,spiritDemoTitle,mountSpiritManifestation,prepareWellPuzzle} from './well-puzzle-demo.mjs';
 
 const slots=Object.entries(wellAssemblySlots),spiritSlots=[['spirit','영물']],allSlots=[...slots,...spiritSlots];
@@ -76,7 +76,7 @@ export function dragWellPlacement({role,regionId,clientX,clientY,rect,layout,att
  return base?{layout:{...layout,[base]:{regionId,x:clamp(x,10,90),y:clamp(y,10,90)}},attachments}:null;
 }
 
-export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bindings,media,pins,scale,zOrder,portalConditions}){
+export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bindings,media,pins,scale,zOrder,portalConditions,imageScales}){
  if(!validMapState(map))throw Error('MAP_INVALID');
  if(!['altar','well'].every(key=>viewPoint(layout[key])&&map.graph.regions.some(x=>x.id===layout[key].regionId)))throw Error('PLACEMENT_INVALID');
  if(attachments&&!['bowl','lid'].every(key=>offsetOk(attachments[key])))throw Error('ATTACHMENT_INVALID');
@@ -84,10 +84,12 @@ export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bin
  const art={},spiritArt={},artSizes={};
  for(const [role] of slots){
   const row=pins?.[role]??props.find(p=>p.propId===bindings[role]), result=media[role];
-  if(!row||!result||result.propId!==row.propId||result.source?.revision!==row.revision||
-    result.source?.sha256!==row.sha256||!imageSize(result.media?.pixel)||!safeMedia(result.media?.pixel?.url)||result.media.pixel.mediaType!=='image/png')
+  const imageScalePercent=imageScales?imageScales[role]:pins?.[role]?.imageScalePercent;
+  if(!row||!result||result.propId!==row.propId||result.source?.revision!==row.revision||result.source?.sha256!==row.sha256)
    throw Error('PROP_ART_MISSING_OR_STALE');
-  const {pixel,spirit}=result.media;
+  const variant=propImageVariantArt(decorationArt(result,row),imageScalePercent);
+  const {pixel,spirit}=imageScalePercent===undefined?result.media??{}:{pixel:variant?.pixel,spirit:variant?.cinematic};
+  if(pixel?.mediaType!=='image/png'||!imageSize(pixel)||!safeMedia(pixel.url))throw Error('PROP_ART_MISSING_OR_STALE');
   art[role]=pixel.url;artSizes[role]={width:pixel.width,height:pixel.height};
   if(spirit?.mediaType==='image/png'&&spirit.width===pixel.width&&spirit.height===pixel.height&&safeMedia(spirit.url))
    spiritArt[role]=spirit.url;
@@ -95,8 +97,8 @@ export function buildWellRehearsal({map,backgrounds,props,layout,attachments,bin
  return {initialRegion:map.graph.startRegionId,regions,connections:map.graph.connections,positions:layout,attachments,scale,zOrder,art,spiritArt,artSizes,graph:map.graph,portalConditions};
 }
 
-export function buildSpiritRehearsal(map,backgrounds,point,scale,prop,pin,decorArt,zOrder){
- const media=pin?decorationArt(prop,pin):null;
+export function buildSpiritRehearsal(map,backgrounds,point,scale,prop,pin,decorArt,zOrder,imageScalePercent){
+ const media=pin?propImageVariantArt(decorationArt(prop,pin),imageScalePercent):null;
  if(!media?.pixel||!media.cinematic||!viewPoint(point)||!map.graph.regions.some(r=>r.id===point.regionId)||!exactScale(scale))
   throw Error('SPIRIT_PLACEMENT_OR_ART_INVALID');
  return {graph:map.graph,regions:mapRehearsalRegions(map,backgrounds),point,scale,media,decorArt,zOrder};
@@ -116,7 +118,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  const mapSelect=el('select'),puzzle=el('select');
  puzzle.append(option(wellDemoId,wellDemoTitle),option(spiritDemoId,spiritDemoTitle));
  const inputs=el('div',null,'well-assembly-grid');inputs.append(field('맵',mapSelect));
- const positionInputs={},propInputs={},offsetInputs={},scaleInputs={},zInputs={},sizeLabels={},retryArt={},bindingGroups={},positionGroups={},offsetGroups={};
+ const positionInputs={},propInputs={},imageScaleInputs={},offsetInputs={},scaleInputs={},zInputs={},sizeLabels={},retryArt={},latestButtons={},bindingGroups={},positionGroups={},offsetGroups={};
  const placement=el('div',null,'well-assembly-grid');
  const bindingFields=el('div',null,'well-assembly-grid');
  for(const [role,label] of allSlots){
@@ -140,7 +142,15 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   retry.addEventListener('click',()=>{if(selected)void paintArt(selected,role);},{signal});
   const z=el('input');z.type='number';z.min=String(propZMin);z.max=String(propZMax);z.step='1';z.value=String(puzzleZOrder(null,role));
   z.setAttribute('aria-label',label+' Z Order');zInputs[role]=z;
-  group.append(field(label,select),scaleLine,field('Z Order',z),dimensions,retry);bindingGroups[role]=group;bindingFields.append(group);
+  const imageScale=el('select');imageScale.disabled=true;imageScale.setAttribute('aria-label',label+' 이미지 배율');
+  imageScale.append(option('','기존 배치 이미지'));imageScaleInputs[role]=imageScale;
+  const latest=control('최신 프랍으로 연결');latest.hidden=true;latestButtons[role]=latest;
+  latest.addEventListener('click',()=>{
+   if(!selected||busy)return;
+   delete selected.pinned?.[role];delete selected.imageScales?.[role];
+   if(run)stopPlay();remember();refresh();void paintArt(selected,role);
+  },{signal});
+  group.append(field(label,select),latest,field('이미지 배율',imageScale),scaleLine,field('Z Order',z),dimensions,retry);bindingGroups[role]=group;bindingFields.append(group);
  }
  for(const [key,title] of [['altar','제상 위치 · 그릇 자리 포함'],['well','우물 위치 · 뚜껑 포함'],['spirit','영물 위치']]){
   const group=el('fieldset'),legend=el('legend',title),region=el('select'),coords=el('div',null,'well-assembly-grid');
@@ -226,7 +236,10 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   if(Object.values(next).every(viewPoint))selected.layout=next;
   if(Object.values(offsets).every(offsetOk))selected.attachments=offsets;
   const values=bindings();
-  for(const [role,id] of Object.entries(values))if(selected.pinned?.[role]?.propId!==id)delete selected.pinned?.[role];
+  for(const [role,id] of Object.entries(values))if(selected.bindings[role]!==id){
+   if(selected.pinned?.[role]?.propId!==id)delete selected.pinned?.[role];
+   delete selected.imageScales?.[role];
+  }
   selected.bindings=values;
   const sizes=scale();if(Object.values(sizes).every(exactScale))selected.scale=sizes;
  }
@@ -300,7 +313,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    entry.value=id;scaleInputs[key].value=scaleOf(preset.scale,key);zInputs[key].value=puzzleZOrder(preset.zOrder,key);
   }
   gates.hidden=usesSpirit(preset);
-  for(const [role] of slotsFor(preset))showDimensions(preset,role);
+  for(const [role] of slotsFor(preset)){showDimensions(preset,role);setImageScaleOptions(preset,role,spriteViews.get(preset.id+':'+role)?.sourceArt);}
   for(const pin of pins.values())pin.classList.toggle('active',pin.dataset.instance===preset.id);
   showList();if(!usesSpirit(preset))renderGates();refresh();if(focusRole)propInputs[focusRole].focus({preventScroll:true});
  }
@@ -367,18 +380,33 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    '100% = 원래 픽셀 크기';
  }
  async function pinnedRead(pin){
-  const out=await request(api('prop',{propId:pin.propId}));
-  if(out.prop?.source?.revision!==pin.revision||out.prop?.source?.sha256!==pin.sha256)throw Error('ASSEMBLY_PROP_PIN_INACTIVE');
+  const matches=out=>out.prop?.propId===pin.propId&&out.prop?.source?.revision===pin.revision&&out.prop?.source?.sha256===pin.sha256;
+  let out=await request(api('prop',{propId:pin.propId}));
+  if(!matches(out))out=await request(api('prop',{propId:pin.propId,revision:pin.revision,sha256:pin.sha256}));
+  if(!matches(out))throw Error('ASSEMBLY_PROP_PIN_INACTIVE');
   return out;
  }
  function loadProp(preset,role,id){const pin=preset?.pinned?.[role];return published&&pin?.propId===id?pinnedRead(pin):request(api('prop',{propId:id}));}
+ function setImageScaleOptions(preset,role,art){
+  if(selected!==preset)return;
+  const input=imageScaleInputs[role],chosen=preset.imageScales?.[role],pin=preset.pinned?.[role];
+  const latest=props.find(p=>p.propId===pin?.propId);
+  latestButtons[role].hidden=!latest||(pin.revision===latest.revision&&pin.sha256===latest.sha256);
+  const options=propImageScalePercents.filter(percent=>{
+   const v=art?.variants?.get(percent);return v?.pixel&&(role!=='spirit'||v.cinematic);
+  });
+  input.replaceChildren(option('','기존 배치 이미지'),...options.map(percent=>option(String(percent),percent+'%')));
+  if(validImageScalePercent(chosen)&&!options.includes(chosen))input.append(option(String(chosen),chosen+'% (읽을 수 없음)'));
+  input.value=validImageScalePercent(chosen)?String(chosen):'';
+  input.disabled=!preset.bindings[role]||(!options.length&&chosen===undefined);
+ }
  async function paintArt(preset,role){
   const key=preset.id+':'+role,pin=pins.get(key),id=preset.bindings[role];
   if(!pin)return;
   pin.classList.toggle('unbound',!id);
   const view=spriteViews.get(key),img=view.img,token=Symbol();
   const current=()=>!signal.aborted&&spriteViews.get(key)===view&&view.token===token&&preset.bindings[role]===id;
-  view.token=token;view.asset=null;view.state=id?'loading':'empty';
+  view.token=token;view.asset=null;view.sourceArt=null;view.state=id?'loading':'empty';setImageScaleOptions(preset,role,null);
   img.hidden=true;img.removeAttribute('src');showDimensions(preset,role);
   if(!id)return;
   const row=preset.pinned?.[role]??props.find(p=>p.propId===id);
@@ -391,15 +419,16 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
     job=loadProp(preset,role,id).then(({prop})=>{
      if(prop?.propId!==id||prop.source?.revision!==row.revision||prop.source?.sha256!==row.sha256)
       throw Error('ASSEMBLY_PROP_PIN_INACTIVE');
-     const pixel=role==='spirit'?prop.media?.spirit:prop.media?.pixel;
-     if(role==='spirit'&&!decorationArt(prop,{propId:id,revision:row.revision,sha256:row.sha256})?.pixel)throw Error('PROP_ART_MISSING_OR_STALE');
-     if(pixel?.mediaType!=='image/png'||!imageSize(pixel)||!safeMedia(pixel.url))throw Error('PROP_ART_MISSING_OR_STALE');
-     return pixel;
+     return decorationArt(prop,row);
     });
     artCache.set(requestKey,job);
    }
-   const src=await job;
+   const sourceArt=await job;
    if(!current())return;
+   view.sourceArt=sourceArt;setImageScaleOptions(preset,role,sourceArt);
+   const media=propImageVariantArt(sourceArt,preset.imageScales?.[role]);
+   const src=role==='spirit'?(media?.pixel?media?.cinematic:null):media?.pixel;
+   if(!src||!safeMedia(src.url))throw Error('PROP_ART_MISSING_OR_STALE');
    img.src=src.url;
    // A valid manifest does not prove that the actual PNG loaded.
    await img.decode();
@@ -506,7 +535,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    zoom.replaceChildren(option('','전체 구역'),...targets.map(x=>option(x.id,x.name)));
    for(const entry of Object.values(positionInputs))entry.region.replaceChildren(...targets.map(x=>option(x.id,x.name)));
    let saved=drafts[map.mapId];
-   if(!saved&&published)saved=published.puzzles.map(p=>({...structuredClone(p),pinned:p.bindings,bindings:Object.fromEntries(Object.entries(p.bindings).map(([role,pin])=>[role,pin.propId]))}));
+   if(!saved&&published)saved=published.puzzles.map(p=>({...structuredClone(p),pinned:structuredClone(p.bindings),imageScales:Object.fromEntries(Object.entries(p.bindings).filter(([,pin])=>validImageScalePercent(pin.imageScalePercent)).map(([role,pin])=>[role,pin.imageScalePercent])),bindings:Object.fromEntries(Object.entries(p.bindings).map(([role,pin])=>[role,pin.propId]))}));
    if(!saved&&previous?.mapId===map.mapId&&previous.layout&&previous.bindings)
     saved=[{id:browserRequestId(),type:wellDemoId,layout:previous.layout,bindings:previous.bindings,
       attachments:previous.attachments??{bowl:{x:5,y:-10},lid:{x:5,y:-10}}}];
@@ -529,6 +558,15 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
   selected.scale={...Object.fromEntries(slotsFor(selected).map(([k])=>[k,scaleOf(selected.scale,k)])),[role]:Number(input.value)};
   movePin(selected,role);showDimensions(selected,role);if(run)stopPlay();remember();refresh();
  },{signal});
+ for(const [role,input] of Object.entries(imageScaleInputs))input.addEventListener('change',()=>{
+  if(!selected||!applicable(selected,role))return;
+  const next=input.value===''?undefined:Number(input.value);
+  if(next!==undefined&&!validImageScalePercent(next))return;
+  selected.imageScales={...selected.imageScales};
+  if(next===undefined)delete selected.imageScales[role];
+  else selected.imageScales[role]=next;
+  if(run)stopPlay();remember();refresh();void paintArt(selected,role);
+ },{signal});
  for(const [role,input] of Object.entries(zInputs))input.addEventListener('change',()=>{
   if(!selected||!applicable(selected,role))return;
   const next=input.valueAsNumber,previous=puzzleZOrder(selected.zOrder,role);
@@ -540,20 +578,20 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
  stop.addEventListener('click',()=>{stopPlay();setStatus('테스트를 종료했어요. 연결 값은 그대로예요.');play.focus();},{signal});
  play.addEventListener('click',async()=>{
   if(!ready()||busy)return;
-  const which=map, instance=selected, coords=layout(), offsets=attachments(), sizes=scale(), chosen=bindings(), ticket=++generation;
+  const which=map, instance=selected, coords=layout(), offsets=attachments(), sizes=scale(), chosen=bindings(), imageScales={...instance.imageScales}, ticket=++generation;
   stopPlay();busy=true;refresh();setStatus('연결한 프랍과 맵 이미지를 확인하고 있어요.');
   try{
    const {latest,art,media,decorArt}=await playInputs(which.mapId,Promise.all(
     Object.entries(chosen).map(async([role,id])=>[role,(await loadProp(instance,role,id)).prop])));
    if(signal.aborted||ticket!==generation)return;
-   if(selected!==instance||JSON.stringify(chosen)!==JSON.stringify(bindings())||JSON.stringify(coords)!==JSON.stringify(layout())||JSON.stringify(offsets)!==JSON.stringify(attachments())||JSON.stringify(sizes)!==JSON.stringify(scale())){setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');return;}
+   if(selected!==instance||JSON.stringify(chosen)!==JSON.stringify(bindings())||JSON.stringify(coords)!==JSON.stringify(layout())||JSON.stringify(offsets)!==JSON.stringify(attachments())||JSON.stringify(sizes)!==JSON.stringify(scale())||JSON.stringify(imageScales)!==JSON.stringify(instance.imageScales??{})){setStatus('연결이 바뀌었어요. 다시 테스트 플레이를 누르세요.');return;}
    if(usesSpirit(instance)){
     const pin=instance.pinned?.spirit??props.find(p=>p.propId===chosen.spirit);
-    const config=buildSpiritRehearsal(latest,art,coords.spirit,sizes.spirit,media.spirit,pin,decorArt,instance.zOrder);
+    const config=buildSpiritRehearsal(latest,art,coords.spirit,sizes.spirit,media.spirit,pin,decorArt,instance.zOrder,imageScales.spirit);
     run=new AbortController();mountSpiritManifestation(stage,{signal:run.signal,rehearsal:config});stop.hidden=false;
     setStatus('영물 현현 테스트 중이에요.');return;
    }
-   const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned,zOrder:instance.zOrder,portalConditions:instance.portalConditions});
+   const rehearsal=buildWellRehearsal({map:latest,backgrounds:art,props,layout:coords,attachments:offsets,scale:sizes,bindings:chosen,media,pins:instance.pinned,imageScales,zOrder:instance.zOrder,portalConditions:instance.portalConditions});
    rehearsal.decorArt=decorArt;rehearsal.makeRuntime=await prepareWellPuzzle(instance.definition);if(signal.aborted||ticket!==generation)return;
    run=new AbortController();mountWellPuzzleDemo(stage,{signal:run.signal,rehearsal});stop.hidden=false;
    setStatus('테스트 중이에요. WASD로 움직이고, 표시된 포털 영역에 걸어 들어가면 이동해요.');
@@ -571,7 +609,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    ...(p.portalConditions?.length?{portalConditions:p.portalConditions}:{}),
    bindings:Object.fromEntries(slotsFor(p).map(([role])=>{
     const row=p.pinned?.[role]??props.find(x=>x.propId===p.bindings[role]);
-    return [role,row?{propId:row.propId,revision:row.revision,sha256:row.sha256}:null];
+    return [role,row?{propId:row.propId,revision:row.revision,sha256:row.sha256,...(validImageScalePercent(p.imageScales?.[role])?{imageScalePercent:p.imageScales[role]}:{})}:null];
    }))}));
   const payload={schemaVersion:fileUpdateSchema,projectId,target:{root:assemblyUpdateRoot,path:published.assemblyId,kind:'metadata'},
    expected:{revision:published.revision,officialRequestId:published.officialRequestId},
@@ -604,7 +642,7 @@ export async function mountWellAssembly({items,detail,request,projectId,signal,p
    if(signal.aborted)return;
    const revealConfigs=await Promise.all(reveals.map(async puzzle=>{
     const pin=puzzle.bindings.spirit,{prop}=await pinnedRead(pin);
-    const config=buildSpiritRehearsal(latest,art,puzzle.layout.spirit,puzzle.scale?.spirit??100,prop,pin,decorArt,puzzle.zOrder);
+    const config=buildSpiritRehearsal(latest,art,puzzle.layout.spirit,puzzle.scale?.spirit??100,prop,pin,decorArt,puzzle.zOrder,pin.imageScalePercent);
     return {...config,id:puzzle.id,onReveal:change=>{
      detail.dispatchEvent(new CustomEvent('ngs:prop-changed',{bubbles:true,detail:{type:'prop.changed',assemblyId:published.assemblyId,
       presetId:puzzle.id,asset:pin,role:'spirit',regionId:puzzle.layout.spirit.regionId,...change}}));

@@ -160,12 +160,19 @@ export function rsPropActions(list){
  const branches=input?.oneOf;
  if(!Array.isArray(types)||!Array.isArray(branches))return [];
  const matchesKeys=(values,keys)=>Array.isArray(values)&&values.length===keys.length&&keys.every(k=>values.includes(k));
- return ['generate','regenerate','animation'].filter(action=>{
-  const type=propTypes[action],schema='ngs.prop-'+(action==='animation'?'animation-generate':action)+'.v1';
+ return ['generate','regenerate','animation','scale'].filter(action=>{
+  const type=propTypes[action],schema='ngs.prop-'+(action==='animation'?'animation-generate':action==='scale'?'scale-generate':action)+'.v1';
   const exactBranches=branches.filter(x=>x?.properties?.requestType?.const===type);
   const payload=exactBranches[0]?.properties?.payload,fields=payload?.properties;
   if(types.filter(x=>x===type).length!==1||exactBranches.length!==1||
    fields?.schemaVersion?.const!==schema||fields?.projectId?.const!=='binari')return false;
+  if(action==='scale'){
+   const keys=['schemaVersion','projectId','propId','source','scalePercents'];
+   const list=fields.scalePercents;
+   const initial=branches.find(x=>x?.properties?.requestType?.const===propTypes.generate)?.properties?.payload?.properties?.scalePercents;
+   return payload.type==='object'&&payload.additionalProperties===false&&matchesKeys(payload.required,keys)&&exact(fields,keys)&&
+    list?.type==='array'&&initial?.type==='array'&&matchesKeys(list?.items?.enum,[100,90,80,70,60,50,40,30,20,10,5]);
+  }
   if(action!=='animation')return fields?.motion?.const==='still';
   const keys=['schemaVersion','projectId','propId','source','motionId','prompt'];
   const hasCandleProfile=Object.hasOwn(fields,'renderProfile');

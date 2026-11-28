@@ -263,6 +263,30 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   assert.equal(Object.hasOwn(submissions[1].payload,'reference'),false);
   walk(modalFixture.detail,x=>x.textContent==='재생성 요청')[0].click();
   modal=document.body.children[0];assert.equal(walk(modal,x=>x.tag==='select').length,0);modal.close();
+  const scaleRequests=[];
+  const scaleFixture=await mount({request:async path=>path.includes('view=design')?{designContextSha256:pin}:
+   path.includes('propId=')?{prop:{...body.json.prop,scaleVariants:[{scalePercent:20,pixel:newMedia.pixel,spirit:newMedia.spirit}]}}:{props:[pointer]},
+   actions:['generate','scale'],
+   submit:async request=>{scaleRequests.push(request);return new Response(JSON.stringify({status:'queued',queueId:'ngs.local.11111111-1111-4111-8111-111111111111'}),{status:202});}});
+  scaleFixture.tools.children[0].click();
+  modal=document.body.children[0];
+  let scales=walk(modal,el=>el.type==='checkbox');
+  assert.deepEqual(scales.map(x=>Number(x.value)),[100,90,80,70,60,50,40,30,20,10,5]);
+  assert.deepEqual(scales.filter(x=>x.checked).map(x=>Number(x.value)),[20]);
+  scales.find(x=>x.value==='100').checked=true;
+  scales.find(x=>x.value==='5').checked=true;
+  walk(modal,x=>x.tag==='input'&&x.type!=='checkbox')[0].value='scaled-fixture';
+  walk(modal,x=>x.tag==='textarea')[0].value='크기 테스트';
+  await modal.children[0].events.submit({preventDefault(){}});
+  assert.equal(scaleRequests[0].requestType,'prop.generate');assert.deepEqual(scaleRequests[0].payload.scalePercents,[100,20,5]);
+  walk(scaleFixture.detail,x=>x.textContent==='배율 추가 생성 요청')[0].click();
+  modal=document.body.children[0];scales=walk(modal,el=>el.type==='checkbox');
+  assert.equal(scales.find(x=>x.value==='20').disabled,true);
+  scales.find(x=>x.value==='5').checked=true;
+  scales.find(x=>x.value==='90').checked=true;
+  await modal.children[0].events.submit({preventDefault(){}});
+  assert.equal(scaleRequests[1].requestType,'prop.scale.generate');
+  assert.deepEqual(scaleRequests[1].payload,propPayload('scale',{propId,source,scalePercents:[90,5]}));
   const previewController=new AbortController(),nativeFetch=fetch,fetches=[];
   t.mock.method(globalThis,'fetch',async (url,opts)=>{
    fetches.push({url,opts});return new Response(png(20,20,true));
@@ -391,4 +415,46 @@ test('new presentation accepts only the fixed profile and serves three pinned im
  assert.equal(prop.media.spirit.width,16);
  assert.deepEqual((await read(new URL(prop.media.spirit.url,'http://example.invalid').searchParams)).bytes,smooth);
  assert.throws(()=>canonicalPropPackage({...result,media:{...m,spirit:{...m.spirit,width:17}}}),/PROP_PACKAGE_SPIRIT_SCALE/);
+});
+
+test('formal initial scale list and pinned append use distinct exact payload contracts',()=>{
+ const initial=propPayload('generate',{propId:'paper-new',intent:'프랍 생성',designContextSha256:pin,
+  presentationProfile:'spirit-v2',scalePercents:[100,50,20,5]});
+ const append=propPayload('scale',{propId,source,scalePercents:[90,10,5]});
+ assert.equal(validPropPayload(propTypes.generate,initial),true);
+ assert.equal(validPropPayload(propTypes.scale,append),true);
+ for(const values of [[],[10,10],[95],[0],[4],[101],['50'],[5.5]]){
+  assert.equal(validPropPayload(propTypes.generate,{...initial,scalePercents:values}),false);
+  assert.equal(validPropPayload(propTypes.scale,{...append,scalePercents:values}),false);
+ }
+ assert.equal(validPropPayload(propTypes.scale,{...append,intent:'추가'}),false);
+ assert.equal(validPropPayload(propTypes.scale,{...append,source:{...source,revision:0}}),false);
+ assert.equal(validPropPayload(propTypes.generate,{...initial,presentationProfile:'spirit-v1'}),false);
+});
+
+test('new scale assets are visible, exact previous revision and asset stay readable, backing source is not selectable',async()=>{
+ const second=png(2,2), patch=png(40,40);
+ patch[patch.length-1]^=1; // isolated proof pin; backing source never requested through the viewer route
+ const scaled={scalePercent:5,pixel:still(2,second),spirit:still(2,second)};
+ const next={...release,revision:2,parentSha256:source.sha256,officialRequestId:'request.official.'+'2'.repeat(64),
+  scaleVariants:[scaled],scaleSourcePixel:still(40,patch)};
+ const data=Buffer.from(canonicalPropPackage(next)), nextPin={revision:2,sha256:digest(data)};
+ const store=new Map(fixture);store.set(p+'/metadata.json',Buffer.from(JSON.stringify({...pointer,...nextPin})));
+ store.set(p+'/releases/2/manifest.json',data);
+ store.set(p+'/assets/'+scaled.pixel.assetId,second);
+ const options={authorize:()=>{},openProject:()=>({readBytes:async key=>store.get(key)??null})};
+ const get=q=>propWorkspaceRead({...options,query:new URLSearchParams({projectId:'binari',propId,...q})});
+ const dto=(await get()).json.prop;
+ assert.deepEqual(dto.source,nextPin);
+ assert.equal(dto.scaleSourcePixel,undefined);
+ assert.deepEqual(dto.scaleVariants.map(x=>[x.scalePercent,x.pixel.width,x.spirit.height]),[[5,2,2]]);
+ assert.deepEqual((await get({...nextPin,asset:scaled.pixel.sha256})).bytes,second);
+ assert.deepEqual((await get(source)).json.prop.source,source);
+ assert.deepEqual((await get({...source,asset:media.detail.sha256})).bytes,bytes);
+ await assert.rejects(get({...source,sha256:'a'.repeat(64)}),{status:409});
+ await assert.rejects(get({...nextPin,asset:next.scaleSourcePixel.sha256}),{status:404});
+ const cmd={requestType:propTypes.scale,payload:propPayload('scale',{propId,source:nextPin,scalePercents:[5]})};
+ await assert.rejects(admitPropRequest({...options,actions:['scale'],command:cmd}),{status:409,message:'PROP_WORKSPACE_SCALE_EXISTS'});
+ cmd.payload.scalePercents=[10,50];
+ await admitPropRequest({...options,authorize:(id,scope)=>{assert.equal(scope,'props');},actions:['scale'],command:cmd});
 });

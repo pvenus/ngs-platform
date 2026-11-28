@@ -24,7 +24,7 @@ async function packageFrom(project,p){
  let row;
  try{row=parsePropPackage(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)));}
  catch{throw unavailable();}
- if(row.propId!==p.propId||row.revision!==p.revision||row.title!==p.title)throw unavailable();
+ if(row.propId!==p.propId||row.revision!==p.revision||p.title!==undefined&&row.title!==p.title)throw unavailable();
  return row;
 }
 async function selected(project,propId){
@@ -38,11 +38,11 @@ async function selected(project,propId){
 export async function admitPropRequest({openProject,command,actions=[],authorize}){
  const k=propAction(command.requestType);
  if(!k)return;
- if(!actions.includes(k))throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
+ if(!actions.includes(k)||k==='generate'&&Array.isArray(command.payload?.scalePercents)&&!actions.includes('scale'))throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
  const p=command.payload;
  if(!validPropPayload(command.requestType,p))throw invalid();
- if(k!=='animation'&&p.motion==='subtle')throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
- await authorize?.(p.projectId,'props');
+ if(['generate','regenerate'].includes(k)&&p.motion==='subtle')throw fail('PROP_WORKSPACE_ACTION_UNAVAILABLE',404);
+ if(await authorize?.(p.projectId,'props')===false)throw fail('PROJECT_OR_RESOURCE_DENIED',403);
  const project=await openProject(p.projectId);
  if(!project)throw unavailable();
  if(k==='generate'){
@@ -59,8 +59,10 @@ export async function admitPropRequest({openProject,command,actions=[],authorize
   const {p:current,row}=await selected(project,p.propId);
   if(current.revision!==p.source.revision||current.sha256!==p.source.sha256)throw fail('PROP_WORKSPACE_SOURCE_STALE',409);
   if(k==='animation'&&row.animations.some(a=>a?.id===p.motionId))throw fail('PROP_WORKSPACE_MOTION_EXISTS',409);
+  if(k==='scale'&&p.scalePercents.some(pct=>row.scaleVariants?.some(v=>v.scalePercent===pct)))
+   throw fail('PROP_WORKSPACE_SCALE_EXISTS',409);
  }
- if(k!=='animation'){
+ if(k==='generate'||k==='regenerate'){
   await authorize?.(p.projectId,'concept');
   if((await propDesignPin(openProject,p.projectId)).designContextSha256!==p.designContextSha256)
    throw fail('PROP_DESIGN_PIN_STALE',409);
@@ -90,11 +92,11 @@ function publicPair(pointer,media){
 
 export async function propWorkspaceRead({query,openProject,authorize}){
  const q=[...query.keys()],propId=query.get('propId'),revision=query.get('revision'),sha=query.get('sha256'),asset=query.get('asset');
- const design=query.get('view')==='design';
- const expected=design?['projectId','view']:asset?['projectId','propId','revision','sha256','asset']:propId?['projectId','propId']:['projectId'];
+ const design=query.get('view')==='design',exactPin=revision!==null||sha!==null||asset!==null;
+ const expected=design?['projectId','view']:exactPin?['projectId','propId','revision','sha256',...(asset?['asset']:[])]:propId?['projectId','propId']:['projectId'];
  if(new Set(q).size!==expected.length||q.length!==expected.length||!expected.every(k=>q.includes(k))||query.get('projectId')!==projectId||
-    propId!==null&&!propSlug(propId)||asset!==null&&(!propSha(asset)||!propSha(sha)||!/^\d{1,16}$/u.test(revision??'')||
-     !propRevision(Number(revision))||String(Number(revision))!==revision))throw invalid();
+    propId!==null&&!propSlug(propId)||exactPin&&(!propSlug(propId)||!propSha(sha)||!/^\d{1,16}$/u.test(revision??'')||
+     !propRevision(Number(revision))||String(Number(revision))!==revision||asset!==null&&!propSha(asset)))throw invalid();
  await authorize(projectId,design?'concept':'props');
  if(design)return {json:await propDesignPin(openProject,projectId)};
  const project=await openProject(projectId);
@@ -110,18 +112,30 @@ export async function propWorkspaceRead({query,openProject,authorize}){
   }
   return {json:{props}};
  }
- const {p,row}=await selected(project,propId);
+ let pinned;
+ if(exactPin){
+  const current=await pointer(project,propId);
+  if(!current)throw missing();
+  const requested=Number(revision);
+  if(requested>current.revision||requested===current.revision&&current.sha256!==sha)throw fail('PROP_WORKSPACE_SOURCE_STALE',409);
+  const p={propId,revision:requested,sha256:sha};
+  let row;
+  try{row=await packageFrom(project,p);}catch{throw fail('PROP_WORKSPACE_SOURCE_STALE',409);}
+  pinned={p:{...p,title:row.title},row};
+ }
+ const {p,row}=pinned??await selected(project,propId);
  if(asset){
-  if(p.revision!==Number(revision)||p.sha256!==sha)throw fail('PROP_WORKSPACE_SOURCE_STALE',409);
-  const slots=Object.values(row.media).concat(row.animations.flatMap(a=>Object.values(a.media)));
+  const slots=Object.values(row.media).concat(row.animations.flatMap(a=>Object.values(a.media)),
+   (row.scaleVariants??[]).flatMap(v=>[v.pixel,v.spirit]));
   const matches=slots.filter(m=>m.sha256===asset),first=matches[0];
   if(!first||matches.some(m=>m.bytes!==first.bytes||m.mediaType!==first.mediaType))throw missing();
   const bytes=await project.readBytes(relative(propAssetPath(propId,first.assetId)),Math.min(first.bytes,propPackageMediaLimit));
   if(!(bytes instanceof Uint8Array)||bytes.length!==first.bytes||!png.every((n,i)=>bytes[i]===n)||await hashReplicaBytes(bytes)!==asset||
-     !same(p,await pointer(project,propId)))throw unavailable();
+     !(await pointer(project,propId)))throw unavailable();
   return {bytes,mime:first.mediaType};
  }
  return {json:{prop:{propId,title:p.title,source:{revision:p.revision,sha256:p.sha256},
   media:publicPair(p,row.media),interaction:row.interaction,
+  ...(row.scaleVariants?{scaleVariants:row.scaleVariants.map(v=>({scalePercent:v.scalePercent,pixel:publicMedia(p,v.pixel),spirit:publicMedia(p,v.spirit)}))}:{}),
   animations:row.animations.map(a=>({id:a.id,title:a.title,media:publicPair(p,a.media)}))}}};
 }

@@ -1,4 +1,4 @@
-import {mapDecorPinKey,mapDecorationRotation,validPropZOrder,propZMin} from './map-contract.mjs';
+import {mapDecorPinKey,mapDecorationRotation,validPropZOrder,propZMin,validImageScalePercent} from './map-contract.mjs';
 /** Convert source PNG pixels to map units; viewport zoom never changes a placement. */
 export const spriteRoles=['table','bowl','well','lid'];
 export const spriteParents={table:'altar',bowl:'altar',well:'well',lid:'well',spirit:'spirit'};
@@ -24,19 +24,23 @@ export function applyAssemblySpriteBox(element,box){
  if(box)Object.assign(element.style,{left:box.x+'%',top:box.y+'%',width:box.width+'%',height:box.height+'%'});
 }
 
-/** Map decoration is visual only. Anchor = bottom center in natural-map permille. */
+/** A published variant is a resource choice, not a render transform. */
+const lane=x=>x?.mediaType==='image/png'&&imageSize(x)&&typeof x.url==='string'&&x.url.startsWith('/api/prop-workspace?')?x:null;
+export const propImageVariantArt=(art,scalePercent)=>scalePercent===undefined?art:art?.variants?.get(scalePercent)??null;
 export function decorationArt(prop,pin){
  if(prop?.propId!==pin.propId||prop.source?.revision!==pin.revision||prop.source?.sha256!==pin.sha256)return null;
- const lane=key=>{
-  const x=prop.media?.[key];
-  return x?.mediaType==='image/png'&&imageSize(x)&&typeof x.url==='string'&&x.url.startsWith('/api/prop-workspace?')?x:null;
- };
- return {pixel:lane('pixel'),cinematic:lane('spirit'),detail:lane('detail')};
+ const variants=new Map();
+ for(const v of Array.isArray(prop.scaleVariants)?prop.scaleVariants:[]){
+  if(!validImageScalePercent(v?.scalePercent)||variants.has(v.scalePercent))continue;
+  const pixel=lane(v.pixel),cinematic=lane(v.spirit);
+  if(pixel||cinematic)variants.set(v.scalePercent,{pixel,cinematic});
+ }
+ return {pixel:lane(prop.media?.pixel),cinematic:lane(prop.media?.spirit),detail:lane(prop.media?.detail),variants};
 }
 export function decorationBox(row,art,region,spirit){
  const mode=spirit?'cinematic':'pixel';
  if((row.visibility!=='both'&&row.visibility!==mode)||!imageSize(region))return null;
- const asset=art?.[mode];
+ const asset=propImageVariantArt(art,row.imageScalePercent)?.[mode];
  if(!imageSize(asset))return null;
  return {src:asset.url,x:row.anchor.x/10,y:row.anchor.y/10,width:asset.width*row.scale/region.width,height:asset.height*row.scale/region.height,rotation:mapDecorationRotation(row),flipX:row.flipX===true,flipY:row.flipY===true,zOrder:decorationZOrder(row)};
 }
@@ -61,9 +65,12 @@ export function renderMapDecorations(host,placements,loaded,region,spirit,keyOf)
  }));
 }
 
-export const missingDecorationImage=(row,art)=>!art||(row.visibility==='both'?!(art.pixel&&art.cinematic):!art[row.visibility]);
+export function missingDecorationImage(row,art){
+ const chosen=propImageVariantArt(art,row.imageScalePercent);
+ return !chosen||(row.visibility==='both'?!(chosen.pixel&&chosen.cinematic):!chosen[row.visibility]);
+}
 export function decorationsLoader(request,projectId){
- const cache=new Map(),pending=new Map(),catalog=new Map();
+ const cache=new Map(),pending=new Map(),catalog=new Map(),catalogReads=new Map();
  let active=0;const queue=[];
  function dequeue(){
   while(active<4&&queue.length){
@@ -77,12 +84,17 @@ export function decorationsLoader(request,projectId){
   if(cache.has(key))return Promise.resolve();
   if(!pending.has(key))pending.set(key,schedule(async()=>{
    try{
-    let prop=catalog.get(pin.propId);
-    if(!prop){
-     ({prop}=await request('/api/prop-workspace?'+new URLSearchParams({projectId,propId:pin.propId})));
-     if(prop)catalog.set(pin.propId,prop);
+    const readProp=async query=>(await request('/api/prop-workspace?'+new URLSearchParams({projectId,propId:pin.propId,...query}))).prop;
+    if(!catalog.has(pin.propId)){
+     if(!catalogReads.has(pin.propId))catalogReads.set(pin.propId,readProp({}).then(prop=>{
+      if(prop)catalog.set(pin.propId,prop);
+      return prop;
+     }).finally(()=>catalogReads.delete(pin.propId)));
+     await catalogReads.get(pin.propId);
     }
-    cache.set(key,decorationArt(prop,pin));
+    let art=decorationArt(catalog.get(pin.propId),pin);
+    if(!art)art=decorationArt(await readProp({revision:String(pin.revision),sha256:pin.sha256}),pin);
+    cache.set(key,art);
    }catch{/* unavailable decoration does not stop play; next load may retry */}
   }).finally(()=>pending.delete(key)));
   return pending.get(key);
