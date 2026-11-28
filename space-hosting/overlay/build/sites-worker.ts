@@ -82,7 +82,9 @@ export default {
       } catch { return false; }
     };
     const authorizeViewerParticipant=async (user:{userId:string,email:string})=>await authorize(user)&&!!await mapAssemblyGrant(user);
-    const viewerInstall=await spaceViewerInstallResponse(request,{secret,authorizeParticipant:authorizeViewerParticipant});
+    const viewerInstall=await spaceViewerInstallResponse(request,{secret,signingKey:
+      (env as Cloudflare.Env & {NPCGEN_VIEWER_INSTALL_SIGNING_KEY?:string}).NPCGEN_VIEWER_INSTALL_SIGNING_KEY,
+      authorizeParticipant:authorizeViewerParticipant});
     if(viewerInstall)return viewerInstall;
     const viewer=await spaceViewerResponse(request,{replica:replicaReads?fileReplica:undefined,bridgeScript:viewerBridgeScript,
       authorizeParticipant:authorizeViewerParticipant,authorizeResource:workspaceAuthorize});

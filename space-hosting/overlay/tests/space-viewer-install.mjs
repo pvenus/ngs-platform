@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash,createHmac} from 'node:crypto';
+import {createHash,createHmac,generateKeyPairSync,verify} from 'node:crypto';
 import {spaceViewerInstallResponse} from '../build/space-viewer-install.mjs';
 import {checkedRelay,relayFetch,runBridge} from '../build/space-viewer-bridge.mjs';
 const base='https://example.test';
@@ -12,7 +12,9 @@ const auth={
  'oai-authenticated-user-id':userId,'oai-authenticated-user-email':mail,origin:base,
  'x-npcgen-csrf':sign('csrf.v1'),'x-npcgen-frontend-context':'space.'+sign('context.v1')
 };
-const options={secret,authorizeParticipant:async u=>u.userId===userId&&u.email===mail,now:()=>now};
+const keys=generateKeyPairSync('ed25519');
+const signingKey=keys.privateKey.export({type:'pkcs8',format:'der'}).toString('base64');
+const options={secret,signingKey,authorizeParticipant:async u=>u.userId===userId&&u.email===mail,now:()=>now};
 function req(action,payload,headers={},option=options,origin=base){
  return spaceViewerInstallResponse(new Request(origin+'/api/viewer/install/'+action,{
   method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(payload)
@@ -25,14 +27,14 @@ test('native team approval issues a five-minute proof scoped to exact installer 
  const {proof,expiresAt}=await output.json();
  assert.equal(expiresAt,now+300_000);
  assert.equal(proof.includes(secret),false);
- const valid={port,verifier,proof};
- assert.deepEqual(await (await req('verify',valid)).json(),{authorized:true});
- assert.equal((await req('verify',{...valid,port:17778})).status,403);
- assert.equal((await req('verify',{...valid,verifier:'2'.repeat(64)})).status,403);
- assert.equal((await req('verify',valid,{},options,'https://other.example.test')).status,403);
- assert.equal((await req('verify',valid,{}, {...options,now:()=>expiresAt})).status,403);
- assert.equal((await req('verify',valid,{origin:base})).status,403);
- assert.equal((await req('verify',{...valid,proof:proof.slice(0,-1)+(proof.endsWith('a')?'b':'a')})).status,403);
+ const signature=Buffer.from(proof.split('.')[2],'hex');
+ const packet=(origin=base,p=port,digest=challengeSha256)=>Buffer.from(JSON.stringify(['ngs.viewer.install.v2',origin,'binari',p,digest,expiresAt]));
+ assert.equal(verify(null,packet(),keys.publicKey,signature),true);
+ assert.equal(verify(null,packet(base,port+1),keys.publicKey,signature),false);
+ assert.equal(verify(null,packet('https://other.example.test'),keys.publicKey,signature),false);
+ assert.equal(verify(null,packet(base,port,'2'.repeat(64)),keys.publicKey,signature),false);
+ assert.equal(await req('verify',{port,verifier,proof}),null);
+ assert.equal((await req('issue',{port,challengeSha256},auth,{...options,signingKey:undefined})).status,503);
 });
 test('issuance rejects unauthenticated, inactive, cross-origin, CSRF mismatch and invalid fields before install',async()=>{
  const input={port,challengeSha256};
