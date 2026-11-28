@@ -67,8 +67,9 @@ function headerCheck(path,first){
 export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.randomUUID(),
  fixedLengthStream=()=>new TransformStream(),
  writePart=(upload,part,body)=>upload.uploadPart(part,body),
- writeWhole=(bucket,key,body,size,options)=>bucket.put(key,body,options),namespace=defaultNamespace,cacheOrigin}={}){
+ writeWhole=(bucket,key,body,size,options)=>bucket.put(key,body,options),namespace=defaultNamespace,cacheOrigin,readVersion=null}={}){
  if(typeof namespace!=='string'||!/^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/){1,8}$/u.test(namespace))unavailable();
+ if(readVersion!==null&&!safeInt(readVersion,0,Number.MAX_SAFE_INTEGER))unavailable();
  const audioIndex=createAudioResultIndex(db);
  const legacy=namespace+'files/',stage=namespace+'v2/stage/',versions=namespace+'v2/objects/';
  const pathOK=p=>typeof p==='string'&&p.isWellFormed()&&encoder.encode(legacy+p).length<=1024&&p.split('/').length<=64&&
@@ -82,7 +83,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
  const all=async(sql,...args)=>(await stmt(sql,...args).all()).results;
  const run=async(sql,...args)=>(await stmt(sql,...args).run()).meta.changes;
  const current=async path=>{
-  const row=await first(`SELECT * FROM ${entries} WHERE path=? ORDER BY version DESC LIMIT 1`,path);
+  const row=await first(`SELECT * FROM ${entries} WHERE path=? AND version<=? ORDER BY version DESC LIMIT 1`,path,readVersion??Number.MAX_SAFE_INTEGER);
   if(row?.object_key&&!validObjectKey(row.object_key))unavailable();
   return row;
  };
@@ -187,9 +188,9 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
    if(!page.cursor||cursor===page.cursor)unavailable();cursor=page.cursor;
   }while(true);
   const published=await all(`SELECT v.path,v.sha256,v.object_key,v.size FROM ${entries} v
-   JOIN (SELECT path,MAX(version) AS newest FROM ${entries} ${scope?'WHERE path>=? AND path<?':''} GROUP BY path) x
+   JOIN (SELECT path,MAX(version) AS newest FROM ${entries} WHERE version<=? ${scope?'AND path>=? AND path<?':''} GROUP BY path) x
     ON v.path=x.path AND v.version=x.newest
-   LIMIT ${maxPaths+1}`,...(scope?[subtree,high]:[]));
+   LIMIT ${maxPaths+1}`,readVersion??Number.MAX_SAFE_INTEGER,...(scope?[subtree,high]:[]));
   if(published.length>maxPaths)unavailable();
   for(const row of published){
    if(!pathOK(row.path)||!row.path.startsWith(subtree)||!hash(row.sha256))unavailable();
@@ -454,7 +455,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   return await publish(f,session,offset===0?data:null);
  }
  async function receiveWholeFile(args,body){
-  ready();
+  ready();need(readVersion===null);
   need(exact(args,'syncId','path','sha256','size')&&syncOK(args.syncId)&&pathOK(args.path)&&hash(args.sha256)&&
     safeInt(args.size,0,Number.MAX_SAFE_INTEGER));
   const {syncId:id,path,sha256,size}=args;
@@ -626,7 +627,7 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   return {ok:true,written:answer.written};
  }
  async function call(name,args){
-  ready();need(names.has(name),404,'NGS_FILE_SYNC_TOOL_UNKNOWN');
+  ready();need(readVersion===null);need(names.has(name),404,'NGS_FILE_SYNC_TOOL_UNKNOWN');
   if(name===begin)return await start(args);
   need(syncOK(args?.syncId));
   const session=await loadSession(args.syncId);
@@ -639,5 +640,6 @@ export function createObjectReplica({db,bucket,now=Date.now,uuid=()=>crypto.rand
   need(exact(args,'syncId'));
   return await close(name,args.syncId);
  }
- return {call,list:scope=>list(scope),listWithSizes:scope=>list(scope,true),head,get,progress,receiveWholeFile,npcCache,readVerifiedPng,audioIndex:audioIndex.read};
+ const checkpoint=async()=>Number((await first(`SELECT COALESCE(MAX(version),0) AS v FROM ${entries}`)).v);
+ return {checkpoint,call,list:scope=>list(scope),listWithSizes:scope=>list(scope,true),head,get,progress,receiveWholeFile,npcCache,readVerifiedPng,audioIndex:audioIndex.read};
 }

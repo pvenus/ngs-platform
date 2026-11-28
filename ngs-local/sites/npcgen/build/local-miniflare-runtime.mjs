@@ -58,8 +58,8 @@ function parsedError(response,value){
  return Number.isInteger(response.status)&&response.status>=400&&response.status<500&&/^[A-Z0-9_]+$/.test(message??'')
   ?Object.assign(Error(message),{status:response.status}):down();
 }
-export async function openLocalMiniflareReplica({persistRoot,fixture=false,load=defaultLoad}={}){
- const root=privateRoot(persistRoot,fixture);
+export async function openLocalMiniflareReplica({persistRoot,fixture=false,load=defaultLoad,verifyRoot}={}){
+ const root=verifyRoot?(await verifyRoot(persistRoot),persistRoot):privateRoot(persistRoot,fixture);
  const d1=join(root,'d1'),r2=join(root,'r2');
  for(const child of [d1,r2]){
   try{const s=lstatSync(child);if(!s.isDirectory()||s.dev!==lstatSync(root).dev||realpathSync(child)!==child)throw configured();}
@@ -77,24 +77,27 @@ export async function openLocalMiniflareReplica({persistRoot,fixture=false,load=
  const io=async(path,{headers, ...init}={})=>mf.dispatchFetch(url+path,{
   method:'POST',...init,headers:{...headers,'x-ngs-internal':cap},
  });
- const json=async(op,...args)=>{
-  const response=await io('/call',{headers:{'Content-Type':'application/json'},body:JSON.stringify({op,args})});
+ const readHeaders=pin=>({'Content-Type':'application/json',...(pin===undefined?{}:{'X-NGS-Read-Version':String(pin)})});
+ const at=async(pin,op,args)=>{
+  const response=await io('/call',{headers:readHeaders(pin),body:JSON.stringify({op,args})});
   const result=await response.json().catch(()=>{throw down();});
   if(!response.ok)throw parsedError(response,result);
   return result.value;
  };
- const replica=Object.freeze({
-  call:(...args)=>json('call',...args),list:(...args)=>json('list',...args),head:(...args)=>json('head',...args),
-  progress:()=>json('progress'),audioIndex:(...args)=>json('audioIndex',...args),
-  async get(path,options={}){
-   const response=await io('/call',{headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'get',args:[path,options]})});
+ const json=(op,...args)=>at(undefined,op,args);
+ const getAt=async(pin,path,options={})=>{
+   const response=await io('/call',{headers:readHeaders(pin),body:JSON.stringify({op:'get',args:[path,options]})});
    if(response.status===404)return null;
    if(!response.ok)throw parsedError(response,await response.json().catch(()=>null));
-   const header=response.headers.get('x-ngs-storage-meta');
-   if(!header||!response.body)throw down();
-   const meta=JSON.parse(header);
-   return {...meta,body:response.body,arrayBuffer:()=>response.arrayBuffer()};
-  },
+   const header=response.headers.get('x-ngs-storage-meta');if(!header||!response.body)throw down();
+   return {...JSON.parse(header),body:response.body,arrayBuffer:()=>response.arrayBuffer()};
+ };
+ const replica=Object.freeze({
+  checkpoint:()=>json('checkpoint'),
+  atVersion:pin=>Object.freeze({head:(...args)=>at(pin,'head',args),list:(...args)=>at(pin,'list',args),get:(...args)=>getAt(pin,...args)}),
+  call:(...args)=>json('call',...args),list:(...args)=>json('list',...args),head:(...args)=>json('head',...args),
+  progress:()=>json('progress'),audioIndex:(...args)=>json('audioIndex',...args),
+  get:(path,options)=>getAt(undefined,path,options),
   async readVerifiedPng(path,sha256,max){
    const response=await io('/call',{headers:{'Content-Type':'application/json'},
     body:JSON.stringify({op:'verified-png',args:[path,sha256,max]})});

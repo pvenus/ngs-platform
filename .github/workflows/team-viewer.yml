@@ -30,6 +30,8 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24.21.0
+      - name: Install locked local replica runtime
+        run: npm ci --prefix ngs-local/local-miniflare --ignore-scripts --no-audit --no-fund
       - name: Validate the Viewer and Space contract
         shell: bash
         run: |
@@ -63,7 +65,7 @@ jobs:
           set -euo pipefail
           mkdir output
           git archive --format=tar.gz --prefix=ngs-platform/ --output=output/team-viewer-source.tar.gz "$GITHUB_SHA" \
-            ngs-viewer ngs-local/sites/npcgen/build \
+            ngs-viewer ngs-local/sites/npcgen/build ngs-local/dev ngs-local/local-miniflare \
             space-hosting/overlay/build/shared-ngs-assets.ts space-hosting/overlay/build/shared-ngs-response.mjs
           printf '%s\n' "$GITHUB_SHA" > output/commit.txt
           (cd output && sha256sum team-viewer-source.tar.gz > SHA256SUMS)
