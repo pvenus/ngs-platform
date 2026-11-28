@@ -54,6 +54,7 @@ const mini=new Miniflare({
  `},{type:'ESModule',path:'build/space-file-replica.mjs',contents:receiver},
  {type:'ESModule',path:sourcePath,contents:core},
  module('build/space-machine-routes.mjs','../build/space-machine-routes.mjs'),
+ module('build/space-browser-auth.mjs','../build/space-browser-auth.mjs'),
  module('build/space-viewer-export.mjs','../build/space-viewer-export.mjs'),
  module('build/space-request-queue.mjs','../build/space-request-queue.mjs'),
  module('build/space-map-assembly.mjs','../build/space-map-assembly.mjs'),
