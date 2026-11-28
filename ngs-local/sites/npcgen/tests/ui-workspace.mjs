@@ -48,13 +48,15 @@ test('UI PNG staging hash verifies upstream commitment; exact shape prevents pla
  assert.equal(validUiRequest(uiImport,{schemaVersion:uiSchemas[uiImport],projectId,kind:'logo',title:'비나리',sha256:sha}),true);
 });
 test('Local UI request and PNG staging reuse browser session and provenance-safe official queue',async t=>{
- const root=mkdtempSync(join(realpathSync(tmpdir()),'ngs-ui-workspace-'));
+ const sandbox=mkdtempSync(join(realpathSync(tmpdir()),'ngs-ui-workspace-'));
+ const root=join(sandbox,'projects');
+ mkdirSync(root,{mode:0o700});
  mkdirSync(join(root,'binari'),{mode:0o700});writeFileSync(join(root,'binari','project.json'),'{"name":"비나리"}',{mode:0o600});
  let accepted,staged=0;
  const server=createLocalProjectPageServer({root,requestQueue:{enqueue(command){accepted=command;return {status:'queued',queueId:'ngs.local.test'};}},
    stageUiPng:bytes=>{staged++;assert.deepEqual(bytes,png);return {sha256:sha};}});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
- t.after(async()=>{await new Promise(r=>server.close(r));rmSync(root,{recursive:true,force:true});});
+ t.after(async()=>{await new Promise(r=>server.close(r));rmSync(sandbox,{recursive:true,force:true});});
  const origin='http://127.0.0.1:'+server.address().port;
  const sessionResponse=await fetch(origin+'/__npcgen_session'),session=await sessionResponse.json();
  const cookie=sessionResponse.headers.get('set-cookie').split(';')[0];
