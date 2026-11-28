@@ -514,7 +514,14 @@ class Apply(unittest.TestCase):
         self.assertFalse(self.host.loaded)
 
     def test_separation_attestation_is_bound_and_only_candidate_env_changes(self):
-        root = Path(__file__).resolve().parents[2] / "ngs-local"
+        # The historic migration digest is intentionally pinned. Current audio
+        # catalog source can evolve without changing the opt-in trust boundary.
+        root = (self.root / "attestation-release").resolve()
+        core, sql = root / m.AUDIO_CORE, root / m.AUDIO_SQL
+        core.parent.mkdir(parents=True, exist_ok=True)
+        sql.parent.mkdir(parents=True, exist_ok=True)
+        core.write_bytes(b"reviewed audio storage revision")
+        sql.write_bytes(b"reviewed SQL revision")
         self.assertFalse(m.approve_audio_separation(self.folder, self.spec, root))
         marker = self.folder / m.AUDIO_OPT_IN
         value = {"schemaVersion":"ops.ngs-local-audio-separation-enable.v1", "sha":SHA,
@@ -531,7 +538,14 @@ class Apply(unittest.TestCase):
         with self.assertRaisesRegex(m.Refused,"ATTESTATION_INVALID"):
             m.approve_audio_separation(self.folder,self.spec,root)
         marker.chmod(0o600)
-        self.assertTrue(m.approve_audio_separation(self.folder,self.spec,root))
+        with self.assertRaisesRegex(m.Refused, "ATTESTATION_INVALID"):
+            m.approve_audio_separation(self.folder,self.spec,root)
+        fixture_pins = {m.AUDIO_CORE: (None, m.file_digest(core)), m.AUDIO_SQL: (None, m.file_digest(sql))}
+        with patch.dict(m.AUDIO_CHANGED, fixture_pins):
+            self.assertTrue(m.approve_audio_separation(self.folder,self.spec,root))
+            core.write_bytes(b"changed audio storage revision")
+            with self.assertRaisesRegex(m.Refused, "ATTESTATION_INVALID"):
+                m.approve_audio_separation(self.folder,self.spec,root)
         raw = plistlib.loads(self.host.prior)
         env = {**raw["EnvironmentVariables"],"NGS_AUDIO_WORKSPACE_ENABLED":"1"}
         raw["EnvironmentVariables"] = env
