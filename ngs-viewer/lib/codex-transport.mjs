@@ -5,8 +5,8 @@ const failed=()=>Object.assign(Error('VIEWER_CODEX_CONNECTION_REQUIRED'),{status
 const maxLine=24*1024*1024,deadline=60_000;
 const names=new Set(['ngs_viewer_manifest','ngs_viewer_file_chunk',
  'ngs_viewer_request_session','ngs_viewer_request_status','ngs_viewer_request_submit']);
-export function codexViewerClient({binary,server,socket,spawnChild=spawn}){
- if(typeof binary!=='string'||!binary||typeof server!=='string'||!/^[a-z0-9_.-]{1,160}$/iu.test(server))
+export function codexViewerClient({binary,server,socket,mode='proxy',spawnChild=spawn}){
+ if(!['proxy','stdio'].includes(mode)||mode==='stdio'&&socket||typeof binary!=='string'||!binary||typeof server!=='string'||!/^[a-z0-9_.-]{1,160}$/iu.test(server))
   throw Error('VIEWER_CODEX_CONFIGURATION');
  let current=null,next=0;
  const stop=state=>{
@@ -19,7 +19,8 @@ export function codexViewerClient({binary,server,socket,spawnChild=spawn}){
  };
  function get(){
   if(current)return current;
-  const child=spawnChild(binary,['app-server','proxy',...(socket?['--sock',socket]:[])],
+  const child=spawnChild(binary,mode==='stdio'?['app-server','--listen','stdio://']:
+   ['app-server','proxy',...(socket?['--sock',socket]:[])],
    {stdio:['pipe','pipe','ignore'],windowsHide:true});
   const state={child,pending:new Map(),buffer:Buffer.alloc(0),closed:false,ready:null};
   current=state;

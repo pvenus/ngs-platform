@@ -24,7 +24,7 @@ export function installTarget({platform=process.platform}={}){
 }
 const xml=x=>String(x).replace(/&/gu,'&amp;').replace(/</gu,'&lt;').replace(/>/gu,'&gt;').replace(/"/gu,'&quot;').replace(/'/gu,'&apos;');
 export const labelFor=port=>'com.vinus.ngs-viewer.'+port;
-const codexArgs=c=>c?['--codex-bin',c.binary,'--codex-mcp',c.server,...(c.socket?['--codex-socket',c.socket]:[])]:[];
+const codexArgs=c=>c?['--codex-bin',c.binary,'--codex-mcp',c.server,...(c.socket?['--codex-socket',c.socket]:[]),...(c.mode?['--codex-mode',c.mode]:[])]:[];
 export function launchAgent({node,entry,root,space,port,log,codex}){
  const args=[node,entry,'--p2',root,'--port',String(port),'--space',space,...codexArgs(codex)];
  if(![...args,log].every(safe))throw Error('VIEWER_INVALID_SERVICE_ARGUMENT');

@@ -1280,8 +1280,8 @@
       "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
     },
     "ngs-viewer/README.md": {
-      "bytes": 7316,
-      "sha256": "249cea2bce4643e2f118b973918d121afc0c88438bcf5831b390123f49d1e510"
+      "bytes": 7872,
+      "sha256": "e2a7474d8e2866e459297511c13ae905d1b43c5cbcd45e9bb3d5d969ec1d19be"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1320,8 +1320,8 @@
       "sha256": "ca3f78b0e116c1dcd989860f8ff86e85a5e0d59eddf84b5293d2dbb91116ef04"
     },
     "ngs-viewer/viewer.mjs": {
-      "bytes": 10982,
-      "sha256": "24dfc5d8939a66c54822d6d288f5561feaf0432c67f5237347a32dd0077ac0d7"
+      "bytes": 11171,
+      "sha256": "d6f61fe9aede0ca70d0bba76a12ac59be9d44ce496a2e6992b2cc07cfbe01b9c"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
       "bytes": 14953,
@@ -1372,8 +1372,8 @@
       "sha256": "6d40950fe4b42a48163b45360542a26a76c47cfa1bbd6f32d873955936b5bad3"
     },
     "ngs-viewer/setup/os-targets.mjs": {
-      "bytes": 7789,
-      "sha256": "df13e96d5f4c4c26d295b2586f147b47964c59c1129146e2b5668936d331aa22"
+      "bytes": 7828,
+      "sha256": "a656e88f95b076a5951b56815751f3a241e1b0ed0d04db6fd65be60f78e9556a"
     },
     "ngs-viewer/tests/install.test.mjs": {
       "bytes": 6098,
@@ -1452,8 +1452,8 @@
       "sha256": "17a16f24566f56134a91f0a16172dcb676f7073560739468e81126535188f807"
     },
     "ngs-viewer/lib/codex-transport.mjs": {
-      "bytes": 3742,
-      "sha256": "c58c4c4e5d46419c91c95ff4579fd187f8318f482765245061113a3bff3e2d9e"
+      "bytes": 3870,
+      "sha256": "825e82a5e224908609cac9cf162eef706d443ce13279fe22f623f3188341db50"
     },
     "ngs-viewer/tests/codex-transport.test.mjs": {
       "bytes": 3295,
