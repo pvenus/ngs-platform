@@ -10,10 +10,10 @@ const readRoutes=new Set(['/api/project-folders','/api/project-folders/icon','/a
 export const viewerReadRoute=path=>readRoutes.has(path)||Boolean(workspaceReadRoute(path));
 
 const cachedView=new WeakMap();
-function view(root,rows){
+function view(root,rows,openProject){
  const cached=cachedView.get(rows);
  if(cached?.root===root)return cached.local;
- const local=openLocalWorkspaceProject(root,'binari');
+ const local=openProject?openProject():openLocalWorkspaceProject(root,'binari');
  if(!local)return null;
  const inventory=new Map(rows.map(row=>[row.path,row])), directories=new Map();
  for(const path of inventory.keys()){
@@ -76,7 +76,7 @@ function objectView(local){
  };
 }
 
-export async function localProjection({root,snapshot,url,method,range}){
+export async function localProjection({root,snapshot,url,method,range,openProject}){
  const path=url.pathname,section=workspaceReadRoute(path);
  if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
  const resources=new Set(snapshot.resources), project=(id,resource)=>{
@@ -84,7 +84,7 @@ export async function localProjection({root,snapshot,url,method,range}){
  };
  if(section){
   if(method!=='GET')throw fault('METHOD_NOT_ALLOWED',405);
-  const local=view(root,snapshot.files);
+  const local=view(root,snapshot.files,openProject);
   const result=await dispatchWorkspaceRead({pathname:path,query:url.searchParams,openProject:id=>id==='binari'?local:null,
    authorize:(id,resource)=>project(id,section==='prop'||section==='cinematic'?resource:
      section==='map'||section==='background'?'cinematics':section==='assembly'?'assembly':
@@ -97,7 +97,7 @@ export async function localProjection({root,snapshot,url,method,range}){
   return new Response(result.bytes,{headers:{'Content-Type':result.mime,'Content-Length':String(result.bytes.length)}});
  }
  if(!['GET','HEAD'].includes(method))throw fault('METHOD_NOT_ALLOWED',405);
- const object=objectView(view(root,snapshot.files));
+ const object=objectView(view(root,snapshot.files,openProject));
  if(path==='/api/project-folders'){
   project('binari','project');
   if(url.search)throw fault('PROJECT_FOLDER_QUERY_INVALID',400);

@@ -11,13 +11,14 @@ const row=(path,value)=>({path,sha256:sha(value),size:Buffer.byteLength(value)})
 const manifest=(files,resources)=>({projectId:'binari',files,...(resources?{resources}:{})});
 const file=(mirror,path)=>join(mirror.projectRoot,path);
 const same=(code)=>e=>e?.message===code;
+const windows=process.platform==='win32';
 function fixture(t){
- const dir=mkdtempSync(join(realpathSync(tmpdir()),'ngs-mirror-'));
+ const dir=mkdtempSync(join(realpathSync.native(tmpdir()),'ngs-mirror-'));
  t.after(()=>rmSync(dir,{recursive:true,force:true}));
- return dir;
+ return windows?join(dir,'private P2'):dir;
 }
 async function using(t){
- const dir=fixture(t), mirror=await openMirror(dir);
+ const dir=fixture(t), mirror=await openMirror(dir,{create:windows});
  t.after(()=>mirror.close());
  return {dir,mirror};
 }
@@ -100,7 +101,7 @@ test('validates canonical scope paths, nested aliases, and empty blobs',async t=
  assert.deepEqual(sync(m,p,''),{files:1,changed:1,removed:0});
  assert.equal(readFileSync(file(m,p)).length,0);
 });
-test('refuses pre-existing unmanaged folders and traversal through links or permissive directories',async t=>{
+test('POSIX rejects unmanaged folders and traversal through links or permissive directories',{skip:windows},async t=>{
  const dir=fixture(t);mkdirSync(join(dir,'binari'),{mode:0o700});
  writeFileSync(join(dir,'binari','stay'),'leave');
  await assert.rejects(openMirror(dir),same('VIEWER_P2_UNMANAGED_BINARI'));
@@ -127,7 +128,7 @@ test('finalize rechecks current fingerprints and leaves new remote data uncommit
  assert.equal(readFileSync(file(m,p),'utf8'),'local edit');
 });
 test('restores an interrupted multi-file publish journal and removes abandoned staging',async t=>{
- const dir=fixture(t), m=await openMirror(dir), p='npcs/old', q='npcs/new';
+ const dir=fixture(t), m=await openMirror(dir,{create:windows}), p='npcs/old', q='npcs/new';
  sync(m,p,'original');
  const state=m.snapshot();m.close();
  const id=randomUUID(), base=join(dir,'.ngs-viewer'), stage=join(base,'sync-'+id);
@@ -146,9 +147,9 @@ test('restores an interrupted multi-file publish journal and removes abandoned s
  assert.equal(existsSync(abandoned),false);
 });
 
-test('native Windows and WSL1 fail closed; WSL2 requires a non-root user and native Linux volume',()=>{
+test('native Windows uses a distinct NTFS guard; WSL2 development still needs a native Linux volume',()=>{
  const classify=(platform,kernel,userId=501,wslEnvironment=false)=>mirrorRuntime({platform,kernel,userId,wslEnvironment});
- assert.throws(()=>classify('win32','10.0.26100'),same('VIEWER_P2_NATIVE_WINDOWS_UNSUPPORTED_USE_WSL2'));
+ assert.equal(classify('win32','10.0.26100'),'ntfs');
  assert.throws(()=>classify('linux','4.4.0-19041-Microsoft'),same('VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM'));
  assert.throws(()=>classify('linux','5.15.167.4-microsoft-standard-WSL2',0),same('VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM'));
  assert.throws(()=>classify('linux','6.0.0',501,true),same('VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM'));

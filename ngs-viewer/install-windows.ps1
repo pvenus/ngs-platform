@@ -1,26 +1,34 @@
-# Same-user Windows logon startup via Task Scheduler + WSL2.
+# NGS Viewer setup for native Windows. Run as the Windows user who will use it.
 param(
-  [Parameter()][string]$Distribution,
-  [Parameter()][string]$Checkout,
   [Parameter()][string]$P2,
   [Parameter()][string]$Space,
   [Parameter()][string]$Port
 )
+
 $ErrorActionPreference = 'Stop'
-if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
-  throw 'WSL2와 Linux 배포판을 먼저 설치하세요. 네이티브 Windows Viewer는 지원하지 않습니다.'
+$defaultSpace = 'https://vinus-npcgen.park-venus0518.chatgpt.site'
+$defaultP2 = Join-Path $env:LOCALAPPDATA 'NGS Viewer P2'
+$node = Get-Command node.exe -CommandType Application -ErrorAction SilentlyContinue
+if (-not $node) { throw 'Node.js 24+ Windows LTS is required. Install it, then run setup again.' }
+$version = & $node.Source --version
+if ($LASTEXITCODE -ne 0 -or $version -notmatch '^v(\d+)\.' -or [int]$Matches[1] -lt 24) {
+  throw 'Node.js 24+ Windows LTS is required.'
 }
-if (-not $Distribution) { $Distribution = Read-Host 'WSL2 배포판 이름 (예: Ubuntu)' }
-if (-not $Checkout) { $Checkout = Read-Host 'WSL2의 ngs-platform 절대 경로' }
-if (-not $P2) { $P2 = Read-Host 'WSL2의 P2 절대 경로 (/home/...)' }
-if (-not $Space) { $Space = Read-Host '비나리 Space 주소' }
-if (-not $Port) { $Port = Read-Host 'Viewer 포트 (기본 5281)' }
-if (-not $Port) { $Port = '5281' }
-if ($Distribution -notmatch '^[a-zA-Z0-9._ -]{1,64}$' -or
-    -not $Checkout.StartsWith('/') -or -not $P2.StartsWith('/') -or
-    $Checkout.StartsWith('/mnt/') -or $P2.StartsWith('/mnt/')) {
-  throw '배포판 이름과 WSL2 내부의 경로를 입력하세요. Windows 드라이브는 지원하지 않습니다.'
+if (-not $P2) {
+  $P2 = Read-Host "New P2 folder on an NTFS drive [$defaultP2]"
+  if (-not $P2) { $P2 = $defaultP2 }
 }
-$entry = $Checkout.TrimEnd('/') + '/ngs-viewer/install.mjs'
-& wsl.exe --distribution $Distribution --exec node $entry --space $Space --p2 $P2 --port $Port
+if (-not $Space) {
+  $Space = Read-Host "Space address [$defaultSpace]"
+  if (-not $Space) { $Space = $defaultSpace }
+}
+if (-not $Port) {
+  $Port = Read-Host 'Viewer port [5281]'
+  if (-not $Port) { $Port = '5281' }
+}
+$P2 = $P2.Trim().Trim('"')
+if ($P2 -notmatch '^[A-Za-z]:\\.+') { throw 'Choose a new folder on a local NTFS drive (for example, C:\Games\NGS-P2).' }
+$P2 = [IO.Path]::GetFullPath($P2).TrimEnd('\')
+$entry = Join-Path $PSScriptRoot 'install.mjs'
+& $node.Source $entry --space ($Space.Trim()) --p2 $P2 --port ($Port.Trim())
 exit $LASTEXITCODE

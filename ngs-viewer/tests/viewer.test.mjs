@@ -5,12 +5,15 @@ import {mkdtemp,realpath,readFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createViewer,binariSpace} from '../viewer.mjs';
+import {openMirror} from '../lib/mirror.mjs';
 
 async function fixture(t){
- const root=await realpath(await mkdtemp(join(tmpdir(),'ngs-viewer-test-')));
- const viewer=await createViewer({root});
+ const temp=await realpath(await mkdtemp(join(tmpdir(),'ngs-viewer-test-')));
+ const windows=process.platform==='win32',root=windows?join(temp,'private P2'):temp;
+ const mirror=windows?await openMirror(root,{create:true}):null;
+ const viewer=await createViewer({root,mirror});
  await new Promise((resolve,reject)=>{viewer.once('error',reject);viewer.listen(0,'127.0.0.1',resolve);});
- t.after(async()=>{await new Promise(resolve=>viewer.close(resolve));await rm(root,{recursive:true,force:true});});
+ t.after(async()=>{await new Promise(resolve=>viewer.close(resolve));await rm(temp,{recursive:true,force:true});});
  const origin='http://127.0.0.1:'+viewer.address().port,get=(path,init)=>fetch(origin+path,init);
  const config=await (await get('/__viewer/config')).json();
  const write=(path,value,extra={})=>get('/__viewer/'+path,{

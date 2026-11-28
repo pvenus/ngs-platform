@@ -105,7 +105,7 @@ export async function pullSpaceToP2({mirror,remote,signal,parallelism=20,onFileE
    throw Object.assign(error,{definite:true});
   }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
  };
- const result=await pushProjectFiles({scope,pds,ngs,upload,signal,fileSlot:transferSlot,parallelism,onFileError});
+ const result=await pushProjectFiles({scope,pds,ngs,upload,signal,fileSlot:transferSlot,parallelism,onFileError,spoolRoot:mirror.privateSpoolRoot?.()});
  return {...last,failed:result.failed};
 }
 

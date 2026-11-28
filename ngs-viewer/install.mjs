@@ -6,6 +6,8 @@ import {pathToFileURL} from 'node:url';
 import {createInterface} from 'node:readline/promises';
 import {stdin,stdout} from 'node:process';
 import {execFile} from 'node:child_process';
+import {win32} from 'node:path';
+
 import {assertLoopbackRequest} from '../ngs-local/sites/npcgen/build/loopback-auth.mjs';
 import {binariSpace,viewerPort,viewerOptions,viewerSpaceOrigin} from './viewer.mjs';
 import {installTarget,registerViewer} from './setup/os-targets.mjs';
@@ -138,7 +140,7 @@ if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
   const result=await officialInstall(options,{target,announce:url=>{
    console.log('아래 주소에서 Space 로그인을 승인해야 자동 실행 항목을 등록합니다.\n'+url);
    if(target.service==='launchagent')execFile('/usr/bin/open',[url],()=>{});
-   else execFile('/mnt/c/Windows/explorer.exe',[url],()=>{});
+   else execFile(win32.join(process.env.SystemRoot??'C:\Windows','explorer.exe'),[url],()=>{});
   }});
   const running=await checkWorker(options.port);
   console.log(result.name+(result.kind==='launchagent'?' LaunchAgent':' 예약 작업')+' 등록 완료');
@@ -150,7 +152,9 @@ if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
    VIEWER_SPACE_ORIGIN_INVALID:'이 설치 프로그램에서 승인한 비나리 Space 주소가 아닙니다.',
    VIEWER_SPACE_INSTALL_UNAVAILABLE:'입력한 Space에 설치 인증이 연결되지 않아 자동 실행 항목을 등록하지 않았습니다.',
    VIEWER_INSTALL_AUTH_TIMEOUT:'팀원 인증 대기 시간이 끝났습니다. 등록하지 않았습니다.',
-   VIEWER_USE_WSL2_INSTALLER:'Windows 네이티브 Node는 지원하지 않습니다. WSL2 설치 스크립트를 사용하세요.',
+   VIEWER_P2_NTFS_REQUIRED:'P2는 로컬 NTFS 드라이브에 만들어 주세요.',
+   VIEWER_P2_NTFS_ACL_UNSAFE:'기존 폴더 대신 새 P2 폴더 경로를 지정해 주세요.',
+   VIEWER_P2_REPARSE_POINT:'정션, 심볼릭 링크 또는 클라우드 동기화 경로를 제외한 NTFS 폴더를 선택해 주세요.',
   };
   console.error(friendly[e?.message]??e?.message??'설치 실패');
   process.exitCode=1;

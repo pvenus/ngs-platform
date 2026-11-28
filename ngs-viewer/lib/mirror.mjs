@@ -3,8 +3,10 @@ import {createHash,randomUUID} from 'node:crypto';
 import {closeSync,constants,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,
  readSync,readdirSync,realpathSync,renameSync,rmdirSync,rmSync,unlinkSync,statfsSync,writeFileSync,writeSync} from 'node:fs';
 import {release} from 'node:os';
-import {dirname,isAbsolute,join,resolve} from 'node:path';
+import {basename,dirname,isAbsolute,join,resolve} from 'node:path';
 import {validWorkspacePath} from '../../ngs-local/sites/npcgen/build/workspace-read-storage.mjs';
+
+import {verifyNtfsRoot,windowsFileSegment,windowsP2Path} from './windows-storage.mjs';
 
 export const mirrorChunkBytes=1024*1024;
 const manifestBytes=16*mirrorChunkBytes, maxFiles=32_768, maxFile=5*1024**4;
@@ -18,9 +20,12 @@ const integer=(x,min,max)=>Number.isSafeInteger(x)&&x>=min&&x<=max;
 const stat=p=>{try{return lstatSync(p,{bigint:true});}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 const inode=s=>s&&[s.dev,s.ino].join(':');
 const pin=s=>s&&[s.dev,s.ino,s.size,s.mtimeNs,s.ctimeNs].join(':');
-const sameOwner=(s,privateMode=true)=>s&&Number(s.uid)===uid&&!(Number(s.mode)&(privateMode?0o077:0o022));
+const nativeWindows=process.platform==='win32';
+const sameOwner=(s,privateMode=true)=>s&&(nativeWindows||Number(s.uid)===uid&&!(Number(s.mode)&(privateMode?0o077:0o022)));
 const privateFile=s=>s?.isFile()&&sameOwner(s)&&s.nlink===1n;
 const hash=()=>createHash('sha256');
+const pathKey=p=>nativeWindows?p?.toLowerCase():p;
+const readFlags=constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0);
 
 function ownedDirectory(path,{create=false,privateMode=true}={}){
  let s=stat(path);
@@ -29,17 +34,17 @@ function ownedDirectory(path,{create=false,privateMode=true}={}){
   s=stat(path);
  }
  if(!s)return false;
- assert(s.isDirectory()&&sameOwner(s,privateMode)&&realpathSync(path)===path,'VIEWER_P2_UNSAFE_DIRECTORY');
+ assert(s.isDirectory()&&sameOwner(s,privateMode)&&pathKey((nativeWindows?realpathSync.native:realpathSync)(path))===pathKey(path),'VIEWER_P2_UNSAFE_DIRECTORY');
  return true;
 }
 
 function inspect(path,{digests=false}={}){
  const s=stat(path);
  if(!s)return null;
- assert(privateFile(s),'VIEWER_P2_UNSAFE_FILE');
+ assert(privateFile(s)&&(!nativeWindows||pathKey(realpathSync.native(path))===pathKey(path)),'VIEWER_P2_UNSAFE_FILE');
  let sha256;
  if(digests){
-  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  const fd=openSync(path,readFlags);
   try{
    assert(pin(fstatSync(fd,{bigint:true}))===pin(s),'VIEWER_P2_FILE_CHANGED');
    const stream=hash(),buffer=Buffer.allocUnsafe(mirrorChunkBytes);
@@ -55,7 +60,7 @@ function readJson(path,max){
  const file=inspect(path);
  if(!file)return null;
  assert(file.size<=max,'VIEWER_P2_UNSAFE_METADATA');
- const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ const fd=openSync(path,readFlags);
  try{
   assert(pin(fstatSync(fd,{bigint:true}))===file.pin,'VIEWER_P2_FILE_CHANGED');
   const bytes=readFileSync(fd);
@@ -96,6 +101,7 @@ export function validateMirrorManifest(value){
  let length=0;
  for(const file of value.files){
   assert(validFile(file)&&replicaPathResource(file.path)&&!paths.has(file.path),'VIEWER_MIRROR_BAD_FILE',400);
+  if(nativeWindows)assert(file.path.split('/').every(windowsFileSegment),'VIEWER_P2_NTFS_UNSAFE_NAME',400);
   if(supplied)assert(allowedBy(replicaPathResource(file.path),scope),'VIEWER_MIRROR_FILE_OUTSIDE_GRANT',400);
   paths.add(file.path);length+=Buffer.byteLength(JSON.stringify(file));
   assert(length<=manifestBytes,'VIEWER_MIRROR_MANIFEST_TOO_LARGE',413);
@@ -116,7 +122,7 @@ export function validateMirrorManifest(value){
 // Separate classification from filesystem operations so tests can exercise
 // fail-closed Windows paths even on the POSIX development host.
 export function mirrorRuntime({platform,kernel,wslEnvironment,userId}){
- assert(platform!=='win32','VIEWER_P2_NATIVE_WINDOWS_UNSUPPORTED_USE_WSL2',400);
+ if(platform==='win32')return 'ntfs';
  const onWsl=platform==='linux'&&(/microsoft|wsl/iu.test(kernel)||wslEnvironment);
  if(!onWsl)return 'posix';
  assert(/wsl2|microsoft-standard/iu.test(kernel)&&Number.isInteger(userId)&&userId>0,
@@ -127,17 +133,21 @@ export function assertMirrorWslFilesystem(type){
  // Linux's ext2/3/4 magic; the default WSL2 distro VHD is ext4.
  assert(type===0xef53,'VIEWER_P2_REQUIRES_WSL2_LINUX_FILESYSTEM',400);
 }
-export async function openMirror(root){
+export async function openMirror(root,{create=false}={}){
+ if(nativeWindows){
+  assert(windowsP2Path(root),'VIEWER_P2_NTFS_PATH_REQUIRED',400);
+  verifyNtfsRoot(root,{create,deep:true});
+ }
  const onWsl=mirrorRuntime({platform:process.platform,kernel:release(),
   wslEnvironment:Boolean(process.env.WSL_DISTRO_NAME||process.env.WSL_INTEROP),userId:uid})==='wsl2';
- assert(uid!==undefined&&typeof root==='string'&&isAbsolute(root)&&resolve(root)===root&&
+ assert((nativeWindows||uid!==undefined)&&typeof root==='string'&&isAbsolute(root)&&resolve(root)===root&&
   ownedDirectory(root,{privateMode:false}),'VIEWER_P2_DIRECTORY_REQUIRED',400);
  // Windows-mounted NTFS and network paths may expose synthetic Unix modes.
  // Do not accept those as equivalent to a native Linux filesystem.
  if(onWsl)assertMirrorWslFilesystem(statfsSync(root).type);
  const device=stat(root).dev;
  const directory=(path,opts)=>{
-  if(onWsl){
+  if(onWsl||nativeWindows){
    const s=stat(path);
    if(s)assert(s.dev===device,'VIEWER_P2_UNSAFE_DIRECTORY');
   }
@@ -180,6 +190,7 @@ export async function openMirror(root){
  };
  const target=(path,create=false)=>{
   scoped();
+  if(nativeWindows)assert(path.split('/').every(windowsFileSegment),'VIEWER_P2_NTFS_UNSAFE_NAME');
   let currentDir=projectRoot;
   const parts=path.split('/');
   for(const part of parts.slice(0,-1)){
@@ -190,7 +201,7 @@ export async function openMirror(root){
  };
  const clean=stage=>{
   scoped();
-  assert(dirname(stage)===internal&&/^sync-[0-9a-f-]+$/u.test(stage.split('/').at(-1))&&
+  assert(dirname(stage)===internal&&/^sync-[0-9a-f-]+$/u.test(basename(stage))&&
    directory(stage),'VIEWER_P2_UNSAFE_STAGE');
   rmSync(stage,{recursive:true});
  };
@@ -245,6 +256,11 @@ export async function openMirror(root){
   current=readJson(statePath,recoveryBytes);
   if(current)validateState(current);
   for(const name of readdirSync(internal)){
+   if(nativeWindows&&/^ngs-sync-spool-[A-Za-z0-9]{6}$/u.test(name)){
+    const spool=join(internal,name);
+    assert(directory(spool),'VIEWER_P2_UNSAFE_STAGE');
+    rmSync(spool,{recursive:true});continue;
+   }
    if(name.startsWith('.json-')&&passRE.test(name.slice(6))){if(inspect(join(internal,name)))unlinkSync(join(internal,name));continue;}
    if(!name.startsWith('sync-')||!passRE.test(name.slice(5)))continue;
    const stage=join(internal,name);
@@ -314,7 +330,7 @@ export async function openMirror(root){
   assert(bytes instanceof Uint8Array&&bytes.byteLength>0&&bytes.byteLength<=mirrorChunkBytes&&
    offset+bytes.byteLength<=work.size,'VIEWER_MIRROR_BAD_CHUNK',400);
   assert(directory(a.stage),'VIEWER_P2_UNSAFE_STAGE');
-  const p=join(a.stage,'change-'+work.index),flags=constants.O_WRONLY|constants.O_NOFOLLOW|
+  const p=join(a.stage,'change-'+work.index),flags=constants.O_WRONLY|(constants.O_NOFOLLOW??0)|
    (offset===0?constants.O_CREAT|constants.O_EXCL:0);
   const fd=openSync(p,flags,0o600);
   try{
@@ -335,6 +351,7 @@ export async function openMirror(root){
  }
  function inventory(){
   scoped();
+  if(nativeWindows)verifyNtfsRoot(root,{deep:true});
   const rows=[];
   for(const row of current?.managed??[]){
    const p=target(row.path),disk=p&&inspect(p);
@@ -358,6 +375,7 @@ export async function openMirror(root){
  }
  function finish(id,{failed=new Set(),confirmed=null}={}){
   const a=pass(id);
+  if(nativeWindows)verifyNtfsRoot(root,{deep:true});
   assert(directory(a.stage),'VIEWER_P2_UNSAFE_STAGE');
   const checked=new Set(),previous=new Map((current?.managed??[]).map(row=>[row.path,row]));
   const ops=a.ops.flatMap((op,staged)=>op.next===null?
@@ -423,5 +441,34 @@ export async function openMirror(root){
   try{if(active&&!poisoned)abort(active.id);}
   finally{closed=true;unlock();}
  }
- return Object.freeze({projectRoot,inventory,begin,append,reset,finish,abort,close,snapshot:()=>current?structuredClone(current.manifest):null});
+ // Read only bytes pinned by the successful Windows mirror commit.
+ // Case-insensitive paths are already canonicalized by the manifest guard.
+ function windowsProject(){
+  const snapshot=current;
+  if(!snapshot)return null;
+  const placed=new Map(snapshot.managed.map(row=>[row.path,row]));
+  const lookup=relative=>{
+   if(!validWorkspacePath(relative))return null;
+   const row=placed.get(relative);
+   if(!row)return null;
+   const p=target(relative),file=p&&inspect(p);
+   return file?.pin===row.pin&&file.size===row.size?{p,file}:null;
+  };
+  return Object.freeze({
+   head(relative){const v=lookup(relative);return v?{size:v.file.size,modifiedAtMs:0}:null;},
+   readBytes(relative,max){
+    const v=lookup(relative);
+    if(!v||!Number.isSafeInteger(max)||max<1||v.file.size>max)return null;
+    const fd=openSync(v.p,readFlags);
+    try{
+     assert(pin(fstatSync(fd,{bigint:true}))===v.file.pin,'VIEWER_P2_FILE_CHANGED');
+     const bytes=readFileSync(fd);
+     assert(pin(fstatSync(fd,{bigint:true}))===v.file.pin&&lookup(relative)?.file.pin===v.file.pin&&
+      bytes.length===v.file.size,'VIEWER_P2_FILE_CHANGED');
+     return bytes;
+    }finally{closeSync(fd);}
+   },
+  });
+ }
+ return Object.freeze({projectRoot,...(nativeWindows?{openProject:windowsProject,privateSpoolRoot:()=>{scoped();return internal;}}:{}),inventory,begin,append,reset,finish,abort,close,snapshot:()=>current?structuredClone(current.manifest):null});
 }

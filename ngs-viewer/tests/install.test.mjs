@@ -5,7 +5,7 @@ import {binariSpace,viewerOptions} from '../viewer.mjs';
 import {officialInstall,waitForInstallProof,probeInstall} from '../install.mjs';
 import {installTarget,launchAgent,windowsTaskCommand} from '../setup/os-targets.mjs';
 
-const port=5681,root='/home/owner/NGS P2',space=binariSpace;
+const port=5681,root=process.platform==='win32'?String.raw`C:\Users\owner\NGS P2`:'/home/owner/NGS P2',space=binariSpace;
 const opts={port,root,space};
 const fakeProof='v1.1795838100000.'+'a'.repeat(64);
 
@@ -57,20 +57,24 @@ test('setup server verifies proof with Space directly, does not expose the verif
  await assert.rejects(get('/config'));
 });
 
-test('registration plans use per-user launchd or WSL2 interactive tasks, never native Windows',()=>{
+test('registration plans use per-user launchd or native Windows interactive tasks',()=>{
  const dto={...opts,node:'/home/owner/node',entry:'/home/owner/NGS Viewer/viewer.mjs',log:'/home/owner/a&b.log'};
  const mac=launchAgent(dto);
  assert.match(mac,/com.vinus.ngs-viewer.5681/u);assert.match(mac,/a&amp;b.log/u);
  assert.match(mac,/<key>RunAtLoad<\/key><true\//u);
  assert.match(mac,/<string>--space<\/string><string>https:\/\//u);
- const actual=windowsTaskCommand({...dto,distro:'Ubuntu 24.04'});
+ const actual=windowsTaskCommand({...dto,node:String.raw`C:\Program Files\nodejs\node.exe`,entry:String.raw`C:\Users\owner\NGS Viewer\viewer.mjs`,root:String.raw`D:\비나리 P2`});
  assert.equal(actual.name,'VINUS-NGS-Viewer-5681');
  const script=Buffer.from(actual.encoded,'base64').toString('utf16le');
  assert.match(script,/New-ScheduledTaskTrigger -AtLogOn/u);
  assert.match(script,/-LogonType Interactive -RunLevel Limited/u);
  assert.doesNotMatch(script,/sc\.exe|LocalSystem/u);
- assert.deepEqual(installTarget({platform:'linux',kernel:'5.15-microsoft-standard-WSL2',distro:'Ubuntu'}),
-  {service:'scheduled-task',distro:'Ubuntu'});
- assert.throws(()=>installTarget({platform:'win32'}),/VIEWER_USE_WSL2_INSTALLER/u);
+ assert.deepEqual(installTarget({platform:'win32'}),{service:'scheduled-task'});
+ assert.doesNotMatch(script,/wsl\.exe|--distribution/u);
+ assert.match(script,/-Execute \$c\.node -Argument \$c\.arguments/u);
+ const encoded=script.match(/FromBase64String\('([^']+)'\)/u)[1];
+ const packet=JSON.parse(Buffer.from(encoded,'base64'));
+ assert.equal(packet.node,String.raw`C:\Program Files\nodejs\node.exe`);
+ assert.match(packet.arguments,/"D:\\비나리 P2"/u);
  assert.throws(()=>installTarget({platform:'linux',kernel:'linux',distro:'Ubuntu'}),/VIEWER_OS_SERVICE_UNSUPPORTED/u);
 });

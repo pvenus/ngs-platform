@@ -12,11 +12,14 @@ Node.js 24 이상이 필요합니다. 설치기는 **Space 주소, P2 절대 경
 
 - **macOS:** 새 P2 폴더를 만든 뒤 저장소에서 `./ngs-viewer/install-macos.sh`를
   실행하세요. 인증이 끝나면 현재 로그인 사용자 LaunchAgent로 등록합니다.
-- **Windows:** WSL2 배포판의 Linux 파일시스템에 저장소와 P2를 두고, Windows
-  PowerShell에서 `.\ngs-viewer\install-windows.ps1`을 실행하세요. 배포판과
-  저장소의 Linux 절대 경로를 입력하세요. Windows 로그인 시 현재 사용자의
-  예약 작업이 Viewer를 시작합니다. **Windows SCM 서비스나 네이티브 Windows
-  Node 실행은 지원하지 않으며**, Windows 드라이브 경로는 P2로 사용할 수 없습니다.
+- **Windows 10/11:** Windows용 Node.js 24 LTS를 설치한 뒤 일반 사용자
+  PowerShell에서 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ngs-viewer\install-windows.ps1`을
+  실행하세요. 기본값은 내 로컬 앱 데이터 아래의 새 P2 폴더, 승인된 비나리
+  Space 주소, 포트 5281입니다. 설치기는 팀원 인증 후에만 로컬 NTFS 폴더를
+  만들고, 현재 사용자 로그인 시 네이티브 Viewer를 실행하는 예약 작업을 등록합니다.
+  WSL2, 관리자 권한, Windows SCM 서비스 등록은 필요하지 않습니다.
+  새 P2 경로는 부모 폴더가 존재해야 하며 네트워크 드라이브, 클라우드 재분석
+  지점, 정션과 심볼릭 링크를 포함할 수 없습니다.
 
 이미 만든 macOS P2의 명령 예시:
 

@@ -56,8 +56,8 @@ function changes(value,scope,previous){
 
 // The canonical PDS port is chunked only internally. Spool one file privately
 // and verify its whole digest before opening any destination upload request.
-async function withVerifiedFile({pds,scope,row,signal},use){
- const directory=await mkdtemp(join(tmpdir(),'ngs-file-sync-'));
+async function withVerifiedFile({pds,scope,row,signal,spoolRoot},use){
+ const directory=await mkdtemp(spoolRoot?join(spoolRoot,'ngs-sync-spool-'):join(tmpdir(),'ngs-file-sync-'));
  const path=join(directory,'verified-file');
  try{
   const file=await open(path,'wx',0o600);
@@ -89,7 +89,7 @@ async function control(ngs,name,args){
  if(!exact(reply,'ok')||reply.ok!==true)throw invalid();
 }
 
-async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,destination='local',parallelism=1,onFileError=()=>{}}){
+async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,destination='local',parallelism=1,onFileError=()=>{},spoolRoot}){
  if(typeof scope!=='string'||!project.test(scope)||typeof fileSlot!=='function'||typeof upload!=='function'||
     !['local','space'].includes(destination)||!Number.isInteger(parallelism)||parallelism<1||parallelism>maxActiveFiles)throw invalid();
  let syncId;
@@ -115,7 +115,7 @@ async function pushDestination({scope,pds,ngs,upload,signal,fileSlot=direct,dest
      }
     };
     let prepared=false;
-    const prepare=()=>withVerifiedFile({pds,scope,row,signal},async bodyFactory=>{
+    const prepare=()=>withVerifiedFile({pds,scope,row,signal,spoolRoot},async bodyFactory=>{
      prepared=true;
      if(await send(bodyFactory))return true;
      try{await control(ngs,'file_reset',{syncId,path:row.path});}

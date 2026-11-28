@@ -97,7 +97,7 @@ export async function createViewer({root,space=binariSpace,mirror=null}={}){
    if(viewerReadRoute(path)){
     if(!['GET','HEAD'].includes(method))throw fault('METHOD_NOT_ALLOWED',405);
     if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
-    return await send(res,await localProjection({root,snapshot,url,method,range:req.headers.range}),method);
+    return await send(res,await localProjection({root,snapshot,url,method,range:req.headers.range,openProject:receiver.openProject}),method);
    }
    const asset=assets.get(path);
    if(!asset)throw fault('NOT_FOUND',404);

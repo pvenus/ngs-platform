@@ -1,10 +1,11 @@
 import {execFileSync} from 'node:child_process';
 import {closeSync,cpSync,lstatSync,mkdirSync,openSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
-import {homedir,release} from 'node:os';
-import {dirname,join} from 'node:path';
+import {homedir} from 'node:os';
+import {dirname,join,win32} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {openMirror} from '../lib/mirror.mjs';
+import {verifyNtfsRoot,windowsCommand,windowsPowerShell} from '../lib/windows-storage.mjs';
 
 const repo=fileURLToPath(new URL('../../',import.meta.url));
 const safe=(x)=>typeof x==='string'&&x.isWellFormed()&&!/[\x00-\x1f\x7f]/u.test(x);
@@ -16,10 +17,10 @@ function makeOwned(path){
 function exists(path){
  try{lstatSync(path);return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}
 }
-export function installTarget({platform=process.platform,kernel=release(),distro=process.env.WSL_DISTRO_NAME}={}){
+export function installTarget({platform=process.platform}={}){
  if(platform==='darwin')return {service:'launchagent'};
- if(platform==='linux'&&/microsoft.*wsl2/iu.test(kernel)&&/^[a-zA-Z0-9._ -]{1,64}$/u.test(distro??''))return {service:'scheduled-task',distro};
- throw Error(platform==='win32'?'VIEWER_USE_WSL2_INSTALLER':'VIEWER_OS_SERVICE_UNSUPPORTED');
+ if(platform==='win32')return {service:'scheduled-task'};
+ throw Error('VIEWER_OS_SERVICE_UNSUPPORTED');
 }
 const xml=x=>String(x).replace(/&/gu,'&amp;').replace(/</gu,'&lt;').replace(/>/gu,'&gt;').replace(/"/gu,'&quot;').replace(/'/gu,'&apos;');
 export const labelFor=port=>'com.vinus.ngs-viewer.'+port;
@@ -34,32 +35,35 @@ export function launchAgent({node,entry,root,space,port,log}){
  '<key>StandardErrorPath</key>'+val(log)+'</dict></plist>\n';
 }
 function winArgument(value){
- if(!safe(value)||value.includes('"')||value.includes('\\'))throw Error('VIEWER_INVALID_SERVICE_ARGUMENT');
- return '"'+value+'"';
+ if(!safe(value)||value.includes('"'))throw Error('VIEWER_INVALID_SERVICE_ARGUMENT');
+ // A backslash immediately before the final quote must be doubled.
+ return '"'+value.replace(/\\+$/u,m=>m+m)+'"';
 }
-export function windowsTaskCommand({node,entry,root,space,port,distro}){
+export function windowsTaskCommand({node,entry,root,space,port}){
  const name='VINUS-NGS-Viewer-'+port;
- const windowsArguments=['--distribution',distro,'--exec',node,entry,'--p2',root,'--port',String(port),'--space',space].map(winArgument).join(' ');
- const data=Buffer.from(JSON.stringify({name,arguments:windowsArguments}),'utf8').toString('base64');
+ if(!Number.isSafeInteger(port)||port<1024||port>65535||![node,entry,root].every(win32.isAbsolute))
+  throw Error('VIEWER_INVALID_SERVICE_ARGUMENT');
+ const windowsArguments=[entry,'--p2',root,'--port',String(port),'--space',space].map(winArgument).join(' ');
+ const data=Buffer.from(JSON.stringify({name,node,arguments:windowsArguments}),'utf8').toString('base64');
  // Task Scheduler runs as the current interactive Windows SID, never Administrator/SYSTEM.
  const script=`$ErrorActionPreference = 'Stop'
 $c = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${data}')) | ConvertFrom-Json
-$user = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 if (Get-ScheduledTask -TaskName $c.name -ErrorAction SilentlyContinue) { throw 'VIEWER_SERVICE_ALREADY_REGISTERED' }
-$exe = Join-Path $env:WINDIR 'System32\\wsl.exe'
-$a = New-ScheduledTaskAction -Execute $exe -Argument $c.arguments
+$a = New-ScheduledTaskAction -Execute $c.node -Argument $c.arguments
 $t = New-ScheduledTaskTrigger -AtLogOn -User $user
 $p = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 $s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval ([TimeSpan]::FromMinutes(1))
 Register-ScheduledTask -TaskName $c.name -Action $a -Trigger $t -Principal $p -Settings $s | Out-Null
 try { Start-ScheduledTask -TaskName $c.name } catch { Unregister-ScheduledTask -TaskName $c.name -Confirm:$false; throw }
 Write-Output $c.name`;
- return {name,encoded:Buffer.from(script,'utf16le').toString('base64')};
+ return {name,encoded:windowsCommand(script).at(-1)};
 }
 
-function stageRuntime(base){
+function stageRuntime(base,windows){
  const destination=join(base,'runtime-'+randomUUID());
- makeOwned(destination);
+ if(windows)mkdirSync(destination,{mode:0o700});
+ else makeOwned(destination);
  try{
   for(const rel of ['ngs-viewer/viewer.mjs','ngs-viewer/lib','ngs-viewer/public',
    'ngs-local/sites/npcgen/build','space-hosting/overlay/build/shared-ngs-assets.ts','space-hosting/overlay/build/shared-ngs-response.mjs']){
@@ -75,10 +79,12 @@ function stageRuntime(base){
 /** Invoked only after install.mjs verifies an authenticated Space proof. */
 export async function registerViewer(options,target=installTarget()){
  // Initialize/verify only the exact caller-selected P2 after authentication.
- const mirror=await openMirror(options.root);mirror.close();
+ const windows=target.service==='scheduled-task';
+ const mirror=await openMirror(options.root,{create:windows});mirror.close();
  const base=target.service==='launchagent'?join(homedir(),'Library','Application Support','VINUS','NGS Viewer'):
-  join(homedir(),'.local','share','vinus-ngs-viewer');
- makeOwned(base);
+  join(process.env.LOCALAPPDATA??join(homedir(),'AppData','Local'),'VINUS NGS Viewer');
+ if(windows)verifyNtfsRoot(base,{create:true});
+ else makeOwned(base);
  const node=realpathSync(process.execPath);
  const label=labelFor(options.port), log=join(base,'viewer-'+options.port+'.log');
  let ctlPath,configPath;
@@ -88,7 +94,7 @@ export async function registerViewer(options,target=installTarget()){
   if(exists(configPath))throw Error('VIEWER_SERVICE_ALREADY_REGISTERED');
   ctlPath='gui/'+process.getuid();
  }
- const dest=stageRuntime(base),entry=join(dest,'ngs-viewer','viewer.mjs');
+ const dest=stageRuntime(base,windows),entry=join(dest,'ngs-viewer','viewer.mjs');
  let bootstrapped=false, registered=false, createdConfig=false;
  try{
   if(target.service==='launchagent'){
@@ -104,9 +110,9 @@ export async function registerViewer(options,target=installTarget()){
    registered=true;
    return {name:label,kind:target.service};
   }
-  const request=windowsTaskCommand({...options,node,entry,distro:target.distro});
-  execFileSync('/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',
-   ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',request.encoded],{stdio:'pipe',timeout:60_000});
+  const request=windowsTaskCommand({...options,node,entry});
+  execFileSync(windowsPowerShell(),
+   ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',request.encoded],{stdio:'pipe',windowsHide:true,timeout:60_000});
   registered=true;
   return {name:request.name,kind:target.service};
  }catch(e){
