@@ -27,6 +27,8 @@ const mini=new Miniflare({d1Databases:['DB'],r2Buckets:['BUCKET'],compatibilityD
  }};
  `},mod('build/space-file-replica.mjs','../build/space-file-replica.mjs'),mod('build/space-replica-view.mjs','../build/space-replica-view.mjs'),
  mod(shared+'object-replica-view.mjs',sharedRoot+shared+'object-replica-view.mjs'),
+ mod(shared+'browser-sha256.mjs',sharedRoot+shared+'browser-sha256.mjs'),
+ mod(shared+'browser-request-id.mjs',sharedRoot+shared+'browser-request-id.mjs'),
  mod(shared+'local-audio-workspace.mjs',sharedRoot+shared+'local-audio-workspace.mjs'),
  mod(shared+'local-request-queue-browser.mjs',sharedRoot+shared+'local-request-queue-browser.mjs'),mod(shared+'audio-result-index.mjs',sharedRoot+shared+'audio-result-index.mjs'),mod(shared+'object-replica.mjs',sharedRoot+shared+'object-replica.mjs'),mod(shared+'replica-whole-file-wire.mjs',sharedRoot+shared+'replica-whole-file-wire.mjs')],
 });

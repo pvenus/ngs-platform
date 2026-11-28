@@ -1344,8 +1344,8 @@
       "sha256": "b8ce31775b9bc07bc9c9b1cb8839bd2ddfdeacdeaa0afbf9b5907396cf015872"
     },
     "space-hosting/overlay/tests/space-file-replica.mjs": {
-      "bytes": 18904,
-      "sha256": "a6cd83e77f8ab0858ea4c0ac6b4a42722a3dc480c11bcea933527e9488dc42ed"
+      "bytes": 18950,
+      "sha256": "648f7affd68dc7441652289bc1406f2ad7526387377a41547f6d51379793a5dc"
     },
     "space-hosting/overlay/tests/space-viewer-export.mjs": {
       "bytes": 8624,
