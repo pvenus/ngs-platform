@@ -262,9 +262,9 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   await modal.children[0].events.submit({preventDefault(){}});
   assert.equal(Object.hasOwn(submissions[1].payload,'reference'),false);
   assert.equal(walk(modalFixture.detail,x=>x.textContent==='재생성 요청').length,0);
-  const scaleRequests=[];
+  const scaleRequests=[];let publishedScales=[20];
   const scaleFixture=await mount({request:async path=>path.includes('view=design')?{designContextSha256:pin}:
-   path.includes('propId=')?{prop:{...body.json.prop,scaleVariants:[100,90,80,70,60,50,40,30,20,10,5].map(scalePercent=>({scalePercent,pixel:newMedia.pixel,spirit:newMedia.spirit}))}}:{props:[pointer]},
+   path.includes('propId=')?{prop:{...body.json.prop,scaleVariants:publishedScales.map(scalePercent=>({scalePercent,pixel:newMedia.pixel,spirit:newMedia.spirit}))}}:{props:[pointer]},
    actions:['generate','scale'],
    submit:async request=>{scaleRequests.push(request);return new Response(JSON.stringify({status:'queued',queueId:'ngs.local.11111111-1111-4111-8111-111111111111'}),{status:202});}});
   scaleFixture.tools.children[0].click();
@@ -281,6 +281,11 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   const repair=walk(scaleFixture.detail,x=>x.textContent==='배율 추가 생성 요청')[0];
   assert.ok(!repair.disabled);repair.click();
   modal=document.body.children[0];scales=walk(modal,el=>el.type==='checkbox');
+  const sections=walk(modal,x=>x.tag==='fieldset');
+  assert.deepEqual(sections.map(x=>[x.children[0].textContent,walk(x,e=>e.type==='checkbox').map(e=>Number(e.value))]),[
+   ['새로 추가할 배율',[100,90,80,70,60,50,40,30,10,5]],['기존 이미지 교체',[20]],
+  ]);
+  assert.equal(walk(modal,x=>String(x.textContent??'').includes('선택한 배율만 추가합니다.')).length,0);
   assert.ok(!scales.find(x=>x.value==='20').disabled);
   scales.find(x=>x.value==='20').checked=true;
   scales.find(x=>x.value==='5').checked=true;
@@ -288,6 +293,17 @@ test('shared Prop DOM keeps tabs, independently loops and stops previews, and ve
   await modal.children[0].events.submit({preventDefault(){}});
   assert.equal(scaleRequests[1].requestType,'prop.scale.generate');
   assert.deepEqual(scaleRequests[1].payload,propPayload('scale',{propId,source,scalePercents:[90,20,5]}));
+  // Even with every scale already published, the replacement panel is usable.
+  publishedScales=[100,90,80,70,60,50,40,30,20,10,5];
+  const allFixture=await mount({request:async path=>path.includes('propId=')?{prop:{...body.json.prop,
+   scaleVariants:publishedScales.map(scalePercent=>({scalePercent,pixel:newMedia.pixel,spirit:newMedia.spirit}))}}:{props:[pointer]},
+   actions:['scale']});
+  const allRepair=walk(allFixture.detail,x=>x.textContent==='배율 추가 생성 요청')[0];
+  assert.ok(!allRepair.disabled);allRepair.click();
+  const allGroups=walk(document.body.children[0],x=>x.tag==='fieldset');
+  assert.equal(walk(allGroups[0],x=>x.type==='checkbox').length,0);
+  assert.equal(walk(allGroups[1],x=>x.type==='checkbox'&&!x.disabled).length,11);
+  document.body.children[0].close();
   const previewController=new AbortController(),nativeFetch=fetch,fetches=[];
   t.mock.method(globalThis,'fetch',async (url,opts)=>{
    fetches.push({url,opts});return new Response(png(20,20,true));

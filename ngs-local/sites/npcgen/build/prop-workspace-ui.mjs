@@ -430,15 +430,22 @@ export async function mountPropWorkspace({items,detail,tools,item,propTab,propAn
   const scaleBoxes=[];
   if(useScales){
    const existing=new Set(action==='scale'?(original?.scaleVariants??[]).map(v=>v.scalePercent):[]);
-   const flags=node('fieldset',null,'prop-scale-options'),grid=node('div',null,'prop-scale-grid');
-   flags.append(node('legend','생성할 배율 (여러 개 선택)'),grid);
+   function group(title){
+    const flags=node('fieldset',null,'prop-scale-options'),grid=node('div',null,'prop-scale-grid');
+    flags.append(node('legend',title),grid);form.append(flags);return grid;
+   }
+   const add=group(action==='scale'?'새로 추가할 배율':'생성할 배율 (여러 개 선택)');
+   const replace=action==='scale'?group('기존 이미지 교체'):null;
    for(const p of propScalePercents){
     const control=node('input');control.type='checkbox';control.value=String(p);
     control.checked=action==='generate'&&p===20;
     const label=node('label');
-    label.append(control,node('span',p+'%'+(existing.has(p)?' · 기존 이미지 교체':'')));grid.append(label);scaleBoxes.push(control);
+    label.append(control,node('span',p+'%'));(existing.has(p)?replace:add).append(label);scaleBoxes.push(control);
    }
-   form.append(flags,node('p',action==='scale'?'선택한 배율에 이미지가 있으면 새로 처리해 교체합니다. 원본과 선택하지 않은 배율은 유지합니다.':'큰 원본은 그대로 저장하고, 선택한 배율별로 픽셀·시네마틱 배치 이미지를 만듭니다.','meta'));
+   if(replace){
+    if(!add.children.length)add.append(node('span','없음','meta'));
+    if(!replace.children.length)replace.append(node('span','없음','meta'));
+   }else form.append(node('p','큰 원본은 그대로 저장하고, 선택한 배율별로 픽셀·시네마틱 배치 이미지를 만듭니다.','meta'));
   }
   if(action==='generate'&&!useScales)form.append(node('p','시네마틱 원본과 1/5 시네마틱·픽셀 배치 이미지가 함께 생성됩니다.','meta'));
   if(motionId)form.append(field('애니메이션 이름',motionId));
