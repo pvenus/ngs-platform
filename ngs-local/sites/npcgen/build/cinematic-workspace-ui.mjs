@@ -140,7 +140,7 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
    const title=make('input'),prompt=make('textarea');title.maxLength=120;prompt.maxLength=1000;prompt.rows=5;
    requestForm(detail,{caption:'새 시네마틱 원본 생성',signal,send,notice,isValid:validCinematicSourceGenerate,
     makePayload:()=>({schemaVersion:cinematicSourceGenerateSchema,projectId,title:title.value.trim(),prompt:prompt.value.trim()}),
-    body:form=>form.append(make('p','새 장면의 원본 이미지 한 장만 생성해요. 애니메이션은 게시 후 별도로 추가할 수 있어요.','meta'),
+    body:form=>form.append(make('p','새 장면의 2:1 원본 이미지 한 장(1536 × 768)을 생성해요. 애니메이션은 게시 후 별도로 추가할 수 있어요.','meta'),
      labeled('장면 이름',title),labeled('이미지 연출 지시',prompt))});
    title.focus();
   },signal,'npc-one-stop-trigger');

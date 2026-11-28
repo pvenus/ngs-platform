@@ -40,7 +40,7 @@
     "sites/npcgen/build/cinematic-player.mjs": "d7dad2e4e3a96085b7b7ef809a4761047e99f458345a9e21f1b40194a46c51a2",
     "sites/npcgen/build/cinematic-sequence-contract.mjs": "c859dba78e5a761fdfa29564a244900bcbc817d35dc5fb40335a236987f5069a",
     "sites/npcgen/build/cinematic-timeline.mjs": "eb5a20ad63a9ed44d4e1e892f8781e1f158db62bbe95476d04dec4cdf5e89c17",
-    "sites/npcgen/build/cinematic-workspace-ui.mjs": "efc7923abb5526204e24dc0c5d5bf6450c383bcda8410b6cb1562aa36920e860",
+    "sites/npcgen/build/cinematic-workspace-ui.mjs": "9974e3bf86b3ca08fa3f9f1de3d5d01f04a1d3eb98a2895b64b326ec1e0d2ae4",
     "sites/npcgen/build/cinematic-workspace.mjs": "ef75c9da9fc821d79787992dc77a8b25fa496810354e43beb5ee220af0d95d2e",
     "sites/npcgen/build/file-sync-raw-client.mjs": "aef40378005b76bc1e94e4c5d02d374084095afb8498de8b3c567022ec836766",
     "sites/npcgen/build/file-update-envelope.mjs": "5f66636bdb697c621b3f92649d94b3fc55c003e691c5d84efc6a4cc424da6599",
