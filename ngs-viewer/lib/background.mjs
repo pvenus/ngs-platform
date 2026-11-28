@@ -13,7 +13,12 @@ export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot
    onState({state:'running'});
    try{
     const result=await pullSpaceToP2({mirror,signal,remote:async path=>{
-     const response=await remote(path,{signal});
+     let response;
+     try{response=await remote(path,{signal});}
+     catch(e){
+      if(e?.message==='VIEWER_CODEX_CONNECTION_REQUIRED')control.abort(e);
+      throw e;
+     }
      if(response.status===401||response.status===403){
       onSnapshot(null);control.abort(Error('VIEWER_SPACE_SIGN_IN_REQUIRED'));
       throw signal.reason;
@@ -26,7 +31,8 @@ export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot
    }catch(e){
     if(closed)return;
     onState({state:'failed',error:signal.reason?.message==='VIEWER_SPACE_SIGN_IN_REQUIRED'?
-     'VIEWER_SPACE_SIGN_IN_REQUIRED':'VIEWER_SPACE_SYNC_FAILED'});
+     'VIEWER_SPACE_SIGN_IN_REQUIRED':
+     (e?.message==='VIEWER_CODEX_CONNECTION_REQUIRED'||signal.reason?.message==='VIEWER_CODEX_CONNECTION_REQUIRED')?'VIEWER_CODEX_CONNECTION_REQUIRED':'VIEWER_SPACE_SYNC_FAILED'});
    }finally{
     pending=null;control=null;
     if(!closed){timer=setTimeout(start,Math.max(1000,intervalMs-(Date.now()-begin)));timer.unref?.();}

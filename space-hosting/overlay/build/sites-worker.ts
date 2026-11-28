@@ -1,6 +1,6 @@
 import handler from "vinext/server/fetch-handler";
 import { sharedNgsResponse } from "./shared-ngs-assets";
-import { spaceViewerMcpResponse } from "./space-viewer-mcp.mjs";
+import { appendViewerDiscovery, spaceViewerMcpResponse } from "./space-viewer-mcp.mjs";
 import { spaceViewerResponse } from "./space-viewer-export.mjs";
 import { spaceViewerInstallResponse } from "./space-viewer-install.mjs";
 import viewerBridgeScript from "./space-viewer-bridge.mjs?raw";
@@ -182,7 +182,7 @@ export default {
         try { const p=await masterPrincipal(user); return p.role==="owner" && p.projectId==="binari"; }
         catch { return false; }
       }})});
-    if (denied) return denied;
+    if (denied) return appendViewerDiscovery(request,denied);
     let binding = ctx.props?.CONNECTORS;
     // Local preview emulates the same request-scoped capability. This branch and
     // the auxiliary service binding are absent from production builds.

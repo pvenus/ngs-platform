@@ -5,6 +5,23 @@ const exportsByTool=new Map([
  ['ngs_viewer_manifest','/api/viewer/manifest'],
  ['ngs_viewer_file_chunk','/api/viewer/file'],
 ]);
+const schema=(properties,required=[])=>({type:'object',additionalProperties:false,properties,required});
+export const spaceViewerMcpTools=[
+ {name:'ngs_viewer_manifest',description:'Read only the Binari replica inventory visible to the currently signed-in team member.',
+  inputSchema:schema({}),annotations:{readOnlyHint:true,destructiveHint:false}},
+ {name:'ngs_viewer_file_chunk',description:'Read a bounded file chunk from the granted Binari replica, pinned to SHA-256.',
+  inputSchema:schema({path:{type:'string'},sha256:{type:'string',pattern:'^[a-f0-9]{64}$'},offset:{type:'integer',minimum:0}},['path','sha256','offset']),
+  annotations:{readOnlyHint:true,destructiveHint:false}},
+];
+export async function appendViewerDiscovery(request,original){
+ if(new URL(request.url).pathname!=='/mcp'||!original.ok||
+    !request.headers.get('oai-authenticated-user-id')||!request.headers.get('oai-authenticated-user-email'))return original;
+ const call=await parse(request);
+ if(call?.method!=='tools/list')return original;
+ const body=await original.clone().json().catch(()=>null);
+ if(body?.id!==call.id||!Array.isArray(body?.result?.tools))return original;
+ return response({...body,result:{...body.result,tools:[...body.result.tools,...spaceViewerMcpTools]}});
+}
 const record=x=>x&&typeof x==='object'&&!Array.isArray(x);
 const keys=(x,s)=>record(x)&&Object.keys(x).sort().join(',')===s;
 const manifestLimit=16*1024*1024, chunkLimit=1024*1024;

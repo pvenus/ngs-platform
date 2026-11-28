@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 363,
+  "fileCountIncludingManifest": 365,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1280,8 +1280,8 @@
       "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
     },
     "ngs-viewer/README.md": {
-      "bytes": 6090,
-      "sha256": "b1d5b7fd8fcaf4be4598d30defcf370c651c13a6f058c3482fbb19a05c3e2d40"
+      "bytes": 6704,
+      "sha256": "a049589b101880b4709bd7ab8870f9951ee1f512cf8842f77d8457255b4ea90c"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1300,32 +1300,32 @@
       "sha256": "3d0b8981c1547cd91ead5610718904b40a4a05ebeb95aa9c24ba9da15dc2fffa"
     },
     "ngs-viewer/public/browser.mjs": {
-      "bytes": 6708,
-      "sha256": "9bb11f813e6f5af17dd5eb79659ba4a925ad0c866ebf7b82115123c583bca6d4"
+      "bytes": 7691,
+      "sha256": "0d518f07473f9083cf0716696e3753c782a076818bda8e7c55894e64dea44a0e"
     },
     "ngs-viewer/public/style.css": {
       "bytes": 631,
       "sha256": "14493bc406037379d25ecf67e777c133cda0b36f54c8d8dbf0405b679bec9bfa"
     },
     "ngs-viewer/tests/browser.test.mjs": {
-      "bytes": 4205,
-      "sha256": "176e4a27786e2f628588692008843b1240f36f695beff416b7dec258cbb98816"
+      "bytes": 4208,
+      "sha256": "59de15089c801eebb5a287e058a85fb72c96b1351c07be6898910a43bd8cef43"
     },
     "ngs-viewer/tests/mirror.test.mjs": {
       "bytes": 9995,
       "sha256": "a062a67ba0e9e8b58b8b183af5cbcd232dd2e0fec81b69eddc681eff03dc94f5"
     },
     "ngs-viewer/tests/viewer.test.mjs": {
-      "bytes": 4225,
-      "sha256": "3100d0c08c1a1923cec178a9ebbf75f7a645295faf1e36949abd2c079c266848"
+      "bytes": 6158,
+      "sha256": "f9bc77018af2c5b259af0c8da810b7bc9f230a2a0e26a290f8446f8371301510"
     },
     "ngs-viewer/viewer.mjs": {
-      "bytes": 7764,
-      "sha256": "097a9d4af745f708fadc2e97311a025d0479200c8ca81a2d67aeab87a1e70b95"
+      "bytes": 9360,
+      "sha256": "1b132939aa0b597c21f0d2277b206cb0a3a4dbb1ebbaafbab6e75c5523b75f0c"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
-      "bytes": 13873,
-      "sha256": "e217910ebb69388047029f10fc00b203603e274d6315b6c8872e6306cd12763b"
+      "bytes": 13927,
+      "sha256": "8fc71e2254385afbd2b32636c309d3c75c13749fbd9eb7d25f66949a9779bb7b"
     },
     "space-hosting/overlay/build/space-file-replica.d.mts": {
       "bytes": 825,
@@ -1432,24 +1432,32 @@
       "sha256": "68062726f78c07efd903cdaea4ad3de25c8d2e2dee0abe9c00f304c57d0f701c"
     },
     "ngs-viewer/lib/background.mjs": {
-      "bytes": 1531,
-      "sha256": "3a0fb8c4899b313f48ba639da1d1fcc5751f11abba4f3d376b4ae8d44e8dd6b5"
+      "bytes": 1813,
+      "sha256": "c97e8c7cc1fdbba7828b3fb25f0f1df0554ea1ac14496cf7e37db6450d846428"
     },
     "ngs-viewer/lib/native-mcp.mjs": {
-      "bytes": 3534,
-      "sha256": "cf033d7e37732b4b381af13096e028d598ce4a016a73fbc36f814868a8b7e67f"
+      "bytes": 3921,
+      "sha256": "ea6ea879ef94a36da0c94232689fc58437e7d11fd9e5fdd6a89965702dc1b112"
     },
     "ngs-viewer/tests/native-mcp.test.mjs": {
       "bytes": 4054,
       "sha256": "af2c99add075667c031f6e83276d73a5c7e10c24a1c92a36fc4110c84efd4ca4"
     },
     "space-hosting/overlay/build/space-viewer-mcp.d.mts": {
-      "bytes": 198,
-      "sha256": "0bb07f14ec133ec2cd8024ef420b100e16667bb474429e13e64996c8ab881ba5"
+      "bytes": 290,
+      "sha256": "f8d988032a4c4eaf26a5d809bafe79e3cf21f019d83e7d824d1e2f5e53ac0245"
     },
     "space-hosting/overlay/build/space-viewer-mcp.mjs": {
-      "bytes": 3534,
-      "sha256": "30bd89b0337cfd71885425e8b7f2586f1c6dc85eb80f72fd46543b4f0f562d6d"
+      "bytes": 4799,
+      "sha256": "7fa43faf8caa0f47bd447b8dc5ec106a2179a4aa0b8e17b1e164f1e17716b63f"
+    },
+    "ngs-viewer/lib/codex-transport.mjs": {
+      "bytes": 3655,
+      "sha256": "917d96a14e46e50d3802c16b6f68e14aeaccce4fc2af83816ee61e03829ad0d3"
+    },
+    "ngs-viewer/tests/codex-transport.test.mjs": {
+      "bytes": 3219,
+      "sha256": "d82fa045c56b33245367f55ab8c6a418661452a29832cd1af13832cb75c8deb3"
     }
   }
 }

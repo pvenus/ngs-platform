@@ -93,3 +93,10 @@ node --test space-hosting/overlay/tests/{space-viewer-export,space-viewer-instal
 `/mcp` 리소스에 대한 오프라인 갱신 권한이 필요합니다. 로그인된 브라우저
 쿠키나 운영 서비스의 사이트 키로 대체하지 않습니다. 운영 환경에서 승인받은
 클라이언트로 직접 로그인·갱신을 확인하기 전까지 자동 시작하지 않습니다.
+
+`NGS_VIEWER_CODEX_BIN`과 `NGS_VIEWER_CODEX_MCP_NAME`을 지정하는 브랜치 검증 모드에서는
+독립 OAuth 코드 대신 로그인된 Codex의 app-server 통제 소켓을 사용합니다.
+`NGS_VIEWER_CODEX_SOCKET`은 Codex가 별도 소켓 경로를 명시한 경우에만 설정합니다.
+AI 턴을 실행하지 않으며, 목록과 파일 청크 두 도구만 직접 호출합니다.
+Codex 연결이 사라지면 동기화만 멈추며, 이미 확정한 P2는 변경하지 않습니다.
+등록된 Codex 연결로 운영 확인 전에는 정식 설치 경로에 이 모드를 연결하지 않습니다.

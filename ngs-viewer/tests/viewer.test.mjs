@@ -7,11 +7,11 @@ import {tmpdir} from 'node:os';
 import {createViewer,binariSpace} from '../viewer.mjs';
 import {openMirror} from '../lib/mirror.mjs';
 
-async function fixture(t){
+async function fixture(t,opts={}){
  const temp=await realpath(await mkdtemp(join(tmpdir(),'ngs-viewer-test-')));
  const windows=process.platform==='win32',root=windows?join(temp,'private P2'):temp;
  const mirror=windows?await openMirror(root,{create:true}):null;
- const viewer=await createViewer({root,mirror});
+ const viewer=await createViewer({root,mirror,...opts});
  await new Promise((resolve,reject)=>{viewer.once('error',reject);viewer.listen(0,'127.0.0.1',resolve);});
  t.after(async()=>{await new Promise(resolve=>viewer.close(resolve));await rm(temp,{recursive:true,force:true});});
  const origin='http://127.0.0.1:'+viewer.address().port,get=(path,init)=>fetch(origin+path,init);
@@ -72,4 +72,35 @@ test('hash-pinned P2 files drive the existing project DTO, only after full insta
  assert.equal((await get('/api/npc-workspace?projectId=binari')).status,403);
  await write('disconnect',{});
  assert.equal((await get('/api/project-folders')).status,503);
+});
+
+test('Codex background mode syncs without a popup or browser, displays loss, and retains the P2 file', {skip:process.platform==='win32'},async t=>{
+ const payload=Buffer.from('{"title":"비나리"}'),sha256=createHash('sha256').update(payload).digest('hex');
+ let disconnected=false, calls=[];
+ const client={close(){},async tool(name,args){
+  calls.push(name);
+  if(disconnected)throw Error('VIEWER_CODEX_CONNECTION_REQUIRED');
+  if(name==='ngs_viewer_manifest')return {isError:false,structuredContent:{status:200,manifest:{
+   projectId:'binari',resources:['project'],files:[{path:'project.json',size:payload.length,sha256}]}}};
+  assert.equal(name,'ngs_viewer_file_chunk');assert.deepEqual(args,{path:'project.json',sha256,offset:0});
+  return {isError:false,structuredContent:{status:200,base64:payload.toString('base64'),fileSize:String(payload.length),
+   fileSha256:sha256,fileOffset:'0'}};
+ }};
+ const {root,config,get,write}=await fixture(t,{codexClient:client});
+ assert.equal(config.backend,'codex');
+ const until=async state=>{
+  for(let i=0;i<75;i++){const x=await (await get('/__viewer/status')).json();if(x.state===state)return x;
+   await new Promise(resolve=>setTimeout(resolve,5));}
+  assert.fail('Viewer status did not reach '+state);
+ };
+ const first=await until('completed');
+ assert.deepEqual(first,{state:'completed',files:1,changed:1,failed:0,removed:0,committed:true});
+ assert.deepEqual(calls,['ngs_viewer_manifest','ngs_viewer_file_chunk']);
+ assert.equal((await get('/api/project-folders')).status,200);
+ assert.equal((await (await get('/__npcgen_session')).json()).requestWritable,false);
+ assert.equal((await write('sync/start',{})).status,404);
+ disconnected=true;
+ assert.equal((await write('sync/now',{})).status,202);
+ assert.equal((await until('failed')).error,'VIEWER_CODEX_CONNECTION_REQUIRED');
+ assert.deepEqual(await readFile(join(root,'binari','project.json')),payload);
 });

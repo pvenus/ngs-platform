@@ -6,7 +6,7 @@ import {runInNewContext} from 'node:vm';
 
 test('approved Space popup receives only the native request envelope and returns exact reply',async()=>{
  const code=(await readFile(new URL('../public/browser.mjs',import.meta.url),'utf8'))
-  .replace("await import('/local-project-page.js')","boot()");
+  .replaceAll("await import('/local-project-page.js')","boot()");
  const local='http://127.0.0.1:5281',space='https://fixture.binari.chatgpt.site';
  const events=new Map(),buttons=new Map(),status={textContent:''},store=new Map(),sent=[],localWrites=[];
  const queuePayload={requestType:'fixture.create',idempotencyKey:'viewer-test:1',payload:{projectId:'binari'}};
