@@ -1,4 +1,4 @@
-import {cinematicSequencePrefix,cinematicSequenceFramePath,cinematicSequenceFrameLimit,cinematicSequenceType,cinematicPlaybackUpdateType,
+import {cinematicUpscaleType,validCinematicUpscale,cinematicSequencePrefix,cinematicSequenceFramePath,cinematicSequenceFrameLimit,cinematicSequenceType,cinematicPlaybackUpdateType,
  validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,validCinematicPlaybackState,
  cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,validBackgroundAnimation,validBackgroundPixelRequest,validBackgroundRequest,cinematicSequencesRemoveType,cinematicArchivePath,validCinematicSourceGenerate,validCinematicSourceResult,
  validCinematicSequencesRemove,validCinematicArchive} from './cinematic-sequence-contract.mjs';
@@ -65,7 +65,7 @@ async function getSequence(p,id,{timeline=true}={}){
 }
 export async function admitCinematicRequest({command,openProject,authorize}){
  const p=command?.payload,type=command?.requestType;
- const validator=type===backgroundAnimationType?validBackgroundAnimation:type===cinematicSequenceType?validCinematicSequencePayload:
+ const validator=type===cinematicUpscaleType?validCinematicUpscale:type===backgroundAnimationType?validBackgroundAnimation:type===cinematicSequenceType?validCinematicSequencePayload:
   type===cinematicPlaybackUpdateType?validCinematicPlaybackUpdate:type===backgroundSourceType?validBackgroundRequest:type===backgroundPixelType?validBackgroundPixelRequest:type===cinematicSourceGenerateType?validCinematicSourceGenerate:
   type===cinematicSequencesRemoveType?validCinematicSequencesRemove:validCinematicPayload;
  if(!validator(p))throw failure('NGS_CINEMATIC_PAYLOAD_INVALID',400);
@@ -79,6 +79,10 @@ export async function admitCinematicRequest({command,openProject,authorize}){
   if(p.sequenceIds.some(id=>archived.has(id)))throw failure('CINEMATIC_SEQUENCE_ALREADY_REMOVED',409);
   for(const id of p.sequenceIds)if(!await getSequence(storage,id,{timeline:false}))throw missing();
   return;
+ }
+ if(type===cinematicUpscaleType){
+  // The shared PDS validates exact input existence and revision. Intake checks shape only.
+  if(!storage)throw replicaUnavailable();return;
  }
  if(type===cinematicPlaybackUpdateType){
   const sequence=storage&&await getSequence(storage,p.sequenceId);
@@ -105,7 +109,11 @@ async function sceneList(p,sources,clips,sequences,sequenceTimes){
    const m=await readReplicaObject(p,location.root+'/'+id+'/manifest.json',nativeMetadataLimit);
    if(m===null)return;
    if(!validCinematicSequenceResult(m)||m.officialRequestId!==id||location.source!==null&&(location.source!==m.sourceSha256||m.group))throw replicaUnavailable();
-   if(!m.group)bySource.get(m.sourceSha256)?.sequences.push(id);
+   if(!m.group){
+    const scene=bySource.get(m.sourceSha256);
+    scene?.sequences.push(id);
+    if(scene&&m.upscale)(scene.upscaledSequences??=[]).push(id);
+   }
   }),
   ...clips.map(id=>async()=>{
    const m=await result(p,id);

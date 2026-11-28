@@ -1,6 +1,11 @@
 import {MASTER_FPS,validCinematicPlayback,validBackgroundLoopPlayback} from './cinematic-timeline.mjs';
 import {cinematicId,cinematicHash,cinematicMotion} from './cinematic-contract.mjs';
 export const cinematicSequenceType='cinematic.sequence.generate';
+export const cinematicUpscaleType='cinematic.sequence.upscale';
+export const cinematicUpscaleSchema='ngs.cinematic-sequence-upscale.v1';
+export const validCinematicUpscale=p=>exact(p,['schemaVersion','projectId','sequenceId','sourceSha256','expectedRevision','playback'])&&
+ p.schemaVersion===cinematicUpscaleSchema&&p.projectId==='binari'&&cinematicId(p.sequenceId)&&cinematicHash(p.sourceSha256)&&
+ Number.isSafeInteger(p.expectedRevision)&&p.expectedRevision>=0&&p.expectedRevision<Number.MAX_SAFE_INTEGER&&validCinematicPlayback(p.playback);
 export const cinematicSequenceSchema='ngs.cinematic-sequence-generate.v1';
 export const cinematicSequenceResultSchema='ngs.cinematic-sequence-result.v1';
 export const cinematicSequencePrefix='cinematics/sequences';
@@ -20,7 +25,8 @@ export function validCinematicSequenceResult(m){
  const compact=grouped&&m.playback?.durationFrames===84&&m.playback?.speedCurve?.[0]?.rate===1/6;
  const count=compact?8:45,reduced=compact&&m.group?.variant==='pixel';
  const hasCorrection=Object.hasOwn(u??{},'pixelCorrection'),c=u?.pixelCorrection;
- const dimensions=upscale?grouped&&exact(u,['model','scale','sourceWidth','sourceHeight',...(hasCorrection?['pixelCorrection']:[])])&&
+ const derived=upscale&&!grouped;
+ const dimensions=upscale?(grouped||cinematicId(u?.sourceSequenceId)&&u.sourceSequenceId!==m.officialRequestId)&&exact(u,['model','scale','sourceWidth','sourceHeight',...(derived?['sourceSequenceId']:[]),...(hasCorrection?['pixelCorrection']:[])])&&
   (!reduced||hasCorrection)&&
   (!hasCorrection||m.group?.variant==='pixel'&&exact(c,['method','upscaledFramesSha256',...(reduced?['downscale']:[])])&&
    c.method==='reference-palette-v1'&&cinematicHash(c.upscaledFramesSha256)&&(!reduced||c.downscale===2))&&
@@ -103,4 +109,4 @@ export const validBackgroundAnimation=p=>exact(p,['schemaVersion','projectId','b
  (p.schemaVersion===backgroundAnimationSchema||p.playback.durationFrames===264);
 export const validBackgroundAnimationGroup=g=>exact(g,['requestId','variant','backgroundSha256'])&&
  cinematicId(g.requestId)&&['cinematic','pixel'].includes(g.variant)&&cinematicHash(g.backgroundSha256);
-export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType]);
+export const cinematicNewTypes=Object.freeze([...cinematicNativeTypes,cinematicUpscaleType,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType]);

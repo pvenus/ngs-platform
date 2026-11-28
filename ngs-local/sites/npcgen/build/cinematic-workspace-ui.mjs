@@ -1,7 +1,7 @@
 import {browserRequestId} from './browser-request-id.mjs';
 import {mountCatalogRosterEdit} from './catalog-roster-edit.mjs';
 import {cinematicPath,cinematicHash,cinematicId} from './cinematic-contract.mjs';
-import {cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateType,cinematicPlaybackUpdateSchema,
+import {cinematicUpscaleType,cinematicUpscaleSchema,validCinematicUpscale,cinematicSequenceType,cinematicSequenceSchema,cinematicPlaybackUpdateType,cinematicPlaybackUpdateSchema,
  cinematicSourceGenerateType,cinematicSourceGenerateSchema,cinematicSequencesRemoveType,cinematicSequencesRemoveSchema,
  backgroundPath,backgroundSourceType,backgroundSourceSchema,backgroundFields,validBackgroundRequest,backgroundPixelType,backgroundPixelSchema,validBackgroundPixelRequest,backgroundAnimationType,backgroundAnimationSchema,backgroundLoopPrompt,validBackgroundAnimation,
  maxSelection,validCinematicSequencePayload,validCinematicSequenceResult,validCinematicPlaybackUpdate,
@@ -120,13 +120,14 @@ function mountSourceRoster({items,scenes,selected,go,projectId,signal,area='cine
  signal.addEventListener('abort',()=>{remember();label.remove();query.remove();},{once:true});
 }
 export async function mountCinematicWorkspace({items,detail,tools,request,submit,projectId,item,source,panel,navigate,signal,
- enabled,playbackEnabled=false,sourceEnabled=false,removeEnabled=false,deleteItem,legacyDeleteEnabled=false}){
+ enabled,playbackEnabled=false,upscaleEnabled=false,sourceEnabled=false,removeEnabled=false,deleteItem,legacyDeleteEnabled=false}){
  const {scenes}=await request(url(projectId,{grouped:'1'}));
  if(signal.aborted)return;
  if(!Array.isArray(scenes)||!scenes.every(s=>s&&cinematicHash(s.sourceSha256)&&(s.title===null||typeof s.title==='string')&&
   [s.sequences,s.clips].every(v=>Array.isArray(v)&&v.every(cinematicId))))throw Error('CINEMATIC_INDEX_INVALID');
  const selected=source?scenes.find(s=>s.sourceSha256===source):
   scenes.find(s=>s.sequences.includes(item)||s.clips.includes(item));
+ const enhanced=new Set(selected?.upscaledSequences??[]);
  const sequences=selected?.sequences??[],clips=selected?.clips??[], currentSource=selected?.sourceSha256;
  const tab=panel==='animations'||sequences.includes(item)||clips.includes(item)?'animations':'source';
  const go=(options={})=>navigate({cineSource:currentSource,cineTab:tab,...options});
@@ -279,7 +280,7 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
    c.addEventListener('change',()=>{if(c.checked)picked.add(id);else picked.delete(id);selection();},{signal});line.append(c);
   }
   const still=make('img');still.alt='버전 '+short(id)+' 첫 프레임';still.src=url(projectId,{sequence:id,frame:0});still.loading='lazy';
-  const permalink=make('a','PNG '+short(id));permalink.href=navigate({cineTab:'animations',cineSource:currentSource,item:id});
+  const permalink=make('a',(enhanced.has(id)?'2× 업스케일 ':'PNG ')+short(id));permalink.href=navigate({cineTab:'animations',cineSource:currentSource,item:id});
   const info=make('div',null,'cinematic-row-label'),controls=make('div',null,'prop-actions cinematic-row-actions');
   info.append(permalink,make('span','PNG 프레임','meta'));
   controls.append(action('재생',()=>void openNative(id,player,{autoplay:true}),signal));
@@ -289,6 +290,23 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
    footer.append(action('닫기',()=>pane.close(),signal));pane.append(content,footer);pane.showModal();
    void openNative(id,content,{editMode:true});
   },signal));
+  if(upscaleEnabled&&!enhanced.has(id)&&typeof submit==='function'){
+   const button=action('업스케일링',async()=>{
+    button.disabled=true;
+    try{
+     const {sequence,revision,playback}=await request(url(projectId,{sequence:id}));
+     if(signal.aborted)return;
+     const payload={schemaVersion:cinematicUpscaleSchema,projectId,sequenceId:id,sourceSha256:currentSource,expectedRevision:revision,playback};
+     if(!validCinematicUpscale(payload)||!validCinematicSequenceResult(sequence)||sequence.upscale||sequence.group||
+        sequence.officialRequestId!==id||sequence.sourceSha256!==currentSource)throw Error('CINEMATIC_UPSCALE_INVALID');
+     requestForm(detail,{caption:'시네마틱 2× 업스케일링',signal,send:queueAction(submit,cinematicUpscaleType),notice,
+      isValid:validCinematicUpscale,makePayload:()=>payload,
+      body:form=>form.append(make('p','선택한 버전의 프레임과 재생 설정을 유지해 2× 버전을 만들어요. 원본은 바꾸지 않아요.','meta'))});
+    }catch{if(!signal.aborted)notice.textContent='업스케일링할 원본을 확인하지 못했어요.';}
+    finally{if(!signal.aborted)button.disabled=false;}
+   },signal);
+   controls.append(button);
+  }
   line.append(still,info,controls);
   row.append(line,player);rows.append(row);
   if(id===item)void openNative(id,player);

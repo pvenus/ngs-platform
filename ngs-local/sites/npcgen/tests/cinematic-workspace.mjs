@@ -261,3 +261,42 @@ test('wide cinematic source and legacy cinematic source coexist; background stay
  assert.ok(!validBackgroundResult({...still,schemaVersion:'ngs.background-source-result.v1'}));
  assert.ok(validBackgroundResult({...still,schemaVersion:'ngs.background-source-result.v1',height:1024}));
 });
+
+test('upscale submits an exact formal request and exposes separate 2× row in the original scene',async t=>{
+ const parent=mkdtempSync(join(realpathSync(tmpdir()),'ngs-cine-upscale-'));
+ t.after(()=>rmSync(parent,{force:true,recursive:true}));
+ const root=join(parent,'projects'),dir=join(root,'binari'),cine=join(dir,'cinematics');
+ const resultId='request.official.'+'b'.repeat(64);
+ for(const folder of ['sources','sequences/'+id+'/frames','sequences/'+resultId+'/frames'])mkdirSync(join(cine,folder),{recursive:true,mode:0o700});
+ writeFileSync(join(dir,'project.json'),'{"name":"비나리"}');
+ writeFileSync(join(cine,'sources',sourceSha256+'.png'),png,{mode:0o600});
+ const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,zoom:1,x:.5,y:.5}]};
+ const frames=Array.from({length:45},(_,index)=>({index,sha256:sourceSha256,bytes:png.length}));
+ const manifest={schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,
+  sourceSha256,width:512,height:352,masterFps:24,frameCount:45,frames,playback};
+ writeFileSync(join(cine,'sequences',id,'manifest.json'),JSON.stringify(manifest),{mode:0o600});
+ writeFileSync(join(cine,'sequences',id,'frames','0000.png'),png,{mode:0o600});
+ const requests=[];
+ const server=createLocalProjectPageServer({root,readCinematicUpscaleReady:async()=>true,requestQueue:{
+  enqueue(c){requests.push(c);return {status:'queued'};}}});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const origin='http://127.0.0.1:'+server.address().port;
+ const boot=await fetch(origin+'/__npcgen_session'),cookie=boot.headers.get('set-cookie').split(';')[0],settings=await boot.json();
+ assert.equal(settings.cinematicUpscaleEnabled,true);
+ const type='cinematic.sequence.upscale';
+ const wire={schemaVersion:'ngs.cinematic-sequence-upscale.v1',projectId:'binari',sequenceId:id,sourceSha256,expectedRevision:0,playback};
+ const post=payload=>fetch(origin+'/api/requests',{method:'POST',headers:{cookie,origin,'content-type':'application/json',
+  'x-npcgen-csrf':settings.csrfToken,'x-npcgen-frontend-context':settings.contextId},body:JSON.stringify({requestType:type,idempotencyKey:type,payload})});
+ assert.equal((await post({...wire,sourcePath:'/tmp/source'})).status,400);
+ assert.equal((await post(wire)).status,202);assert.deepEqual(requests,[{requestType:type,idempotencyKey:type,payload:wire}]);
+ const derivative={...manifest,officialRequestId:resultId,width:1024,height:704,
+  upscale:{model:'seedvr2-7b-fp16',scale:2,sourceWidth:512,sourceHeight:352,sourceSequenceId:id}};
+ writeFileSync(join(cine,'sequences',resultId,'manifest.json'),JSON.stringify(derivative),{mode:0o600});
+ writeFileSync(join(cine,'sequences',resultId,'frames','0000.png'),png,{mode:0o600});
+ const get=q=>fetch(origin+base+q,{headers:{cookie}});
+ const {scenes}=await (await get('&grouped=1')).json();
+ assert.deepEqual(scenes[0].upscaledSequences,[resultId]);
+ assert.deepEqual(new Set(scenes[0].sequences),new Set([id,resultId]));
+ assert.deepEqual((await (await get('&sequence='+resultId)).json()).sequence,derivative);
+});

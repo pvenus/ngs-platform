@@ -7,7 +7,7 @@ import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} 
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
 import {validNpcWorkflowRequest,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 import {propAction,validPropPayload,propAnimationRemoveType,validPropAnimationRemove} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
-import {cinematicSequenceType,cinematicPlaybackUpdateType,validCinematicSequencePayload,validCinematicPlaybackUpdate,cinematicSourceGenerateType,validCinematicSourceGenerate,backgroundSourceType,validBackgroundRequest,backgroundPixelType,validBackgroundPixelRequest,backgroundAnimationType,validBackgroundAnimation,cinematicSequencesRemoveType,validCinematicSequencesRemove} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
+import {cinematicUpscaleType,validCinematicUpscale,cinematicSequenceType,cinematicPlaybackUpdateType,validCinematicSequencePayload,validCinematicPlaybackUpdate,cinematicSourceGenerateType,validCinematicSourceGenerate,backgroundSourceType,validBackgroundRequest,backgroundPixelType,validBackgroundPixelRequest,backgroundAnimationType,validBackgroundAnimation,cinematicSequencesRemoveType,validCinematicSequencesRemove} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
 import {cinematicType,validCinematicPayload} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
 const table='ngs_space_request_queue_v1';
 const cap=128,maxList=16,receiptTTL=24*60*60*1000;
@@ -41,6 +41,7 @@ function commandOK(cmd){
  const p=cmd.payload;
  switch(cmd.requestType){
  case cinematicType:return validCinematicPayload(p);
+ case cinematicUpscaleType:return validCinematicUpscale(p);
  case cinematicSequenceType:return validCinematicSequencePayload(p);
  case cinematicPlaybackUpdateType:return validCinematicPlaybackUpdate(p);
  case backgroundSourceType:return validBackgroundRequest(p);

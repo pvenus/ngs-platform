@@ -23,7 +23,7 @@ const queuePanel=document.querySelector('#local-request-queue');
 const queueLabel={
  [cinematicType]:'시네마틱 영상 생성',
  'ui.asset.generate':'UI 이미지 생성','ui.asset.import':'UI PNG 등록',
- 'cinematic.sequence.generate':'PNG 시네마틱 생성','cinematic.playback.update':'시네마틱 메타 수정',
+ 'cinematic.sequence.upscale':'시네마틱 업스케일링','cinematic.sequence.generate':'PNG 시네마틱 생성','cinematic.playback.update':'시네마틱 메타 수정',
  'cinematic.source.generate':'시네마틱 원본 이미지 생성','background.source.generate':'배경 원본 이미지 생성','cinematic.sequences.remove':'시네마틱 애니메이션 제거','prop.animation.remove':'프랍 애니메이션 제거',
  'npc.workflow':'NPC 종합 생성','npc.planning.add':'NPC 기획 추가','npc.planning.update':'NPC 기획 수정',
  'concept.category.workflow':'마스터 컨셉 요청','audio.generate':'BGM 생성','audio.delete':'BGM 삭제','audio.separate':'BGM 반주 만들기',
@@ -221,9 +221,9 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {puzzleCoreVersion,audioFullLengthEnabled,npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
+ const {puzzleCoreVersion,audioFullLengthEnabled,npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicUpscaleEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
  if([mapReadEnabled,assemblyReadEnabled].some(v=>v!==undefined&&(v!==true||session.workspaceReady!==true)))return false;
- if([audioFullLengthEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
+ if([audioFullLengthEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicUpscaleEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
  if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(puzzleCoreVersion!==undefined&&(!/^[a-f0-9]{64}$/u.test(puzzleCoreVersion)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
@@ -719,7 +719,7 @@ async function loadWorkspace(search){
     const inventory=await request('/api/cinematic-delete-inventory?'+query);
     for(const payload of cinematicDeletePayloads(row.id,inventory))await submitFolderDelete(submit,payload);
    }:undefined;
-   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,deleteItem,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true,legacyDeleteEnabled:session.cinematicLegacyInventoryEnabled===true});
+   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,deleteItem,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,upscaleEnabled:session.cinematicUpscaleEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true,legacyDeleteEnabled:session.cinematicLegacyInventoryEnabled===true});
    if(!signal.aborted)note('');
    return;
   }

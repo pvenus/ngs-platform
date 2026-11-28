@@ -23,7 +23,7 @@ import {validFolderPath} from './local-recursive-folders.mjs';
 import {openLocalWorkspaceProject} from './local-project-workspace.mjs';
 import {localObjectReplicaViews} from './local-object-replica-views.mjs';
 import {openLocalObjectReplicaFromEnv} from './local-object-replica-runtime.mjs';
-import {cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType} from './cinematic-sequence-contract.mjs';
+import {cinematicUpscaleType,cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType} from './cinematic-sequence-contract.mjs';
 import {cinematicPath,cinematicType} from './cinematic-contract.mjs';
 import {admitCinematicRequest,cinematicVideoResponse} from './cinematic-workspace.mjs';
 import {propAction,validPropActions} from './prop-workspace-contract.mjs';
@@ -142,6 +142,7 @@ async function readWorkflowCapability(path,schema){
 }
 const readLocalCinematicReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow','workflow.cinematic-write.v1');
 const readLocalSequenceReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence','workflow.cinematic-sequence-write.v1');
+const readLocalUpscaleReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence/upscale','workflow.cinematic-sequence-upscale.v1');
 const readLocalBackgroundAnimationReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence/background-status','workflow.background-animation-write.v1');
 const readLocalPlaybackReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-playback','workflow.cinematic-playback-write.v1');
 const readLocalBackgroundReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-background','workflow.background-source-write.v1');
@@ -191,11 +192,11 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
   readMapReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(mapPds,mapCapability):undefined,
   readAssemblyReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(assemblyPds,assemblyCapability):undefined,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
-  ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readBackgroundPixelReady:readLocalBackgroundPixelReady,readBackgroundAnimationReady:readLocalBackgroundAnimationReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady,readCinematicDeleteReady:readLocalCinematicDeleteReady,readMapDeleteReady:readLocalMapDeleteReady,readAssemblyDeleteReady:readLocalAssemblyDeleteReady,readCinematicDeleteInventory:readLocalCinematicDeleteInventory}:{}),
+  ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicUpscaleReady:readLocalUpscaleReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readBackgroundPixelReady:readLocalBackgroundPixelReady,readBackgroundAnimationReady:readLocalBackgroundAnimationReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady,readCinematicDeleteReady:readLocalCinematicDeleteReady,readMapDeleteReady:readLocalMapDeleteReady,readAssemblyDeleteReady:readLocalAssemblyDeleteReady,readCinematicDeleteInventory:readLocalCinematicDeleteInventory}:{}),
   audioWorkspaceEnabled:released.audioFullLengthEnabled,audioSeparationEnabled:released.audioSeparationEnabled,poseSelectionV2Enabled:released.poseSelectionV2Enabled,npcBasicPortraitEnabled:released.npcBasicPortraitEnabled,npcScopedPortraitEnabled:false,brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,releaseCapabilities,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot,stageUiPng=stageLocalUiPng}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicUpscaleReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,releaseCapabilities,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot,stageUiPng=stageLocalUiPng}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -212,8 +213,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const auth=createLoopbackAuth({loadReadProjects:()=>projects});
  const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
  const queue=requestQueue??ownedQueue;
- const cinematicReads={[cinematicType]:readCinematicReady,[cinematicSequenceType]:readCinematicSequenceReady,[cinematicPlaybackUpdateType]:readCinematicPlaybackReady,[cinematicSourceGenerateType]:readCinematicSourceReady,[backgroundSourceType]:readBackgroundReady,[backgroundPixelType]:readBackgroundPixelReady,[backgroundAnimationType]:readBackgroundAnimationReady,[cinematicSequencesRemoveType]:readCinematicRemoveReady};
- const activeCinematic=async(type)=>Boolean(queue&&(releaseCapabilities||typeof cinematicReads[type]==='function'&&await cinematicReads[type]()));
+ const cinematicReads={[cinematicType]:readCinematicReady,[cinematicSequenceType]:readCinematicSequenceReady,[cinematicUpscaleType]:readCinematicUpscaleReady,[cinematicPlaybackUpdateType]:readCinematicPlaybackReady,[cinematicSourceGenerateType]:readCinematicSourceReady,[backgroundSourceType]:readBackgroundReady,[backgroundPixelType]:readBackgroundPixelReady,[backgroundAnimationType]:readBackgroundAnimationReady,[cinematicSequencesRemoveType]:readCinematicRemoveReady};
+ const activeCinematic=async(type)=>Boolean(queue&&((type===cinematicUpscaleType?releaseCapabilities?.cinematicUpscaleEnabled===true:releaseCapabilities)||typeof cinematicReads[type]==='function'&&await cinematicReads[type]()));
  const activeAssembly=async()=>Boolean(queue&&(releaseCapabilities||typeof readAssemblyReady==='function'&&await readAssemblyReady()));
  const activeMap=async()=>Boolean(queue&&(releaseCapabilities||typeof readMapReady==='function'&&await readMapReady()));
  const activePropRemoval=async()=>Boolean(queue&&(releaseCapabilities||typeof readPropAnimationRemoveReady==='function'&&await readPropAnimationRemoveReady()));
@@ -433,12 +434,12 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      ...releaseCapabilities,puzzleCoreVersion,...(readCinematicDeleteInventory?{cinematicLegacyInventoryEnabled:true}:{})});
     const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady(),deleteBackground=await backgroundDeleteReady(),deleteCinematic=await cinematicDeleteReady();
     const [mapReady,deleteMap,assemblyReady,deleteAssembly,updateReady]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly(),assemblyDeleteReady(),fileUpdateReady()]);
-    const [pixelBackground,animateBackground]=await Promise.all([activeCinematic(backgroundPixelType),activeCinematic(backgroundAnimationType)]);
+    const [pixelBackground,animateBackground,upscaleCine]=await Promise.all([activeCinematic(backgroundPixelType),activeCinematic(backgroundAnimationType),activeCinematic(cinematicUpscaleType)]);
     const [actions,legacyCine,sequenceCine,playbackCine,sourceCine,backgroundReady,removeCine,removeProp]=await Promise.all([activePropActions(),activeCinematic(cinematicType),activeCinematic(cinematicSequenceType),activeCinematic(cinematicPlaybackUpdateType),activeCinematic(cinematicSourceGenerateType),activeCinematic(backgroundSourceType),activeCinematic(cinematicSequencesRemoveType),activePropRemoval()]);
     return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
      ...(actions.length?{propActions:actions}:{}),...(mapReady?{mapEnabled:true}:{}),...(updateReady?{fileUpdateEnabled:true}:{}),...(assemblyReady?{assemblyEnabled:true}:{}),...(deleteMap?{mapDeleteEnabled:true}:{}),...(deleteAssembly?{assemblyDeleteEnabled:true}:{}),
      ...(legacyCine?{cinematicEnabled:true}:{}),
-     ...(sequenceCine?{cinematicSequenceEnabled:true}:{}),...(playbackCine?{cinematicPlaybackEnabled:true}:{}),
+     ...(sequenceCine?{cinematicSequenceEnabled:true}:{}),...(upscaleCine?{cinematicUpscaleEnabled:true}:{}),...(playbackCine?{cinematicPlaybackEnabled:true}:{}),
      ...(sourceCine?{cinematicSourceEnabled:true}:{}),...(backgroundReady?{backgroundSourceEnabled:true}:{}),...(pixelBackground?{backgroundPixelEnabled:true}:{}),...(animateBackground?{backgroundAnimationEnabled:true}:{}),...(removeCine?{cinematicRemoveEnabled:true}:{}),...(removeProp?{propAnimationRemoveEnabled:true}:{}),...(deleteProp?{propFolderDeleteEnabled:true}:{}),...(deleteNpc?{npcFolderDeleteEnabled:true}:{}),...(deleteBackground?{backgroundDeleteEnabled:true}:{}),...(deleteCinematic?{cinematicDeleteEnabled:true,cinematicLegacyInventoryEnabled:true}:{}),
      ...(poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),
      ...(queue&&npcBasicPortraitEnabled===true?{npcBasicPortraitEnabled:true}:{}),

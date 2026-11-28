@@ -9,7 +9,7 @@ export const machineTokenConfigured=validMachineToken;
 // Only call with the server-resolved participant, never browser-supplied roles.
 export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
  ['owner','editor','viewer'].includes(grant.role);
-import {cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
+import {cinematicUpscaleType,cinematicSequenceType,cinematicPlaybackUpdateType,cinematicSourceGenerateType,backgroundSourceType,backgroundPixelType,backgroundAnimationType,cinematicSequencesRemoveType} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
 import {cinematicType} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
 import {propAction,propTypes,validPropActions} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
 const queue='/api/requests',session='/__npcgen_session',machinePath='/api/space-machine-mcp';
@@ -179,7 +179,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(activeNpcBasic,404,'NPC_BASIC_PORTRAIT_UNAVAILABLE');
   if((value?.requestType==='npc.workflow'||value?.requestType==='npc.animation.regenerate')&&isPoseSelectionV2(value.payload?.schemaVersion))
    need(replicaReads&&workspaceReady&&poseSelectionV2Enabled===true,404,'NPC_POSE_SELECTION_V2_UNAVAILABLE');
-  const cinematicCapabilities={[cinematicType]:activeCinematic,[cinematicSequenceType]:activeSequence,[cinematicPlaybackUpdateType]:activePlayback,[cinematicSourceGenerateType]:activeSource,[backgroundSourceType]:activeBackground,[backgroundPixelType]:activeBackground,[backgroundAnimationType]:activeBackground,[cinematicSequencesRemoveType]:activeRemove};
+  const cinematicCapabilities={[cinematicType]:activeCinematic,[cinematicSequenceType]:activeSequence,[cinematicUpscaleType]:nativeReady&&releaseCapabilities?.cinematicUpscaleEnabled===true,[cinematicPlaybackUpdateType]:activePlayback,[cinematicSourceGenerateType]:activeSource,[backgroundSourceType]:activeBackground,[backgroundPixelType]:activeBackground,[backgroundAnimationType]:activeBackground,[cinematicSequencesRemoveType]:activeRemove};
   if(Object.hasOwn(cinematicCapabilities,value?.requestType)){
    need(cinematicCapabilities[value.requestType],404,'CINEMATIC_GENERATION_UNAVAILABLE');
    await admitCinematic({userId:id,email},value);
