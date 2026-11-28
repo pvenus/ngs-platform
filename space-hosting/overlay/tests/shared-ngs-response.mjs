@@ -50,7 +50,7 @@ test('hosted bundling uses the single authored Local source tree, with no parall
  assert.deepEqual(paths.toSorted(),[
   'build/browser-request-id.mjs','build/browser-sha256.mjs',
   'build/map-warp.mjs','build/map-contract.mjs','build/file-update-envelope.mjs','build/map-workspace-ui.mjs',
-  'build/assembly-catalog-ui.mjs','build/assembly-contract.mjs','build/well-assembly-ui.mjs','build/well-puzzle-demo.mjs',
+  'build/ui-asset-contract.mjs','build/ui-workspace-ui.mjs','build/assembly-catalog-ui.mjs','build/assembly-contract.mjs','build/well-assembly-ui.mjs','build/well-puzzle-demo.mjs',
   'build/puzzle-state-runtime.mjs','build/assembly-sprite-layout.mjs','build/assembly-actor.mjs',
   'build/local-project-page.html','build/local-project-page.css','build/local-project-page.js','build/prop-package-contract.mjs','build/cinematic-sequence-contract.mjs','build/cinematic-timeline.mjs','build/cinematic-player.mjs','build/background-playback.mjs','build/cinematic-workspace-ui.mjs','build/catalog-roster-edit.mjs','build/prop-folder-delete-contract.mjs','build/cinematic-contract.mjs','build/prop-workspace-ui.mjs','build/prop-workspace-contract.mjs','build/local-npc-workspace-ui.mjs',
   'build/local-npc-one-stop-ui.mjs','build/npc-motion-selection.mjs','build/local-concept-category-ui.mjs','build/local-concept-category-contract.mjs',

@@ -12,7 +12,7 @@ export const mirrorChunkBytes=1024*1024;
 const manifestBytes=16*mirrorChunkBytes, maxFiles=32_768, maxFile=5*1024**4;
 const recoveryBytes=64*mirrorChunkBytes;
 const hashRE=/^[a-f0-9]{64}$/u, passRE=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
-const scopeNames=new Set(['project','concept','npcs','motion-presets','props','cinematics','assembly','audio']);
+const scopeNames=new Set(['project','concept','npcs','motion-presets','props','cinematics','assembly','audio','ui']);
 const uid=process.getuid?.();
 const exact=(x,keys)=>x&&typeof x==='object'&&!Array.isArray(x)&&Object.keys(x).length===keys.length&&keys.every(k=>Object.hasOwn(x,k));
 const assert=(ok,code,status=409)=>{if(!ok)throw Object.assign(Error(code),{status});};

@@ -117,7 +117,7 @@ export async function localProjection({root,snapshot,url,method,range,openProjec
   if(method!=='GET')throw fault('METHOD_NOT_ALLOWED',405);
   const local=r2?openObjectWorkspaceProject(r2,'binari'):view(root,snapshot.files,openProject);
   const result=await dispatchWorkspaceRead({pathname:path,query:url.searchParams,openProject:id=>id==='binari'?local:null,
-   authorize:(id,resource)=>project(id,section==='prop'||section==='cinematic'?resource:
+   authorize:(id,resource)=>project(id,section==='ui'?'ui':section==='prop'||section==='cinematic'?resource:
      section==='map'||section==='background'?'cinematics':section==='assembly'?'assembly':
      workspaceReadResource(section==='npc'?'npcs':url.searchParams.get('tab')))});
   if(result.json)return Response.json(result.json);

@@ -12,7 +12,7 @@ const htmlHeaders={...privateHeaders,'content-type':'text/html; charset=utf-8','
  'content-security-policy':"default-src 'none'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
 const need=(valid,status=400,error='VIEWER_INVALID_REQUEST')=>{if(!valid)throw Object.assign(Error(error),{status});};
 const problem=(status,error,extra={})=>Response.json({error},{status,headers:{...privateHeaders,...extra}});
-const scopes=['project','concept','npcs','motion-presets','props','cinematics','assembly','audio'];
+const scopes=['project','concept','npcs','motion-presets','props','cinematics','assembly','audio','ui'];
 const encoder=new TextEncoder();
 
 export function viewerResource(path){
@@ -76,7 +76,7 @@ export async function spaceViewerResponse(request,{replica,authorizeParticipant,
   need(user,401,'SIGN_IN_REQUIRED');
   need(await authorizeParticipant?.(user)===true,403,'PROJECT_OR_RESOURCE_DENIED');
   const granted=async resource=>resource==='project'||resource==='audio'||
-    await authorizeResource?.(user,projectId,resource==='motion-presets'?'npcs':resource)===true;
+    await authorizeResource?.(user,projectId,resource==='motion-presets'?'npcs':resource==='ui'?'ui-assets':resource)===true;
   if(bridge){
    need(!url.search);
    if(route==='/viewer/bridge')return new Response(bridgePage('본인이 실행한 로컬 NGS Viewer에만 연결을 허용하세요. 접속한 Space 계정으로 팀 파일을 내려받고 정식 요청을 보낼 수 있게 됩니다.',true),{headers:htmlHeaders});
