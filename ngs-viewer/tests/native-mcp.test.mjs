@@ -20,10 +20,10 @@ const options={
  authorizeResource:async()=>false,
 };
 const path='/api/viewer/file?'+new URLSearchParams({path:item.path,sha256:hash,offset:0});
-function nativeCall(name,args,identity=actor){
+function nativeCall(name,args,identity=actor,settings=options){
  return spaceViewerMcpResponse(new Request(origin+'/mcp',{method:'POST',
   headers:{'content-type':'application/json',...identity},
-  body:JSON.stringify({jsonrpc:'2.0',id:'fixture',method:'tools/call',params:{name,arguments:args}})}),options);
+  body:JSON.stringify({jsonrpc:'2.0',id:'fixture',method:'tools/call',params:{name,arguments:args}})}),settings);
 }
 test('native Space port fails closed without platform actor or team grant and has no write tool',async()=>{
  for(const [headers,status] of [[{},401],[{...actor,'oai-authenticated-user-id':'outsider'},403]]){
@@ -62,4 +62,22 @@ test('background sync publishes and rechecks a real P2 with no browser', {skip:p
  assert.deepEqual(await readFile(join(root,'binari',item.path)),payload);
  await bg.start();
  assert.deepEqual(events.at(-1),{state:'completed',files:1,changed:0,failed:0,removed:0});
+});
+
+test('native request submission uses the existing signed-in actor, one call, no CSRF exposure',async()=>{
+ let submissions=0;
+ const command={requestType:'fixture.test',payload:{projectId:'binari'}};
+ const settings={...options,requestQueue:async(url,identity,value)=>{
+  assert.deepEqual(identity,actor);
+  if(url.pathname==='/__npcgen_session')return Response.json({state:'authenticated',requestWritable:true,csrfToken:'secret',contextId:'secret'});
+  assert.equal(url.pathname,'/api/requests');assert.deepEqual(value,command);submissions++;
+  return Response.json({status:'queued',queueId:'ngs.space.e4913818-1123-46c4-a6ee-eedb416b96c6'},{status:202});
+ }};
+ const submit=await(await nativeCall('ngs_viewer_request_submit',{command},actor,settings)).json();
+ assert.equal(submit.result.structuredContent.status,202);
+ assert.equal(submissions,1);
+ const deny=await(await nativeCall('ngs_viewer_request_submit',{command},{...actor,'oai-authenticated-user-id':'outsider'},settings)).json();
+ assert.equal(deny.result.structuredContent.status,403);assert.equal(submissions,1);
+ const session=await(await nativeCall('ngs_viewer_request_session',{},actor,settings)).json();
+ assert.deepEqual(session.result.structuredContent.data,{state:'authenticated',requestWritable:true});
 });

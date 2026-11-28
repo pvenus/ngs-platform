@@ -86,7 +86,7 @@ node --test space-hosting/overlay/tests/{space-viewer-export,space-viewer-instal
 
 운영 설치에는 아직 활성화하지 않았습니다. Space의 네이티브 MCP에서 검증된
 팀원 신원으로만 공개 대상 파일 인벤토리와 청크를 읽습니다. 이 경로는 쓰기,
-요청 등록 또는 숨김 원본에는 접근할 수 없습니다. macOS/Windows 서비스에서
+숨김 원본에는 접근할 수 없습니다. 요청 제출은 별도 도구에서 Space의 공식 요청 검사로만 처리합니다. macOS/Windows 서비스에서
 기존 PDS 전송 엔진을 재사용해 브라우저 없이 P2를 갱신할 수 있습니다.
 
 실제 설치 연동에는 이 Viewer용으로 승인된 OAuth 공개 클라이언트와 Space의
@@ -97,6 +97,12 @@ node --test space-hosting/overlay/tests/{space-viewer-export,space-viewer-instal
 `NGS_VIEWER_CODEX_BIN`과 `NGS_VIEWER_CODEX_MCP_NAME`을 지정하는 브랜치 검증 모드에서는
 독립 OAuth 코드 대신 로그인된 Codex의 app-server 통제 소켓을 사용합니다.
 `NGS_VIEWER_CODEX_SOCKET`은 Codex가 별도 소켓 경로를 명시한 경우에만 설정합니다.
-AI 턴을 실행하지 않으며, 목록과 파일 청크 두 도구만 직접 호출합니다.
+AI 턴을 실행하지 않으며, 파일 읽기와 사용자가 제출한 공식 요청에 한해 고정된 도구를 직접 호출합니다.
 Codex 연결이 사라지면 동기화만 멈추며, 이미 확정한 P2는 변경하지 않습니다.
 등록된 Codex 연결로 운영 확인 전에는 정식 설치 경로에 이 모드를 연결하지 않습니다.
+
+동기화는 한 번에 한 패스만 수행하고 패스가 끝난 후 60초를 기다립니다.
+실행 중 수동 요청은 같은 패스를 공유하며 후속 실행을 예약하지 않습니다.
+제작 요청은 동기화가 끝나기를 기다리지 않고 즉시 한 번 전달합니다. 거절
+또는 응답 유실 시 로컬에 큐·파일을 남기지 않고 자동 재전송하지 않습니다.
+응답 유실은 Space에 접수됐을 수 있으므로 실패 확정과 구분합니다.

@@ -8,8 +8,7 @@ export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot
   clearTimeout(timer);
   control=new AbortController();
   const {signal}=control;
-  pending=(async()=>{
-   const begin=Date.now();
+  pending=Promise.resolve().then(async()=>{
    onState({state:'running'});
    try{
     const result=await pullSpaceToP2({mirror,signal,remote:async path=>{
@@ -35,9 +34,9 @@ export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot
      (e?.message==='VIEWER_CODEX_CONNECTION_REQUIRED'||signal.reason?.message==='VIEWER_CODEX_CONNECTION_REQUIRED')?'VIEWER_CODEX_CONNECTION_REQUIRED':'VIEWER_SPACE_SYNC_FAILED'});
    }finally{
     pending=null;control=null;
-    if(!closed){timer=setTimeout(start,Math.max(1000,intervalMs-(Date.now()-begin)));timer.unref?.();}
+    if(!closed){timer=setTimeout(start,intervalMs);timer.unref?.();}
    }
-  })();
+  });
   return pending;
  };
  const close=async()=>{closed=true;clearTimeout(timer);control?.abort(Error('VIEWER_SYNC_CLOSED'));await pending;};

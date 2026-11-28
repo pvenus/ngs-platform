@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 365,
+  "fileCountIncludingManifest": 367,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1280,8 +1280,8 @@
       "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
     },
     "ngs-viewer/README.md": {
-      "bytes": 6704,
-      "sha256": "a049589b101880b4709bd7ab8870f9951ee1f512cf8842f77d8457255b4ea90c"
+      "bytes": 7316,
+      "sha256": "249cea2bce4643e2f118b973918d121afc0c88438bcf5831b390123f49d1e510"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1316,16 +1316,16 @@
       "sha256": "a062a67ba0e9e8b58b8b183af5cbcd232dd2e0fec81b69eddc681eff03dc94f5"
     },
     "ngs-viewer/tests/viewer.test.mjs": {
-      "bytes": 6158,
-      "sha256": "f9bc77018af2c5b259af0c8da810b7bc9f230a2a0e26a290f8446f8371301510"
+      "bytes": 7375,
+      "sha256": "9a6a21ad642620e1206bfc1811d5065f625d7f7ae91422f330813228a1496922"
     },
     "ngs-viewer/viewer.mjs": {
-      "bytes": 9360,
-      "sha256": "1b132939aa0b597c21f0d2277b206cb0a3a4dbb1ebbaafbab6e75c5523b75f0c"
+      "bytes": 10583,
+      "sha256": "081d40a715d209619a461838626eb3774bdf6f8c294ab969898fa155cb27c0da"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
-      "bytes": 13927,
-      "sha256": "8fc71e2254385afbd2b32636c309d3c75c13749fbd9eb7d25f66949a9779bb7b"
+      "bytes": 14953,
+      "sha256": "08de496151d9d5dfd7c2e8109d987b36830d431d11d6bdac9ab38fa951690e83"
     },
     "space-hosting/overlay/build/space-file-replica.d.mts": {
       "bytes": 825,
@@ -1432,32 +1432,40 @@
       "sha256": "68062726f78c07efd903cdaea4ad3de25c8d2e2dee0abe9c00f304c57d0f701c"
     },
     "ngs-viewer/lib/background.mjs": {
-      "bytes": 1813,
-      "sha256": "c97e8c7cc1fdbba7828b3fb25f0f1df0554ea1ac14496cf7e37db6450d846428"
+      "bytes": 1772,
+      "sha256": "c4f629ebc7bb18814919299342208a353545d3d3145143315b1837dc07dad35c"
     },
     "ngs-viewer/lib/native-mcp.mjs": {
       "bytes": 3921,
       "sha256": "ea6ea879ef94a36da0c94232689fc58437e7d11fd9e5fdd6a89965702dc1b112"
     },
     "ngs-viewer/tests/native-mcp.test.mjs": {
-      "bytes": 4054,
-      "sha256": "af2c99add075667c031f6e83276d73a5c7e10c24a1c92a36fc4110c84efd4ca4"
+      "bytes": 5353,
+      "sha256": "8406be7424d3312f9770bce8938e206598551a7201d716e8af346fe940cb3df7"
     },
     "space-hosting/overlay/build/space-viewer-mcp.d.mts": {
-      "bytes": 290,
-      "sha256": "f8d988032a4c4eaf26a5d809bafe79e3cf21f019d83e7d824d1e2f5e53ac0245"
+      "bytes": 390,
+      "sha256": "afd686a14699a52537302a68115b94594b61c0511dab7a757ff396cf800263d5"
     },
     "space-hosting/overlay/build/space-viewer-mcp.mjs": {
-      "bytes": 4799,
-      "sha256": "7fa43faf8caa0f47bd447b8dc5ec106a2179a4aa0b8e17b1e164f1e17716b63f"
+      "bytes": 6549,
+      "sha256": "17a16f24566f56134a91f0a16172dcb676f7073560739468e81126535188f807"
     },
     "ngs-viewer/lib/codex-transport.mjs": {
-      "bytes": 3655,
-      "sha256": "917d96a14e46e50d3802c16b6f68e14aeaccce4fc2af83816ee61e03829ad0d3"
+      "bytes": 3742,
+      "sha256": "c58c4c4e5d46419c91c95ff4579fd187f8318f482765245061113a3bff3e2d9e"
     },
     "ngs-viewer/tests/codex-transport.test.mjs": {
-      "bytes": 3219,
-      "sha256": "d82fa045c56b33245367f55ab8c6a418661452a29832cd1af13832cb75c8deb3"
+      "bytes": 3295,
+      "sha256": "3127da5237b012fab4b754cd80cd14b9372f30b0736fb1e67e72d93e1336013f"
+    },
+    "ngs-viewer/lib/request-forward.mjs": {
+      "bytes": 850,
+      "sha256": "0d44a37a90d2a6b1104a7f54d42bd0bea901d626db15452f1fad2a39ca0c892a"
+    },
+    "ngs-viewer/tests/request-forward.test.mjs": {
+      "bytes": 1974,
+      "sha256": "d399e3715d97ad8b16bcf95c117d913c8089d3d854729596a91d453ebb4caf61"
     }
   }
 }

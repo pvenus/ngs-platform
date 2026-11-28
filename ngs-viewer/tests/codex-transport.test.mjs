@@ -6,7 +6,7 @@ import {codexViewerClient} from '../lib/codex-transport.mjs';
 import {codexViewerRemote} from '../lib/native-mcp.mjs';
 import {appendViewerDiscovery} from '../../space-hosting/overlay/build/space-viewer-mcp.mjs';
 
-test('Codex direct tool call pins the two read-only tools and never starts an AI turn',async t=>{
+test('Codex direct tool call pins approved tools and never starts an AI turn',async t=>{
  const seen=[],children=[];
  const client=codexViewerClient({binary:'/fixture/codex',server:'team-binari',spawnChild(binary,args){
   assert.equal(binary,'/fixture/codex');assert.deepEqual(args,['app-server','proxy']);
@@ -45,6 +45,6 @@ test('native discovery augments only successful authenticated discovery',async()
   body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})});
  const reply=()=>Response.json({jsonrpc:'2.0',id:1,result:{tools:[{name:'existing'}]}});
  const approved=await appendViewerDiscovery(fixture({'oai-authenticated-user-id':'test','oai-authenticated-user-email':'test@example.test'}),reply());
- assert.deepEqual((await approved.json()).result.tools.map(x=>x.name),['existing','ngs_viewer_manifest','ngs_viewer_file_chunk']);
+ assert.deepEqual((await approved.json()).result.tools.map(x=>x.name),['existing','ngs_viewer_manifest','ngs_viewer_file_chunk','ngs_viewer_request_session','ngs_viewer_request_status','ngs_viewer_request_submit']);
  assert.equal((await (await appendViewerDiscovery(fixture({}),reply())).json()).result.tools.length,1);
 });

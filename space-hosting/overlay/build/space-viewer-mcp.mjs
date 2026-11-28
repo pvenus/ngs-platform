@@ -4,6 +4,9 @@ import {spaceViewerResponse} from './space-viewer-export.mjs';
 const exportsByTool=new Map([
  ['ngs_viewer_manifest','/api/viewer/manifest'],
  ['ngs_viewer_file_chunk','/api/viewer/file'],
+ ['ngs_viewer_request_session','/__npcgen_session'],
+ ['ngs_viewer_request_status','/api/requests'],
+ ['ngs_viewer_request_submit','/api/requests'],
 ]);
 const schema=(properties,required=[])=>({type:'object',additionalProperties:false,properties,required});
 export const spaceViewerMcpTools=[
@@ -12,6 +15,11 @@ export const spaceViewerMcpTools=[
  {name:'ngs_viewer_file_chunk',description:'Read a bounded file chunk from the granted Binari replica, pinned to SHA-256.',
   inputSchema:schema({path:{type:'string'},sha256:{type:'string',pattern:'^[a-f0-9]{64}$'},offset:{type:'integer',minimum:0}},['path','sha256','offset']),
   annotations:{readOnlyHint:true,destructiveHint:false}},
+ {name:'ngs_viewer_request_session',description:'Read enabled NGS request actions for the signed-in Binari team member.',inputSchema:schema({}),annotations:{readOnlyHint:true}},
+ {name:'ngs_viewer_request_status',description:'Read only this signed-in team member’s formal Space queue status.',
+  inputSchema:schema({queueId:{type:'string'}}),annotations:{readOnlyHint:true}},
+ {name:'ngs_viewer_request_submit',description:'Immediately submit a user-chosen formal NGS request to Space. Requires the same authenticated write grant and validation as the website.',
+  inputSchema:schema({command:{type:'object'}},['command']),annotations:{readOnlyHint:false}},
 ];
 export async function appendViewerDiscovery(request,original){
  if(new URL(request.url).pathname!=='/mcp'||!original.ok||
@@ -28,8 +36,8 @@ const manifestLimit=16*1024*1024, chunkLimit=1024*1024;
 const headers={'cache-control':'private, no-store','x-content-type-options':'nosniff'};
 const response=(value,status=200)=>Response.json(value,{status,headers});
 const rpc=(id,value)=>response({jsonrpc:'2.0',id,result:{
- content:[{type:'text',text:value.status===200?'Read succeeded':'Viewer read failed'}],
- structuredContent:value,isError:value.status!==200,
+ content:[{type:'text',text:[200,202].includes(value.status)?'Viewer request succeeded':'Viewer request failed'}],
+ structuredContent:value,isError:![200,202].includes(value.status),
 }});
 const fail=(id,status)=>rpc(id,{status});
 async function parse(request){
@@ -38,7 +46,7 @@ async function parse(request){
  try{
   for(;;){
    const {value,done}=await reader.read();if(done)break;
-   total+=value.byteLength;if(total>16_384)return null;
+   total+=value.byteLength;if(total>72*1024)return null;
    raw+=text.decode(value,{stream:true});
   }
   return JSON.parse(raw+text.decode());
@@ -51,6 +59,9 @@ function base64(bytes){
  return btoa(raw);
 }
 
+const validArgs=(name,a)=>name==='ngs_viewer_file_chunk'?keys(a,'offset,path,sha256'):
+ name==='ngs_viewer_request_submit'?keys(a,'command')&&record(a.command):
+ name==='ngs_viewer_request_status'?keys(a,'')||keys(a,'queueId')&&typeof a.queueId==='string'&&a.queueId.length<=90:keys(a,'');
 export async function spaceViewerMcpResponse(request,options){
  const url=new URL(request.url);
  if(url.pathname!=='/mcp'||url.search||request.method!=='POST'||request.headers.has('origin')||
@@ -60,7 +71,7 @@ export async function spaceViewerMcpResponse(request,options){
  const id=m.id,a=p.arguments;
  if(m.jsonrpc!=='2.0'||!(Number.isSafeInteger(id)||typeof id==='string'&&id.length<=64)||
     !keys(m,'id,jsonrpc,method,params')||!(keys(p,'arguments,name')||keys(p,'_meta,arguments,name'))||
-    !keys(a,p.name==='ngs_viewer_manifest'?'':'offset,path,sha256'))
+    !validArgs(p.name,a))
   return response({error:'VIEWER_MCP_INVALID'},400);
  const userId=request.headers.get('oai-authenticated-user-id'),email=request.headers.get('oai-authenticated-user-email');
  if(!userId||!email)return fail(id,401);
@@ -70,6 +81,19 @@ export async function spaceViewerMcpResponse(request,options){
   location.search=new URLSearchParams({path:a.path,sha256:a.sha256,offset:a.offset}).toString();
  }
  const requestIdentity={'oai-authenticated-user-id':userId,'oai-authenticated-user-email':email};
+ if(p.name.startsWith('ngs_viewer_request_')){
+  if(typeof options?.requestQueue!=='function')return fail(id,503);
+  if(await options.authorizeParticipant?.({userId,email})!==true)return fail(id,403);
+  if(a.queueId)location.searchParams.set('queueId',a.queueId);
+  const result=await options.requestQueue(location,requestIdentity,a.command);
+  if(!result?.ok)return fail(id,result?.status??503);
+  const data=await result.json();
+  // Tokens used to connect the canonical internal route never cross MCP.
+  if(p.name==='ngs_viewer_request_session'){
+   delete data.csrfToken;delete data.contextId;
+  }
+  return rpc(id,{status:result.status,data});
+ }
  const result=await spaceViewerResponse(new Request(location,{headers:requestIdentity}),options);
  if(!result?.ok)return fail(id,result?.status??503);
  if(p.name==='ngs_viewer_manifest'){

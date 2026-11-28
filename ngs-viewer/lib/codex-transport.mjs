@@ -3,7 +3,8 @@ import {spawn} from 'node:child_process';
 
 const failed=()=>Object.assign(Error('VIEWER_CODEX_CONNECTION_REQUIRED'),{status:503});
 const maxLine=24*1024*1024,deadline=60_000;
-const names=new Set(['ngs_viewer_manifest','ngs_viewer_file_chunk']);
+const names=new Set(['ngs_viewer_manifest','ngs_viewer_file_chunk',
+ 'ngs_viewer_request_session','ngs_viewer_request_status','ngs_viewer_request_submit']);
 export function codexViewerClient({binary,server,socket,spawnChild=spawn}){
  if(typeof binary!=='string'||!binary||typeof server!=='string'||!/^[a-z0-9_.-]{1,160}$/iu.test(server))
   throw Error('VIEWER_CODEX_CONFIGURATION');

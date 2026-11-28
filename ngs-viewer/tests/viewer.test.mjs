@@ -76,10 +76,18 @@ test('hash-pinned P2 files drive the existing project DTO, only after full insta
 
 test('Codex background mode syncs without a popup or browser, displays loss, and retains the P2 file', {skip:process.platform==='win32'},async t=>{
  const payload=Buffer.from('{"title":"비나리"}'),sha256=createHash('sha256').update(payload).digest('hex');
- let disconnected=false, calls=[];
+ let disconnected=false, calls=[], outcome;
  const client={close(){},async tool(name,args){
   calls.push(name);
   if(disconnected)throw Error('VIEWER_CODEX_CONNECTION_REQUIRED');
+  if(name==='ngs_viewer_request_session')return {structuredContent:{status:200,data:{
+   backend:'space',state:'authenticated',readOnly:false,queueEnabled:true,workspaceReady:true,requestWritable:true}}};
+  if(name==='ngs_viewer_request_submit') {
+   assert.deepEqual(args,{command:{requestType:'test',payload:{}}});
+   if(outcome==='lost')throw Error('response lost');
+   if(outcome==='rejected')return {structuredContent:{status:403}};
+   return {structuredContent:{status:202,data:{status:'queued',queueId:'ngs.space.e4913818-1123-46c4-a6ee-eedb416b96c6'}}};
+  }
   if(name==='ngs_viewer_manifest')return {isError:false,structuredContent:{status:200,manifest:{
    projectId:'binari',resources:['project'],files:[{path:'project.json',size:payload.length,sha256}]}}};
   assert.equal(name,'ngs_viewer_file_chunk');assert.deepEqual(args,{path:'project.json',sha256,offset:0});
@@ -97,7 +105,15 @@ test('Codex background mode syncs without a popup or browser, displays loss, and
  assert.deepEqual(first,{state:'completed',files:1,changed:1,failed:0,removed:0,committed:true});
  assert.deepEqual(calls,['ngs_viewer_manifest','ngs_viewer_file_chunk']);
  assert.equal((await get('/api/project-folders')).status,200);
- assert.equal((await (await get('/__npcgen_session')).json()).requestWritable,false);
+ assert.equal((await (await get('/__npcgen_session')).json()).requestWritable,true);
+ const submit=()=>get('/api/requests',{method:'POST',headers:{Origin:config.port?'http://127.0.0.1:'+config.port:'',
+  'Content-Type':'application/json','X-NPCGen-Csrf':'0'.repeat(64),'X-NPCGen-Frontend-Context':'space.'+'0'.repeat(64)},
+  body:JSON.stringify({requestType:'test',payload:{}})});
+ assert.equal((await submit()).status,202);
+ outcome='rejected';assert.equal((await submit()).status,403);
+ outcome='lost';const uncertain=await submit();assert.equal(uncertain.status,502);
+ assert.equal((await uncertain.json()).error,'VIEWER_REQUEST_DELIVERY_UNCERTAIN');
+ assert.equal(calls.filter(n=>n==='ngs_viewer_request_submit').length,3);
  assert.equal((await write('sync/start',{})).status,404);
  disconnected=true;
  assert.equal((await write('sync/now',{})).status,202);
