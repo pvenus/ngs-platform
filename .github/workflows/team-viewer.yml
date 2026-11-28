@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
       - name: Move only the tested Git branch, never force
         shell: bash
         run: |
