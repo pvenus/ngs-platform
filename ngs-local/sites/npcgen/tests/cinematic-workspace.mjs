@@ -276,12 +276,15 @@ test('upscale submits an exact formal request and exposes separate 2× row in th
   sourceSha256,width:512,height:352,masterFps:24,frameCount:45,frames,playback};
  writeFileSync(join(cine,'sequences',id,'manifest.json'),JSON.stringify(manifest),{mode:0o600});
  writeFileSync(join(cine,'sequences',id,'frames','0000.png'),png,{mode:0o600});
- const requests=[];
- const server=createLocalProjectPageServer({root,readCinematicUpscaleReady:async()=>true,requestQueue:{
+ const requests=[];let ready=false;
+ const server=createLocalProjectPageServer({root,releaseCapabilities:{cinematicUpscaleEnabled:true},
+  readCinematicUpscaleReady:async()=>ready,requestQueue:{
   enqueue(c){requests.push(c);return {status:'queued'};}}});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  t.after(()=>new Promise(resolve=>server.close(resolve)));
  const origin='http://127.0.0.1:'+server.address().port;
+ assert.equal((await (await fetch(origin+'/__npcgen_session')).json()).cinematicUpscaleEnabled,false);
+ ready=true;
  const boot=await fetch(origin+'/__npcgen_session'),cookie=boot.headers.get('set-cookie').split(';')[0],settings=await boot.json();
  assert.equal(settings.cinematicUpscaleEnabled,true);
  const type='cinematic.sequence.upscale';

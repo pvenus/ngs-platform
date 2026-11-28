@@ -214,7 +214,13 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
  const queue=requestQueue??ownedQueue;
  const cinematicReads={[cinematicType]:readCinematicReady,[cinematicSequenceType]:readCinematicSequenceReady,[cinematicUpscaleType]:readCinematicUpscaleReady,[cinematicPlaybackUpdateType]:readCinematicPlaybackReady,[cinematicSourceGenerateType]:readCinematicSourceReady,[backgroundSourceType]:readBackgroundReady,[backgroundPixelType]:readBackgroundPixelReady,[backgroundAnimationType]:readBackgroundAnimationReady,[cinematicSequencesRemoveType]:readCinematicRemoveReady};
- const activeCinematic=async(type)=>Boolean(queue&&((type===cinematicUpscaleType?releaseCapabilities?.cinematicUpscaleEnabled===true:releaseCapabilities)||typeof cinematicReads[type]==='function'&&await cinematicReads[type]()));
+ const activeCinematic=async(type)=>{
+  if(!queue)return false;
+  const read=cinematicReads[type];
+  if(type===cinematicUpscaleType)return releaseCapabilities?.cinematicUpscaleEnabled===true&&
+   (typeof read!=='function'||await read()===true);
+  return Boolean(releaseCapabilities||typeof read==='function'&&await read());
+ };
  const activeAssembly=async()=>Boolean(queue&&(releaseCapabilities||typeof readAssemblyReady==='function'&&await readAssemblyReady()));
  const activeMap=async()=>Boolean(queue&&(releaseCapabilities||typeof readMapReady==='function'&&await readMapReady()));
  const activePropRemoval=async()=>Boolean(queue&&(releaseCapabilities||typeof readPropAnimationRemoveReady==='function'&&await readPropAnimationRemoveReady()));
@@ -431,7 +437,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
     if(releaseCapabilities)return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
-     ...releaseCapabilities,puzzleCoreVersion,...(readCinematicDeleteInventory?{cinematicLegacyInventoryEnabled:true}:{})});
+     ...releaseCapabilities,cinematicUpscaleEnabled:await activeCinematic(cinematicUpscaleType),puzzleCoreVersion,...(readCinematicDeleteInventory?{cinematicLegacyInventoryEnabled:true}:{})});
     const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady(),deleteBackground=await backgroundDeleteReady(),deleteCinematic=await cinematicDeleteReady();
     const [mapReady,deleteMap,assemblyReady,deleteAssembly,updateReady]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly(),assemblyDeleteReady(),fileUpdateReady()]);
     const [pixelBackground,animateBackground,upscaleCine]=await Promise.all([activeCinematic(backgroundPixelType),activeCinematic(backgroundAnimationType),activeCinematic(cinematicUpscaleType)]);
