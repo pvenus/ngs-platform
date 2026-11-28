@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 358,
+  "fileCountIncludingManifest": 363,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1280,8 +1280,8 @@
       "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
     },
     "ngs-viewer/README.md": {
-      "bytes": 5199,
-      "sha256": "301b969b7af0e7ed6cf43d4d9a1f9cff0e6a4990a53a1b5fe46a4337d0e4feda"
+      "bytes": 6090,
+      "sha256": "b1d5b7fd8fcaf4be4598d30defcf370c651c13a6f058c3482fbb19a05c3e2d40"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1324,8 +1324,8 @@
       "sha256": "097a9d4af745f708fadc2e97311a025d0479200c8ca81a2d67aeab87a1e70b95"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
-      "bytes": 13661,
-      "sha256": "fa80b78771c4c3c99f4eba35fd877ad95186b9614598119a0f0d548e79473da7"
+      "bytes": 13873,
+      "sha256": "e217910ebb69388047029f10fc00b203603e274d6315b6c8872e6306cd12763b"
     },
     "space-hosting/overlay/build/space-file-replica.d.mts": {
       "bytes": 825,
@@ -1430,6 +1430,26 @@
     "ngs-viewer/tests/windows-storage.test.mjs": {
       "bytes": 3095,
       "sha256": "68062726f78c07efd903cdaea4ad3de25c8d2e2dee0abe9c00f304c57d0f701c"
+    },
+    "ngs-viewer/lib/background.mjs": {
+      "bytes": 1531,
+      "sha256": "3a0fb8c4899b313f48ba639da1d1fcc5751f11abba4f3d376b4ae8d44e8dd6b5"
+    },
+    "ngs-viewer/lib/native-mcp.mjs": {
+      "bytes": 3534,
+      "sha256": "cf033d7e37732b4b381af13096e028d598ce4a016a73fbc36f814868a8b7e67f"
+    },
+    "ngs-viewer/tests/native-mcp.test.mjs": {
+      "bytes": 4054,
+      "sha256": "af2c99add075667c031f6e83276d73a5c7e10c24a1c92a36fc4110c84efd4ca4"
+    },
+    "space-hosting/overlay/build/space-viewer-mcp.d.mts": {
+      "bytes": 198,
+      "sha256": "0bb07f14ec133ec2cd8024ef420b100e16667bb474429e13e64996c8ab881ba5"
+    },
+    "space-hosting/overlay/build/space-viewer-mcp.mjs": {
+      "bytes": 3534,
+      "sha256": "30bd89b0337cfd71885425e8b7f2586f1c6dc85eb80f72fd46543b4f0f562d6d"
     }
   }
 }

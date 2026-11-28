@@ -1,5 +1,6 @@
 import handler from "vinext/server/fetch-handler";
 import { sharedNgsResponse } from "./shared-ngs-assets";
+import { spaceViewerMcpResponse } from "./space-viewer-mcp.mjs";
 import { spaceViewerResponse } from "./space-viewer-export.mjs";
 import { spaceViewerInstallResponse } from "./space-viewer-install.mjs";
 import viewerBridgeScript from "./space-viewer-bridge.mjs?raw";
@@ -86,8 +87,11 @@ export default {
       (env as Cloudflare.Env & {NPCGEN_VIEWER_INSTALL_SIGNING_KEY?:string}).NPCGEN_VIEWER_INSTALL_SIGNING_KEY,
       authorizeParticipant:authorizeViewerParticipant});
     if(viewerInstall)return viewerInstall;
-    const viewer=await spaceViewerResponse(request,{replica:replicaReads?fileReplica:undefined,bridgeScript:viewerBridgeScript,
-      authorizeParticipant:authorizeViewerParticipant,authorizeResource:workspaceAuthorize});
+    const viewerOptions={replica:replicaReads?fileReplica:undefined,bridgeScript:viewerBridgeScript,
+      authorizeParticipant:authorizeViewerParticipant,authorizeResource:workspaceAuthorize};
+    const viewerMcp=await spaceViewerMcpResponse(request,viewerOptions);
+    if(viewerMcp)return viewerMcp;
+    const viewer=await spaceViewerResponse(request,viewerOptions);
     if(viewer)return viewer;
     const hasPublishedNpc = replicaReads ? async (user:{userId:string,email:string},npcId:string) => {
       // The hosted queue must prove the same exact ID from the existing
