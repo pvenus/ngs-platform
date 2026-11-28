@@ -64,7 +64,7 @@ export const validCinematicSourceGenerate=p=>exact(p,['schemaVersion','projectId
 export const validCinematicSourceResult=p=>exact(p,['schemaVersion','projectId','officialRequestId','title','sha256','bytes','width','height'])&&
  p.schemaVersion===cinematicSourceResultSchema&&p.projectId==='binari'&&cinematicId(p.officialRequestId)&&boundedText(p.title,480,120)&&
  cinematicHash(p.sha256)&&Number.isSafeInteger(p.bytes)&&p.bytes>=57&&p.bytes<=8*1024*1024&&
- p.width===1536&&p.height===1024;
+ p.width===1536&&(p.height===768||p.height===1024);
 export const validCinematicSequencesRemove=p=>exact(p,['schemaVersion','projectId','sequenceIds'])&&
  p.schemaVersion===cinematicSequencesRemoveSchema&&p.projectId==='binari'&&oneEach(p.sequenceIds,cinematicId,maxSelection);
 export const validCinematicArchive=p=>exact(p,['schemaVersion','projectId','sequenceIds'])&&p.schemaVersion===cinematicArchiveSchema&&p.projectId==='binari'&&
@@ -88,7 +88,7 @@ export const backgroundPixelType='background.pixel.workflow';
 export const backgroundPixelSchema='ngs.background-pixel-workflow.v1';
 export const validBackgroundPixelRequest=p=>p?.schemaVersion===backgroundPixelSchema&&typeof p.title==='string'&&
  [...p.title].length<=105&&validBackgroundRequest({...p,schemaVersion:backgroundSourceSchema});
-export const validBackgroundResult=p=>p?.schemaVersion===backgroundResultSchema&&validCinematicSourceResult({...p,schemaVersion:cinematicSourceResultSchema});
+export const validBackgroundResult=p=>p?.schemaVersion===backgroundResultSchema&&p.height===1024&&validCinematicSourceResult({...p,schemaVersion:cinematicSourceResultSchema});
 export const backgroundAnimationType='background.animation.workflow',backgroundAnimationSchema='ngs.background-animation-workflow.v2';
 const legacyBackgroundAnimationSchema='ngs.background-animation-workflow.v1';
 export const backgroundLoopInstruction='Continuous seamless ambient loop, static camera.';

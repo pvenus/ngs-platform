@@ -229,10 +229,10 @@ test('scene-folder writes resolve through the common Local, Space and Viewer pro
  const {cinematicWorkspaceRead}=await import('../build/cinematic-workspace.mjs');
  const {cinematicSceneDeletePayload}=await import('../build/prop-folder-delete-contract.mjs');
  const frame=Buffer.from(png);frame.writeUInt32BE(128,16);frame.writeUInt32BE(128,20);
- const source=Buffer.from(png);source.writeUInt32BE(1536,16);source.writeUInt32BE(1024,20);
+ const source=Buffer.from(png);source.writeUInt32BE(1536,16);source.writeUInt32BE(768,20);
  const digest=sha(source),root='cinematics/scenes/'+digest,sequence=root+'/sequences/'+id;
  const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,zoom:1,x:.5,y:.5}]};
- const meta={schemaVersion:'ngs.cinematic-source-result.v1',projectId:'binari',officialRequestId:id,title:'새 장면',sha256:digest,bytes:source.length,width:1536,height:1024};
+ const meta={schemaVersion:'ngs.cinematic-source-result.v1',projectId:'binari',officialRequestId:id,title:'새 장면',sha256:digest,bytes:source.length,width:1536,height:768};
  const m={schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,sourceSha256:digest,width:128,height:128,masterFps:24,frameCount:45,
   frames:Array.from({length:45},(_,index)=>({index,bytes:frame.length,sha256:sha(frame)})),playback};
  const json=x=>Buffer.from(JSON.stringify(x));
@@ -251,4 +251,13 @@ test('scene-folder writes resolve through the common Local, Space and Viewer pro
  assert.equal(cinematicSceneDeletePayload(digest).target.path,'scenes/'+digest);
  objects.set('cinematics/scene-index/sequences/'+id+'.json',json({sourceSha256:'b'.repeat(64)}));
  await assert.rejects(read({sequence:id}),{status:404});
+});
+
+test('wide cinematic source and legacy cinematic source coexist; background stays 3:2',async()=>{
+ const {validCinematicSourceResult,validBackgroundResult}=await import('../build/cinematic-sequence-contract.mjs');
+ const still={schemaVersion:'ngs.cinematic-source-result.v1',projectId:'binari',officialRequestId:id,title:'장면',sha256:'f'.repeat(64),bytes:60,width:1536,height:768};
+ assert.ok(validCinematicSourceResult(still));
+ assert.ok(validCinematicSourceResult({...still,height:1024}));
+ assert.ok(!validBackgroundResult({...still,schemaVersion:'ngs.background-source-result.v1'}));
+ assert.ok(validBackgroundResult({...still,schemaVersion:'ngs.background-source-result.v1',height:1024}));
 });
