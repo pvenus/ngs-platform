@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 379,
+  "fileCountIncludingManifest": 382,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1261,7 +1261,7 @@
     },
     "ngs-local/source-manifest.json": {
       "bytes": 19496,
-      "sha256": "17a5bc0a3c20726cacd70f7ac54fa14481b5fc967a43b75dfec20074757e916a"
+      "sha256": "444ef269b222ca080069428496c6bf0bbba09d0d777197addae2b3bf9dbc3293"
     },
     "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
       "bytes": 15831,
@@ -1324,8 +1324,8 @@
       "sha256": "f5ea48bc1a225270c27fe5549676f939d49a34c409ff66ddfdeaac6f5603273f"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
-      "bytes": 14953,
-      "sha256": "08de496151d9d5dfd7c2e8109d987b36830d431d11d6bdac9ab38fa951690e83"
+      "bytes": 15100,
+      "sha256": "f54bd4cf82db4af05e721d62ac7da6cf64d7b01a8f990c3f87e0ed127b86f8c7"
     },
     "space-hosting/overlay/build/space-file-replica.d.mts": {
       "bytes": 825,
@@ -1384,8 +1384,8 @@
       "sha256": "6e44b6bb8ded4883d76fbb37e751d7d24357a17553a6aaf01804c6c19a25e091"
     },
     "space-hosting/overlay/build/space-machine-routes.mjs": {
-      "bytes": 16633,
-      "sha256": "2e69921da4d5b4dc3e1b0de22dbcc4d7c04fe86304b0192261a23417fdd27f3c"
+      "bytes": 16854,
+      "sha256": "3f22d7ffc94a735b66f6038110f8236892e62b20c7d87f039e4d1f8c98a37b80"
     },
     "space-hosting/overlay/build/space-request-queue.mjs": {
       "bytes": 12558,
@@ -1448,8 +1448,8 @@
       "sha256": "afd686a14699a52537302a68115b94594b61c0511dab7a757ff396cf800263d5"
     },
     "space-hosting/overlay/build/space-viewer-mcp.mjs": {
-      "bytes": 6924,
-      "sha256": "c6a1bd0ffe6b14e9d860a7f598de1fec1b1957d135271e4b1cb52c1828941ae0"
+      "bytes": 6959,
+      "sha256": "c7ab3478e906d2b0ca265004eb2d792b8b28cee5c573c489d8aee5a284d8a8eb"
     },
     "ngs-viewer/lib/codex-transport.mjs": {
       "bytes": 4001,
@@ -1488,16 +1488,16 @@
       "sha256": "ccd5e54c6c54154e3b1d122a17cf3e9e9977919a6ad8f48b5fa46b5cf2461ac8"
     },
     "ngs-local/sites/npcgen/build/local-project-page-server.mjs": {
-      "bytes": 46749,
-      "sha256": "957a307b74aa085c6d330646c381aa1798f2c3c6ffca160c1f47c63304004ea8"
+      "bytes": 46786,
+      "sha256": "f513d34cd6f5d0cb540e31d1c79005ae44e9730f5c5b97e4d20aad26921a81ad"
     },
     "ngs-local/sites/npcgen/build/local-project-page.js": {
-      "bytes": 50707,
-      "sha256": "56b08016d5278e64f26f0960805b6e587b35a7c8a0c111228738ca5989906b02"
+      "bytes": 51062,
+      "sha256": "cbb64e944414c77490115ed88c4cd228eb9dfcff2fbd49cbc7396049cc1ffb29"
     },
     "ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs": {
-      "bytes": 7419,
-      "sha256": "90a539c90fbdccfa578d7fb795257c1199057bd25d279be8bbf69c644aaef33c"
+      "bytes": 7864,
+      "sha256": "ac9bd0f76312c96c021e3c6a19835ef11a7162c43cf0a1052b59c9167448b492"
     },
     "ngs-local/sites/npcgen/build/workspace-map-assembly-admission.mjs": {
       "bytes": 4137,
@@ -1508,12 +1508,24 @@
       "sha256": "e4597f8c047fa959cb3e539a1ceacd1d7fc0db9d190d0176cb47d2e525d4f178"
     },
     "space-hosting/overlay/build/space-map-assembly.mjs": {
-      "bytes": 724,
-      "sha256": "cdba749e984469ed63487fd82f97b53cedb1d2ed8dd37a61776780ce8d70269f"
+      "bytes": 810,
+      "sha256": "b3e4cca77fedeb7d179f79b3cfd4ef96f235f2b1b62752efca2c551665067959"
     },
     "space-hosting/overlay/tests/space-machine-queue.mjs": {
-      "bytes": 45542,
-      "sha256": "e59939b4966eac4031aa82e1bbd2fa14d3f8ddd0560f741b67f1f7e5f5d64eaa"
+      "bytes": 46963,
+      "sha256": "6346a0f92acd1f51937f73b421c471c6e3a4f1b5a9b11664b45f311f26aab9e5"
+    },
+    "ngs-local/sites/npcgen/build/cinematic-workspace-ui.mjs": {
+      "bytes": 34982,
+      "sha256": "74e41771bfd329430b51be0e665cc94cc3fa89514468adb39103f2d3fb59477b"
+    },
+    "ngs-local/sites/npcgen/build/cinematic-workspace.mjs": {
+      "bytes": 14058,
+      "sha256": "7ada1cd4b43017a8a06e640b837ae5ec037736b414e59408d2893da24f44873d"
+    },
+    "ngs-local/sites/npcgen/tests/cinematic-workspace.mjs": {
+      "bytes": 19272,
+      "sha256": "c5a6d2f38c387b50efbcfd4e76e2ca25543e435e31f8db63765c003fe2ac0a96"
     }
   }
 }

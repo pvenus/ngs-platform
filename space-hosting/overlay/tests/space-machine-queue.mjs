@@ -597,3 +597,24 @@ test('Space browser and Viewer MCP share background generation and animation adm
  assert.equal((await call('/api/requests','POST',auth,{...inputs[1],payload:{...inputs[1].payload,motionPrompt:'non loop'}})).status,400);
  assert.deepEqual(seen,inputs.flatMap(cmd=>[cmd.requestType,cmd.requestType]));
 });
+
+test('cinematic scene folder deletion uses one protected file.delete for editable role',async t=>{
+ const {cinematicSceneDeletePayload}=await import('../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs');
+ const db=store(t),seen=[];
+ const opts={db,secret:token,replicaReads:true,workspaceReady:true,cinematicSceneDeleteEnabled:true,
+  authorize:async()=>true,authorizeWrite:async()=>true,mapAssemblyGrant:async u=>({projectId:'binari',role:u.userId==='editor'?'editor':'viewer'}),
+  admitMapAssembly:async(_user,c)=>seen.push(c)};
+ const call=(path,method,identity,body)=>browserQueueResponse(request(path,method,identity,body),opts);
+ const send=async (actor,payload)=>{
+  const h=headers(actor),s=await (await call('/__npcgen_session','GET',h)).json();
+  assert.equal(s.cinematicDeleteEnabled,actor==='editor'?true:undefined);
+  return call('/api/requests','POST',{...h,Origin:origin,'X-NPCGen-Csrf':s.csrfToken,'X-NPCGen-Frontend-Context':s.contextId},
+   {requestType:'file.delete',idempotencyKey:'cinematic-scene',payload});
+ };
+ const payload=cinematicSceneDeletePayload('a'.repeat(64));
+ assert.equal((await send('other',payload)).status,403);
+ assert.equal((await send('editor',{...payload,target:{...payload.target,path:'scenes/'+'b'.repeat(64)}})).status,400);
+ assert.equal((await send('editor',payload)).status,202);
+ assert.equal(seen.length,1);
+ assert.deepEqual(seen[0].payload,payload);
+});

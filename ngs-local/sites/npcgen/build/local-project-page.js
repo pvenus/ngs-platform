@@ -1,5 +1,5 @@
 import {mountMapWorkspace} from './map-workspace-ui.mjs';
-import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,mapFolderDeletePayload,assemblyFolderDeletePayload} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,cinematicSceneDeletePayload,mapFolderDeletePayload,assemblyFolderDeletePayload} from './prop-folder-delete-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
 import {cinematicType} from './cinematic-contract.mjs';
 import {mountPropWorkspace} from './prop-workspace-ui.mjs';
@@ -217,9 +217,9 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {audioFullLengthEnabled,npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
+ const {audioFullLengthEnabled,npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
  if([mapReadEnabled,assemblyReadEnabled].some(v=>v!==undefined&&(v!==true||session.workspaceReady!==true)))return false;
- if([audioFullLengthEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
+ if([audioFullLengthEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
  if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
  return session?.state==='authenticated'&&session.backend==='space'&&
@@ -695,12 +695,14 @@ async function loadWorkspace(search){
    return;
   }
   if(tab==='cinematic'){
-   const deleteItem=!hosted&&session.cinematicDeleteEnabled===true&&submit?async row=>{
+   const deleteItem=session.cinematicDeleteEnabled===true&&submit?async row=>{
+    const info=await request('/api/cinematic-workspace?'+new URLSearchParams({projectId,source:row.id,sourceInfo:'1'}));
+    if(info.sceneFolder===true)return submitFolderDelete(submit,cinematicSceneDeletePayload(row.id));
     const query=new URLSearchParams({projectId,sourceSha256:row.id});
     const inventory=await request('/api/cinematic-delete-inventory?'+query);
     for(const payload of cinematicDeletePayloads(row.id,inventory))await submitFolderDelete(submit,payload);
    }:undefined;
-   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,deleteItem,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true});
+   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,deleteItem,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true,legacyDeleteEnabled:session.cinematicLegacyInventoryEnabled===true});
    if(!signal.aborted)note('');
    return;
   }

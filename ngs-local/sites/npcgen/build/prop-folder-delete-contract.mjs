@@ -50,7 +50,7 @@ export function validCinematicFileDelete(p){
  return exact(p,['schemaVersion','projectId','target','expected'])&&p.schemaVersion===fileDeleteSchema&&p.projectId==='binari'&&
   exact(t,['root','path','kind'])&&t.root===cinematicDeleteRoot&&typeof t.path==='string'&&
   exact(e,['sourceSha256'])&&propSha(e.sourceSha256)&&
-  (t.kind==='directory'&&seq.test(t.path)||t.kind==='file'&&(legacy.test(t.path)||
+  (t.kind==='directory'&&(seq.test(t.path)||t.path==='scenes/'+e.sourceSha256)||t.kind==='file'&&(legacy.test(t.path)||
     t.path==='sources/'+e.sourceSha256+'.png'||t.path==='sources/'+e.sourceSha256+'.json'));
 }
 export function cinematicDeletePayloads(sourceSha256,inventory){
@@ -59,7 +59,7 @@ export function cinematicDeletePayloads(sourceSha256,inventory){
   throw Error('NGS_CINEMATIC_DELETE_INVENTORY_INVALID');
  const rows=inventory.targets.map(target=>({schemaVersion:fileDeleteSchema,projectId:'binari',target,expected:{sourceSha256}}));
  if(!rows.every(validCinematicFileDelete)||new Set(rows.map(x=>x.target.path)).size!==rows.length||
-  rows.at(-1).target.path!=='sources/'+sourceSha256+'.png')throw Error('NGS_CINEMATIC_DELETE_INVENTORY_INVALID');
+  rows.at(-1).target.path!=='sources/'+sourceSha256+'.png'&&!(rows.length===1&&rows[0].target.path==='scenes/'+sourceSha256))throw Error('NGS_CINEMATIC_DELETE_INVENTORY_INVALID');
  return rows;
 }
 
@@ -104,3 +104,9 @@ const deleteFamilies=new Map([
  [propsDeleteRoot,{action:'propFolderDeleteEnabled',valid:validPropFolderDelete,unavailable:'PROP_WORKSPACE_ACTION_UNAVAILABLE',invalid:'NGS_PROP_FOLDER_DELETE_PAYLOAD_INVALID'}],
 ].map(([root,family])=>[root,Object.freeze(family)]));
 export const workspaceDeleteFamily=payload=>deleteFamilies.get(payload?.target?.root);
+
+export function cinematicSceneDeletePayload(sourceSha256){
+ const payload={schemaVersion:fileDeleteSchema,projectId:'binari',target:{root:cinematicDeleteRoot,path:'scenes/'+sourceSha256,kind:'directory'},expected:{sourceSha256}};
+ if(!validCinematicFileDelete(payload))throw Error('NGS_CINEMATIC_DELETE_PAYLOAD_INVALID');
+ return payload;
+}

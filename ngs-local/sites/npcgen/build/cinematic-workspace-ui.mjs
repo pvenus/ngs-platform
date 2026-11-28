@@ -67,7 +67,7 @@ function requestForm(parent,{caption,send,makePayload,isValid,signal,body,notice
 
 const sceneLabel=s=>s.displayTitle??s.title??'시놉시스 원본 '+short(s.sourceSha256);
 const normalizeSearch=value=>value.normalize('NFC').trim().toLocaleLowerCase();
-function mountSourceRoster({items,scenes,selected,go,projectId,signal,area='cinematic',edit=null}){
+function mountSourceRoster({items,scenes,selected,go,projectId,signal,area='cinematic',edit=null,legacyDeleteEnabled=false}){
  const background=area==='background';
  const keyOf=s=>background?s.sha256:s.sourceSha256;
  const storageKey='ngs:'+area+'-roster:v1:'+projectId;
@@ -104,7 +104,7 @@ function mountSourceRoster({items,scenes,selected,go,projectId,signal,area='cine
    if(scene===selected)link.setAttribute('aria-current','page');
    link.append(make('strong',title));
    if(!background)link.append(make('span','애니메이션 '+(scene.sequences.length+scene.clips.length)+'개','meta'));
-   li.append(link);edit?.decorate(li,id,title,background?{sourceRequestId:scene.officialRequestId}:undefined);rows.set(id,li);return [li];
+   li.append(link);if(background||scene.sceneFolder===true||legacyDeleteEnabled)edit?.decorate(li,id,title,background?{sourceRequestId:scene.officialRequestId}:undefined);rows.set(id,li);return [li];
   });
   items.replaceChildren(...(nodes.length?nodes:[make('li',filter.length?'검색 결과가 없습니다.':background?'게시된 배경이 없습니다.':'게시된 시네마틱이 없습니다.','meta')]));
   edit?.refresh();
@@ -119,7 +119,7 @@ function mountSourceRoster({items,scenes,selected,go,projectId,signal,area='cine
  signal.addEventListener('abort',()=>{remember();label.remove();query.remove();},{once:true});
 }
 export async function mountCinematicWorkspace({items,detail,tools,request,submit,projectId,item,source,panel,navigate,signal,
- enabled,playbackEnabled=false,sourceEnabled=false,removeEnabled=false,deleteItem}){
+ enabled,playbackEnabled=false,sourceEnabled=false,removeEnabled=false,deleteItem,legacyDeleteEnabled=false}){
  const {scenes}=await request(url(projectId,{grouped:'1'}));
  if(signal.aborted)return;
  if(!Array.isArray(scenes)||!scenes.every(s=>s&&cinematicHash(s.sourceSha256)&&(s.title===null||typeof s.title==='string')&&
@@ -146,7 +146,7 @@ export async function mountCinematicWorkspace({items,detail,tools,request,submit
   tools.replaceChildren(add);tools.hidden=false;
  }
  const edit=mountCatalogRosterEdit({items,tools,deleteItem,signal});
- mountSourceRoster({items,scenes,selected,go,projectId,signal,edit});
+ mountSourceRoster({items,scenes,selected,go,projectId,signal,edit,legacyDeleteEnabled});
  const heading=make('header',null,'npc-detail-heading prop-detail-heading');
  const title=make('div',null,'prop-identity'),actions=make('div',null,'prop-actions');
  heading.append(title,actions);

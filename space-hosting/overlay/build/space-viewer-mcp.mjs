@@ -93,7 +93,7 @@ export async function spaceViewerMcpResponse(request,options){
   if(p.name==='ngs_viewer_request_session'){
    delete data.csrfToken;delete data.contextId;
    // v1 Viewer hosts an exact session decoder; retain its wire shape until it updates.
-   if(a.workspaceProtocol!==2){delete data.backgroundPixelEnabled;delete data.backgroundAnimationEnabled;delete data.audioFullLengthEnabled;}
+   if(a.workspaceProtocol!==2){delete data.backgroundPixelEnabled;delete data.backgroundAnimationEnabled;delete data.audioFullLengthEnabled;delete data.cinematicDeleteEnabled;}
   }
   return rpc(id,{status:result.status,data});
  }

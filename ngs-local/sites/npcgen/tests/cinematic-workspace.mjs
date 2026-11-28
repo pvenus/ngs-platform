@@ -224,3 +224,31 @@ test('object-store upload time is carried to the shared scene sort',async()=>{
  const port=openObjectWorkspaceProject({head:async()=>({size:100,etag:'pin',uploaded:date,customMetadata:{sha256:sourceSha256}})},'binari');
  assert.deepEqual(await port.head('cinematics/sources/file.png'),{size:100,sha256:sourceSha256,modifiedAtMs:date.getTime()});
 });
+
+test('scene-folder writes resolve through the common Local, Space and Viewer projection',async()=>{
+ const {cinematicWorkspaceRead}=await import('../build/cinematic-workspace.mjs');
+ const {cinematicSceneDeletePayload}=await import('../build/prop-folder-delete-contract.mjs');
+ const frame=Buffer.from(png);frame.writeUInt32BE(128,16);frame.writeUInt32BE(128,20);
+ const source=Buffer.from(png);source.writeUInt32BE(1536,16);source.writeUInt32BE(1024,20);
+ const digest=sha(source),root='cinematics/scenes/'+digest,sequence=root+'/sequences/'+id;
+ const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,zoom:1,x:.5,y:.5}]};
+ const meta={schemaVersion:'ngs.cinematic-source-result.v1',projectId:'binari',officialRequestId:id,title:'새 장면',sha256:digest,bytes:source.length,width:1536,height:1024};
+ const m={schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,sourceSha256:digest,width:128,height:128,masterFps:24,frameCount:45,
+  frames:Array.from({length:45},(_,index)=>({index,bytes:frame.length,sha256:sha(frame)})),playback};
+ const json=x=>Buffer.from(JSON.stringify(x));
+ const objects=new Map([[root+'/source.png',source],[root+'/source.json',json(meta)],[sequence+'/manifest.json',json(m)],
+  [sequence+'/frames/0000.png',frame],['cinematics/scene-index/sequences/'+id+'.json',json({sourceSha256:digest})]]);
+ const storage={head:async p=>objects.has(p)?{size:objects.get(p).length,sha256:sha(objects.get(p))}:null,
+  readBytes:async p=>objects.get(p)??null,listChildren:async p=>{
+   const rows=new Map();for(const key of objects.keys())if(key.startsWith(p+'/')){
+    const [name,...rest]=key.slice(p.length+1).split('/');rows.set(name,{name,kind:rest.length?'directory':'file'});
+   }return [...rows.values()];
+  }};
+ const read=query=>cinematicWorkspaceRead({query:new URLSearchParams({projectId:'binari',...query}),openProject:async()=>storage,authorize:async()=>true});
+ assert.deepEqual((await read({source:digest,sourceInfo:'1'})).json,{sourceSha256:digest,title:'새 장면',sceneFolder:true});
+ assert.deepEqual((await read({grouped:'1'})).json.scenes,[{sourceSha256:digest,title:'새 장면',sequences:[id],clips:[],sceneFolder:true}]);
+ assert.deepEqual((await read({sequence:id,frame:'0'})).bytes,frame);
+ assert.equal(cinematicSceneDeletePayload(digest).target.path,'scenes/'+digest);
+ objects.set('cinematics/scene-index/sequences/'+id+'.json',json({sourceSha256:'b'.repeat(64)}));
+ await assert.rejects(read({sequence:id}),{status:404});
+});

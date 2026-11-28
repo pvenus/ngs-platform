@@ -133,7 +133,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,backgroundSourceEnabled=false,cinematicRemoveEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic,mapAssemblyGrant,admitMapAssembly}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,backgroundSourceEnabled=false,cinematicRemoveEnabled=false,cinematicSceneDeleteEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic,mapAssemblyGrant,admitMapAssembly}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -155,7 +155,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
   const activePropRemove=replicaReads&&workspaceReady&&propAnimationRemoveEnabled===true&&typeof admitPropAnimationRemove==='function';
   const participant={userId:id,email};
   const workspaceCapabilities=async writable=>replicaReads&&workspaceReady&&typeof mapAssemblyGrant==='function'
-   ?spaceMapAssemblyCapabilities(await mapAssemblyGrant(participant),writable&&typeof admitMapAssembly==='function'):{};
+   ?spaceMapAssemblyCapabilities(await mapAssemblyGrant(participant),writable&&typeof admitMapAssembly==='function',cinematicSceneDeleteEnabled===true):{};
 
   if(url.pathname===session){
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
@@ -181,6 +181,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(validSpaceMapAssemblyCommand(value.requestType,value.payload),400,'SPACE_REQUEST_INVALID');
    const caps=await workspaceCapabilities(true);
    need(caps[mapAction]===true,403,'SPACE_MAP_ASSEMBLY_ACTION_DENIED');
+   if(mapAction==='cinematicDeleteEnabled')need(value.payload.target.path==='scenes/'+value.payload.expected.sourceSha256,400,'SPACE_REQUEST_INVALID');
    await admitMapAssembly(participant,value);
   }
 
