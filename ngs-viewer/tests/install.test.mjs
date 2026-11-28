@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import {binariSpace,viewerOptions} from '../viewer.mjs';
-import {officialInstall,waitForInstallProof,verifySpaceProof} from '../install.mjs';
+import {officialInstall,waitForInstallProof,verifySpaceProof,verifyCodexViewer} from '../install.mjs';
 import {installTarget,launchAgent,windowsTaskCommand} from '../setup/os-targets.mjs';
 
 const port=5681,root=process.platform==='win32'?String.raw`C:\Users\owner\NGS P2`:'/home/owner/NGS P2',space=binariSpace;
@@ -76,4 +76,24 @@ test('registration plans use per-user launchd or native Windows interactive task
  assert.equal(packet.node,String.raw`C:\Program Files\nodejs\node.exe`);
  assert.match(packet.arguments,/"D:\\비나리 P2"/u);
  assert.throws(()=>installTarget({platform:'linux',kernel:'linux',distro:'Ubuntu'}),/VIEWER_OS_SERVICE_UNSUPPORTED/u);
+});
+
+test('Codex install requires team manifest before registering and has no browser fallback',async()=>{
+ const binary=process.platform==='win32'?String.raw`C:\Program Files\Codex\codex.exe`:'/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex';
+ const configured=viewerOptions(['--p2',root,'--codex-bin',binary,'--codex-mcp','binari-space']);
+ let closed=0,registered=0;
+ const noPopup=()=>assert.fail('Codex installation opened browser approval');
+ const target={service:'launchagent'};
+ const register=()=>{registered++;return {name:'fixture'};};
+ const auth=status=>o=>verifyCodexViewer(o,config=>{
+  assert.deepEqual(config,{binary,server:'binari-space'});
+  return {close(){closed++;},async tool(name,args){
+   assert.equal(name,'ngs_viewer_manifest');assert.deepEqual(args,{});
+   return {isError:status!==200,structuredContent:{status,manifest:{projectId:'binari',resources:['project'],files:[]}}};
+  }};
+ });
+ await assert.rejects(officialInstall(configured,{target,register,authenticate:noPopup,authenticateCodex:auth(403)}),/VIEWER_SPACE_SIGN_IN_REQUIRED/);
+ assert.equal(registered,0);
+ await officialInstall(configured,{target,register,authenticate:noPopup,authenticateCodex:auth(200)});
+ assert.equal(registered,1);assert.equal(closed,2);
 });

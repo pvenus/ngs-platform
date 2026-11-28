@@ -24,8 +24,9 @@ export function installTarget({platform=process.platform}={}){
 }
 const xml=x=>String(x).replace(/&/gu,'&amp;').replace(/</gu,'&lt;').replace(/>/gu,'&gt;').replace(/"/gu,'&quot;').replace(/'/gu,'&apos;');
 export const labelFor=port=>'com.vinus.ngs-viewer.'+port;
-export function launchAgent({node,entry,root,space,port,log}){
- const args=[node,entry,'--p2',root,'--port',String(port),'--space',space];
+const codexArgs=c=>c?['--codex-bin',c.binary,'--codex-mcp',c.server,...(c.socket?['--codex-socket',c.socket]:[])]:[];
+export function launchAgent({node,entry,root,space,port,log,codex}){
+ const args=[node,entry,'--p2',root,'--port',String(port),'--space',space,...codexArgs(codex)];
  if(![...args,log].every(safe))throw Error('VIEWER_INVALID_SERVICE_ARGUMENT');
  const val=x=>'<string>'+xml(x)+'</string>';
  return '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'+
@@ -39,11 +40,11 @@ function winArgument(value){
  // A backslash immediately before the final quote must be doubled.
  return '"'+value.replace(/\\+$/u,m=>m+m)+'"';
 }
-export function windowsTaskCommand({node,entry,root,space,port}){
+export function windowsTaskCommand({node,entry,root,space,port,codex}){
  const name='VINUS-NGS-Viewer-'+port;
  if(!Number.isSafeInteger(port)||port<1024||port>65535||![node,entry,root].every(win32.isAbsolute))
   throw Error('VIEWER_INVALID_SERVICE_ARGUMENT');
- const windowsArguments=[entry,'--p2',root,'--port',String(port),'--space',space].map(winArgument).join(' ');
+ const windowsArguments=[entry,'--p2',root,'--port',String(port),'--space',space,...codexArgs(codex)].map(winArgument).join(' ');
  const data=Buffer.from(JSON.stringify({name,node,arguments:windowsArguments}),'utf8').toString('base64');
  // Task Scheduler runs as the current interactive Windows SID, never Administrator/SYSTEM.
  const script=`$ErrorActionPreference = 'Stop'

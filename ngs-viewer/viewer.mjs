@@ -154,24 +154,28 @@ export async function createViewer({root,space=binariSpace,mirror=null,codexClie
 }
 
 export function viewerOptions(args){
- if(args.length%2!==0||args.length<2||args.length>6)throw Error('VIEWER_ARGUMENTS');
+ if(args.length%2!==0||args.length<2||args.length>12)throw Error('VIEWER_ARGUMENTS');
  const pairs=new Map();
  for(let i=0;i<args.length;i+=2){
-  if(pairs.has(args[i])||!['--p2','--port','--space'].includes(args[i]))throw Error('VIEWER_ARGUMENTS');
+  if(pairs.has(args[i])||!['--p2','--port','--space','--codex-bin','--codex-mcp','--codex-socket'].includes(args[i]))throw Error('VIEWER_ARGUMENTS');
   pairs.set(args[i],args[i+1]);
  }
  const root=pairs.get('--p2'),raw=pairs.get('--port')??String(viewerPort),port=Number(raw);
  if(typeof root!=='string'||!isAbsolute(root)||resolve(root)!==root||
     !/^[1-9][0-9]{3,4}$/u.test(raw)||!validViewerPort(port))throw Error('VIEWER_ARGUMENTS');
- return {root,port,space:viewerSpaceOrigin(pairs.get('--space')??binariSpace)};
+ const binary=pairs.get('--codex-bin'),server=pairs.get('--codex-mcp'),socket=pairs.get('--codex-socket');
+ if((binary||server||socket)&&(!binary||!isAbsolute(binary)||!server||
+    !/^[a-z0-9_.-]{1,160}$/iu.test(server)||socket&&!isAbsolute(socket)))throw Error('VIEWER_CODEX_CONFIGURATION');
+ return {root,port,space:viewerSpaceOrigin(pairs.get('--space')??binariSpace),
+  ...(binary?{codex:{binary,server,...(socket?{socket}:{})}}:{})};
 }
 
 if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
  try{
-  const {root,port,space}=viewerOptions(process.argv.slice(2));
-  const binary=process.env.NGS_VIEWER_CODEX_BIN, mcp=process.env.NGS_VIEWER_CODEX_MCP_NAME;
+  const {root,port,space,codex}=viewerOptions(process.argv.slice(2));
+  const binary=codex?.binary??process.env.NGS_VIEWER_CODEX_BIN, mcp=codex?.server??process.env.NGS_VIEWER_CODEX_MCP_NAME;
   if(Boolean(binary)!==Boolean(mcp))throw Error('VIEWER_CODEX_CONFIGURATION');
-  const codexClient=binary?codexViewerClient({binary,server:mcp,socket:process.env.NGS_VIEWER_CODEX_SOCKET}):null;
+  const codexClient=binary?codexViewerClient({binary,server:mcp,socket:codex?.socket??process.env.NGS_VIEWER_CODEX_SOCKET}):null;
   const server=await createViewer({root,space,codexClient});
   server.on('error',error=>{console.error(error?.code==='EADDRINUSE'?'That Viewer port is already in use.':'Viewer startup failed.');process.exitCode=1;});
   const stop=()=>server.close();

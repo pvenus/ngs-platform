@@ -12,6 +12,10 @@ import {assertLoopbackRequest} from '../ngs-local/sites/npcgen/build/loopback-au
 import {binariSpace,viewerPort,viewerOptions,viewerSpaceOrigin} from './viewer.mjs';
 import {installTarget,registerViewer} from './setup/os-targets.mjs';
 
+import {codexViewerClient} from './lib/codex-transport.mjs';
+import {codexViewerRemote} from './lib/native-mcp.mjs';
+import {validateMirrorManifest} from './lib/mirror.mjs';
+
 const statusError=(code,status)=>Object.assign(Error(code),{status});
 const close=s=>new Promise(resolve=>{s.close(()=>resolve());s.closeIdleConnections();});
 const addr=port=>'http://127.0.0.1:'+port;
@@ -94,11 +98,23 @@ export async function waitForInstallProof(options,{announce=()=>{},waitMs=600_00
  }
 }
 
+export async function verifyCodexViewer(options,makeClient=codexViewerClient){
+ const client=makeClient(options.codex);
+ try{
+  const remote=codexViewerRemote({origin:options.space,client});
+  const r=await remote('/api/viewer/manifest',{signal:AbortSignal.timeout(45_000)});
+  if(r.status!==200)throw Error(r.status===401||r.status===403?'VIEWER_SPACE_SIGN_IN_REQUIRED':'VIEWER_CODEX_CONNECTION_REQUIRED');
+  const manifest=validateMirrorManifest(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(r.bytes)));
+  if(!manifest.resources?.includes('project'))throw Error('VIEWER_SPACE_SIGN_IN_REQUIRED');
+ }finally{client.close();}
+}
+
 export async function officialInstall(options,{register=registerViewer,target=installTarget(),
- authenticate=waitForInstallProof,announce}={}){
+ authenticate=waitForInstallProof,authenticateCodex=verifyCodexViewer,announce}={}){
  // Canonical issuer validation before any network request or local registration.
  viewerSpaceOrigin(options.space);
- await authenticate(options,{announce});
+ if(options.codex)await authenticateCodex(options);
+ else await authenticate(options,{announce});
  return register(options,target);
 }
 async function cliOptions(){
@@ -138,6 +154,8 @@ if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
  }catch(e){
   const friendly={
    VIEWER_ARGUMENTS:'Space 주소·P2 절대 경로·1024~65535 포트를 확인하세요.',
+   VIEWER_CODEX_CONNECTION_REQUIRED:'등록하지 않았습니다. Codex 앱 연결과 비나리 Space MCP를 확인한 뒤 다시 시도하세요.',
+   VIEWER_SPACE_SIGN_IN_REQUIRED:'등록하지 않았습니다. Codex에서 비나리 Space MCP에 팀 계정으로 연결하세요.',
    VIEWER_SPACE_ORIGIN_INVALID:'이 설치 프로그램에서 승인한 비나리 Space 주소가 아닙니다.',
    VIEWER_SPACE_INSTALL_UNAVAILABLE:'입력한 Space에 설치 인증이 연결되지 않아 자동 실행 항목을 등록하지 않았습니다.',
    VIEWER_INSTALL_AUTH_TIMEOUT:'팀원 인증 대기 시간이 끝났습니다. 등록하지 않았습니다.',
