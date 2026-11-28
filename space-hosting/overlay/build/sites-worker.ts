@@ -13,7 +13,7 @@ import workspaceRoster from "../lib/master-concept-participants.json";
 import { objectAudioSeparationSource } from "../ngs-local/sites/npcgen/build/object-replica-view.mjs";
 import { spaceReplicaView } from "./space-replica-view.mjs";
 import { dispatchWorkspaceRead } from "../ngs-local/sites/npcgen/build/workspace-read-registry.mjs";
-import { propEnabledActions } from "../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs";
+import { workspaceReleaseCapabilities as released } from "../ngs-local/sites/npcgen/build/workspace-release-capabilities.mjs";
 import { admitCinematicRequest } from "../ngs-local/sites/npcgen/build/cinematic-workspace.mjs";
 import { admitPropRequest, admitPropAnimationRemove } from "../ngs-local/sites/npcgen/build/prop-workspace.mjs";
 import { openSpaceWorkspaceProject } from "./space-workspace-read-storage.mjs";
@@ -42,7 +42,7 @@ export default {
       return grant.project_id === "binari" && grant.revoked === 0;
     };
     const fileReplica = db && env.BUCKET ? createSpaceFileReplica({db,bucket:env.BUCKET,cacheOrigin:new URL(request.url).origin}) : undefined;
-    const replicaReads = env.NPCGEN_SPACE_REPLICA_READ_ENABLED === "1" && !!fileReplica && machineTokenConfigured(secret);
+    const replicaReads = !!fileReplica && machineTokenConfigured(secret);
     if (new URL(request.url).pathname === replicaSyncProgressPath) {
       const headers = {"cache-control":"private, no-store","x-content-type-options":"nosniff"};
       const userId=request.headers.get("oai-authenticated-user-id"),email=request.headers.get("oai-authenticated-user-email");
@@ -120,14 +120,15 @@ export default {
           return json;
         },
       }):undefined,
-      cinematicEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_ENABLED?:string}).NGS_CINEMATIC_ENABLED==="1",
-      cinematicSequenceEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_SEQUENCE_ENABLED?:string}).NGS_CINEMATIC_SEQUENCE_ENABLED==="1",
-      cinematicPlaybackEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_PLAYBACK_ENABLED?:string}).NGS_CINEMATIC_PLAYBACK_ENABLED==="1",
-      backgroundSourceEnabled:(env as Cloudflare.Env & {NGS_BACKGROUND_SOURCE_ENABLED?:string}).NGS_BACKGROUND_SOURCE_ENABLED==="1",
-      cinematicSourceEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_SOURCE_ENABLED?:string}).NGS_CINEMATIC_SOURCE_ENABLED==="1",
-      cinematicSceneDeleteEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_SCENE_DELETE_ENABLED?:string}).NGS_CINEMATIC_SCENE_DELETE_ENABLED==="1",
-      cinematicRemoveEnabled:(env as Cloudflare.Env & {NGS_CINEMATIC_REMOVE_ENABLED?:string}).NGS_CINEMATIC_REMOVE_ENABLED==="1",
-      propAnimationRemoveEnabled:(env as Cloudflare.Env & {NGS_PROP_ANIMATION_REMOVE_ENABLED?:string}).NGS_PROP_ANIMATION_REMOVE_ENABLED==="1",
+      releaseCapabilities:released,
+      cinematicEnabled:released.cinematicEnabled,
+      cinematicSequenceEnabled:released.cinematicSequenceEnabled,
+      cinematicPlaybackEnabled:released.cinematicPlaybackEnabled,
+      backgroundSourceEnabled:released.backgroundSourceEnabled,
+      cinematicSourceEnabled:released.cinematicSourceEnabled,
+      cinematicSceneDeleteEnabled:released.cinematicDeleteEnabled,
+      cinematicRemoveEnabled:released.cinematicRemoveEnabled,
+      propAnimationRemoveEnabled:released.propAnimationRemoveEnabled,
       admitPropAnimationRemove:replicaReads?async (user,command)=>admitPropAnimationRemove({
         openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),command,
         authorize:async (projectId,resource)=>{
@@ -142,7 +143,7 @@ export default {
             throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
         },
       }):undefined,
-      propActions:propEnabledActions(env),
+      propActions:[...released.propActions],
       admitProp:replicaReads?async (user,command,actions)=>admitPropRequest({
         openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),command,actions,
         authorize:async (projectId,resource)=>{
@@ -150,13 +151,11 @@ export default {
             throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
         },
       }):undefined,
-      npcBasicPortraitEnabled:(env as Cloudflare.Env & {NGS_NPC_BASIC_PORTRAIT_ENABLED?:string}).NGS_NPC_BASIC_PORTRAIT_ENABLED!=="0",
-      poseSelectionV2Enabled:(env as Cloudflare.Env & {NGS_POSE_SELECTION_V2_ENABLED?:string}).NGS_POSE_SELECTION_V2_ENABLED==="1",
-      hasAudioSeparationSource:replicaReads&&env.NPCGEN_AUDIO_SEPARATION_ENABLED==="1"
+      npcBasicPortraitEnabled:released.npcBasicPortraitEnabled,
+      poseSelectionV2Enabled:released.poseSelectionV2Enabled,
+      hasAudioSeparationSource:replicaReads&&released.audioSeparationEnabled
         ?payload=>objectAudioSeparationSource(fileReplica!,payload):undefined,
-      // A trusted roster entry or the single configured exception is required in
-      // addition to Sites authentication/admission and the active Binari grant.
-      authorizeWrite:user=>authorizeSpaceQueueWrite(user,workspacePrincipal,env.NPCGEN_SPACE_QUEUE_EXTRA_EMAIL_SHA256),
+      authorizeWrite:user=>authorizeSpaceQueueWrite(user,workspacePrincipal),
     };
     const viewerMcp=await spaceViewerMcpResponse(request,{...viewerOptions,requestQueue:async (url,identity,command)=>{
       if(command===undefined)return browserQueueResponse(new Request(url,{headers:identity}),queueOptions);

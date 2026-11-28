@@ -19,9 +19,6 @@ const source=v=>exactPropKeys(v,['revision','sha256'])&&propRevision(v.revision)
 export const validPropGenerateReference=(v,target)=>exactPropKeys(v,['propId','revision','sha256'])&&
  propSlug(v.propId)&&v.propId!==target&&source({revision:v.revision,sha256:v.sha256});
 export const propAction=type=>names.find(k=>propTypes[k]===type);
-export function propEnabledActions(env){
- return names.filter(k=>env['NGS_PROP_'+(k==='animation'?'ANIMATION':k.toUpperCase())+'_ENABLED']==='1');
-}
 export function validPropActions(v){
  return Array.isArray(v)&&v.length>0&&v.length<=names.length&&v.every((name,i)=>names.includes(name)&&v.indexOf(name)===i);
 }

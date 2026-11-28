@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {machineResponse,browserQueueResponse,spaceQueueParticipant,spaceWorkspacePrincipal,authorizeSpaceQueueWrite} from '../build/space-machine-routes.mjs';
+import {workspaceReleaseCapabilities} from '../ngs-local/sites/npcgen/build/workspace-release-capabilities.mjs';
 import {SpaceRequestQueue,officialIdForSpace} from '../build/space-request-queue.mjs';
 
 const origin='https://site.example';
@@ -129,52 +130,22 @@ test('only authenticated active Binari participants can use the existing formal 
  }
 });
 
-test('one private authenticated email exception is queue-only and cannot override the active project or existing policy denial',async t=>{
- const db=store(t),email='queue-only@example.invalid';
- const digest=createHash('sha256').update(email).digest('hex');
- const owner='owner',guest='guest';
- const auth=(id,address=id+'@example.invalid')=>({...headers(id),'oai-authenticated-user-email':address});
- const missing=()=>Object.assign(Error('MASTER_CONCEPT_PARTICIPANT_DENIED'),{status:403});
+test('an old extra email setting does not grant a non-member access',async t=>{
+ const db=store(t);
+ const digest=createHash('sha256').update('guest@example.invalid').digest('hex');
  const participant=async({userId})=>{
-  if(userId===owner)return {projectId:'binari',role:'owner'};
-  if(userId==='badGrant')return {projectId:'other',role:'owner'};
-  if(userId==='exception')throw Object.assign(Error('UNAVAILABLE'),{status:503});
-  throw missing();
+  if(userId==='viewer')return {projectId:'binari',role:'viewer'};
+  throw Object.assign(Error('MASTER_CONCEPT_PARTICIPANT_DENIED'),{status:403});
  };
- const route=(setting,project=()=>true)=> (path,method,h,body)=>browserQueueResponse(request(path,method,h,body),{
-  db,secret:token,authorize:async user=>project(user),authorizeWrite:user=>authorizeSpaceQueueWrite(user,participant,setting)});
- const session=(browser,h)=>browser('/__npcgen_session','GET',h);
- const configured=route(digest),named=auth(guest,email.toUpperCase());
- const deniedMedia=await session(configured,{'oai-authenticated-user-email':email});
- assert.equal(deniedMedia.status,401);
- const selected=await (await session(configured,named)).json();
- const ordinary=await (await session(configured,auth('visitor'))).json();
- assert.equal(selected.requestWritable,true);
- assert.equal(ordinary.requestWritable,false);
- assert.ok(!JSON.stringify(selected).includes(digest));
- assert.ok(!JSON.stringify(selected).includes(email));
- assert.equal((await session(route(digest,()=>false),named)).status,403);
- for(const id of ['badGrant','exception'])
-  assert.equal((await (await session(configured,auth(id,email))).json()).requestWritable,false);
- for(const bad of [undefined,null,digest.toUpperCase(),digest+'\n',digest.slice(1),digest+'x',
-  digest+','+digest,JSON.stringify([digest]),' '+digest])
-  assert.equal((await (await session(route(bad),named)).json()).requestWritable,false);
- assert.equal((await (await session(route('malformed'),auth(owner))).json()).requestWritable,true);
- const post=(browser,authn,c,cmd=command,more={})=>browser('/api/requests','POST',{
-  ...authn,Origin:origin,'X-NPCGen-Csrf':c.csrfToken,'X-NPCGen-Frontend-Context':c.contextId,...more},cmd);
- assert.equal((await post(configured,auth('visitor'),ordinary,command,{'X-Email':email,'X-Email-Sha256':digest})).status,403);
- assert.equal((await post(configured,auth('visitor'),selected)).status,403);
- assert.equal((await post(route(digest,()=>false),named,selected)).status,403);
- assert.equal((await post(configured,named,selected,command,{'X-NPCGen-Csrf':'x'})).status,403);
- assert.equal((await post(configured,named,selected,{...command,payload:{...command.payload,projectId:'other'}})).status,400);
- assert.equal((await post(configured,named,selected,{...command,requestType:'site.deploy'})).status,400);
- const accepted=await post(configured,named,selected);
- assert.equal(accepted.status,202);
- const path='/api/requests?queueId='+(await accepted.json()).queueId;
- assert.equal((await configured(path,'GET',auth('visitor'))).status,404);
- assert.equal((await configured(path,'GET',named)).status,200);
- for(const path of ['/api/space/audio-requests','/api/npc-one-stop','/mcp','/api/site/access'])
-  assert.equal(await configured(path,'POST',named,command),null);
+ const route=(...args)=>browserQueueResponse(request(...args),{
+  db,secret:token,authorize:async()=>true,
+  authorizeWrite:user=>authorizeSpaceQueueWrite(user,participant,digest)});
+ const guest=await (await route('/__npcgen_session','GET',headers('guest'))).json();
+ assert.equal(guest.requestWritable,false);
+ assert.equal((await route('/api/requests','POST',{...headers('guest'),Origin:origin,
+  'X-NPCGen-Csrf':guest.csrfToken,'X-NPCGen-Frontend-Context':guest.contextId},command)).status,403);
+ const viewer=await (await route('/__npcgen_session','GET',headers('viewer'))).json();
+ assert.equal(viewer.requestWritable,true);
 });
 
 test('machine auth cannot come from visitor headers, browser Origin, or wrong token; discovers only narrow approved tools',async t=>{
@@ -485,19 +456,19 @@ test('file deletes and map/assembly rights use the native Binari roster, never q
   assert.equal(s.requestWritable,true);
   assert.equal(s.mapReadEnabled,who==='queue-only'?undefined:true);
   assert.equal(s.assemblyReadEnabled,who==='queue-only'?undefined:true);
-  assert.equal(s.mapEnabled,['owner','editor'].includes(who)?true:undefined);
-  assert.equal(s.fileUpdateEnabled,['owner','editor'].includes(who)?true:undefined);
-  assert.equal(s.assemblyEnabled,['owner','editor'].includes(who)?true:undefined);
-  assert.equal(s.mapDeleteEnabled,['owner','editor'].includes(who)?true:undefined);
-  assert.equal(s.assemblyDeleteEnabled,['owner','editor'].includes(who)?true:undefined);
+  assert.equal(s.mapEnabled,who!=='queue-only'?true:undefined);
+  assert.equal(s.fileUpdateEnabled,who!=='queue-only'?true:undefined);
+  assert.equal(s.assemblyEnabled,who!=='queue-only'?true:undefined);
+  assert.equal(s.mapDeleteEnabled,who!=='queue-only'?true:undefined);
+  assert.equal(s.assemblyDeleteEnabled,who!=='queue-only'?true:undefined);
   for(const cap of ['npcFolderDeleteEnabled','propFolderDeleteEnabled','backgroundDeleteEnabled'])
-   assert.equal(s[cap],['owner','editor'].includes(who)?true:undefined);
+   assert.equal(s[cap],who!=='queue-only'?true:undefined);
   for(const cmd of [map,mapUpdate,fileUpdate,assembly,assemblyUpdate]){
    const out=await post(who,s,cmd);
-   assert.equal(out.status,['owner','editor'].includes(who)?202:403,JSON.stringify(await out.json()));
+   assert.equal(out.status,who!=='queue-only'?202:403,JSON.stringify(await out.json()));
   }
   for(const cmd of deletes){
-   const permitted=['owner','editor'].includes(who);
+   const permitted=who!=='queue-only';
    assert.equal((await post(who,s,cmd)).status,permitted?202:403);
   }
  }
@@ -598,16 +569,16 @@ test('Space browser and Viewer MCP share background generation and animation adm
  assert.deepEqual(seen,inputs.flatMap(cmd=>[cmd.requestType,cmd.requestType]));
 });
 
-test('cinematic scene folder deletion uses one protected file.delete for editable role',async t=>{
+test('cinematic scene folder deletion uses one protected file.delete for every team role',async t=>{
  const {cinematicSceneDeletePayload}=await import('../ngs-local/sites/npcgen/build/prop-folder-delete-contract.mjs');
  const db=store(t),seen=[];
  const opts={db,secret:token,replicaReads:true,workspaceReady:true,cinematicSceneDeleteEnabled:true,
-  authorize:async()=>true,authorizeWrite:async()=>true,mapAssemblyGrant:async u=>({projectId:'binari',role:u.userId==='editor'?'editor':'viewer'}),
+  authorize:async()=>true,authorizeWrite:async()=>true,mapAssemblyGrant:async u=>['editor','viewer'].includes(u.userId)?{projectId:'binari',role:u.userId}:null,
   admitMapAssembly:async(_user,c)=>seen.push(c)};
  const call=(path,method,identity,body)=>browserQueueResponse(request(path,method,identity,body),opts);
  const send=async (actor,payload)=>{
   const h=headers(actor),s=await (await call('/__npcgen_session','GET',h)).json();
-  assert.equal(s.cinematicDeleteEnabled,actor==='editor'?true:undefined);
+  assert.equal(s.cinematicDeleteEnabled,['editor','viewer'].includes(actor)?true:undefined);
   return call('/api/requests','POST',{...h,Origin:origin,'X-NPCGen-Csrf':s.csrfToken,'X-NPCGen-Frontend-Context':s.contextId},
    {requestType:'file.delete',idempotencyKey:'cinematic-scene',payload});
  };
@@ -615,6 +586,23 @@ test('cinematic scene folder deletion uses one protected file.delete for editabl
  assert.equal((await send('other',payload)).status,403);
  assert.equal((await send('editor',{...payload,target:{...payload.target,path:'scenes/'+'b'.repeat(64)}})).status,400);
  assert.equal((await send('editor',payload)).status,202);
- assert.equal(seen.length,1);
- assert.deepEqual(seen[0].payload,payload);
+ assert.equal((await send('viewer',payload)).status,202);
+ assert.deepEqual(seen.map(command=>command.payload),[payload,payload]);
+});
+
+
+test('published workspace capability list is identical for all signed-in team roles, not available to non-members',async t=>{
+ const db=store(t),roles=['owner','editor','viewer'];
+ const principal=async user=>roles.includes(user.userId)?{projectId:'binari',role:user.userId}:null;
+ const opts={db,secret:token,replicaReads:true,workspaceReady:true,releaseCapabilities:workspaceReleaseCapabilities,
+  authorize:async()=>true,authorizeWrite:user=>authorizeSpaceQueueWrite(user,principal),
+  mapAssemblyGrant:principal,admitMapAssembly:async()=>{}};
+ for(const role of roles){
+  const session=await (await browserQueueResponse(request('/__npcgen_session','GET',headers(role)),opts)).json();
+  assert.equal(session.requestWritable,true);
+  for(const [key,value] of Object.entries(workspaceReleaseCapabilities))assert.deepEqual(session[key],value);
+ }
+ const nonTeam=await (await browserQueueResponse(request('/__npcgen_session','GET',headers('other')),opts)).json();
+ assert.equal(nonTeam.requestWritable,false);
+ for(const key of Object.keys(workspaceReleaseCapabilities))assert.equal(nonTeam[key],undefined);
 });

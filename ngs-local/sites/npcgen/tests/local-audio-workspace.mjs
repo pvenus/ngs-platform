@@ -412,7 +412,7 @@ test('audio forms queue behind authenticated BFF; pending list clears only after
    body:JSON.stringify({requestType,idempotencyKey,payload})}),
    read:(auth=headers)=>fetch(origin+'/api/requests',{headers:auth})};
  }
- assert.equal(configuration({}).audioWorkspaceEnabled,false);
+ assert.equal(configuration({NGS_AUDIO_WORKSPACE_ENABLED:'0'}).audioWorkspaceEnabled,true);
  assert.equal(configuration({NGS_AUDIO_WORKSPACE_ENABLED:'1'}).audioWorkspaceEnabled,true);
  const off=await fixtures(undefined);
  assert.doesNotMatch(await (await fetch(off.origin)).text(),/data-audio-workspace/);

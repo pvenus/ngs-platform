@@ -35,20 +35,10 @@ export async function spaceWorkspacePrincipal(user,editorHashes,legacy){
  if(email&&Array.isArray(editorHashes)&&editorHashes.includes(await hash(email)))return {projectId:'binari',role:'editor'};
  return legacy(user);
 }
-// The optional exception is available only on the project queue and only when
-// the server's existing roster explicitly reports no participant.
-export async function authorizeSpaceQueueWrite(user,participant,extraEmailSha256){
+// A signed-in project participant has the same workspace grant regardless of role.
+export async function authorizeSpaceQueueWrite(user,participant){
  try { return spaceQueueParticipant(await participant(user)); }
- catch(error){
-  if(error?.status!==403||error.message!=='MASTER_CONCEPT_PARTICIPANT_DENIED')return false;
- }
- if(typeof extraEmailSha256!=='string'||extraEmailSha256.length!==64||!/^[0-9a-f]{64}$/.test(extraEmailSha256)||
-    typeof user?.email!=='string'||!user.email||user.email.length>320)return false;
- // Match the normalization used by the existing Sites participant resolver.
- const email=user.email.trim().toLowerCase();if(!email)return false;
- const actual=await hash(email);let difference=0;
- for(let i=0;i<64;i++)difference|=actual.charCodeAt(i)^extraEmailSha256.charCodeAt(i);
- return difference===0;
+ catch { return false; }
 }
 async function body(req,max){
  need(postJSON(req),415,'JSON_REQUIRED');
@@ -133,7 +123,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,backgroundSourceEnabled=false,cinematicRemoveEnabled=false,cinematicSceneDeleteEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic,mapAssemblyGrant,admitMapAssembly}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,releaseCapabilities,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,backgroundSourceEnabled=false,cinematicRemoveEnabled=false,cinematicSceneDeleteEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic,mapAssemblyGrant,admitMapAssembly}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -161,7 +151,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
    const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&replicaReads&&workspaceReady?{audioFullLengthEnabled:true}:{}),...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeBackground?{backgroundSourceEnabled:true,backgroundPixelEnabled:true,backgroundAnimationEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...await workspaceCapabilities(requestWritable),...tokens});
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&replicaReads&&workspaceReady?{audioFullLengthEnabled:true}:{}),...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeBackground?{backgroundSourceEnabled:true,backgroundPixelEnabled:true,backgroundAnimationEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...await workspaceCapabilities(requestWritable),...(requestWritable&&replicaReads&&workspaceReady&&releaseCapabilities?releaseCapabilities:{}),...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));

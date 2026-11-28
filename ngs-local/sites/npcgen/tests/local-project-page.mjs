@@ -25,7 +25,7 @@ test('browser auth and exact read-only catalog contract do not depend on legacy 
  t.after(()=>rmSync(parent,{recursive:true,force:true}));
  assert.equal(configuration({}).port,5274);
  assert.equal(configuration({}).npcBasicPortraitEnabled,true);
- assert.equal(configuration({NGS_NPC_BASIC_PORTRAIT_ENABLED:"0"}).npcBasicPortraitEnabled,false);
+ assert.equal(configuration({NGS_NPC_BASIC_PORTRAIT_ENABLED:"0"}).npcBasicPortraitEnabled,true);
  assert.equal(configuration({}).npcScopedPortraitEnabled,false);
  assert.throws(()=>configuration({NGS_PROJECT_LISTEN_PORT:'0'}),/LOCAL_PROJECT_PORT_INVALID/);
  const origin=await listen(t,createLocalProjectPageServer({root,mcpUrl:'https://invalid.example/mcp',fileSyncMode:'pull'}));
@@ -69,4 +69,19 @@ test('browser auth and exact read-only catalog contract do not depend on legacy 
   const r=await post(path,body);assert.equal(r.status,409);
   assert.deepEqual(await r.json(),{error:'NGS_FILE_SYNC_PUSH_OWNED'});
  }
+});
+
+
+test('installed Local release exposes its workspace actions without probing Workflow or reading legacy feature flags',async t=>{
+ const parent=mkdtempSync(join(realpathSync(tmpdir()),'ngs-release-session-'));
+ t.after(()=>rmSync(parent,{recursive:true,force:true}));
+ const config=configuration({NGS_PROJECT_CATALOG_ROOT:join(parent,'catalog'),NGS_AUDIO_WORKSPACE_ENABLED:'0',
+  NGS_NPC_BASIC_PORTRAIT_ENABLED:'0',NGS_POSE_SELECTION_V2_ENABLED:'0'});
+ const server=createLocalProjectPageServer({...config,requestQueue:{},readMapReady:()=>assert.fail('unexpected readiness probe')});
+ const origin=await listen(t,server);
+ const response=await fetch(origin+'/__npcgen_session');
+ assert.equal(response.status,200);
+ const session=await response.json();
+ for(const [key,value] of Object.entries(config.releaseCapabilities))assert.deepEqual(session[key],value);
+ assert.equal(session.npcScopedPortraitEnabled,undefined);
 });

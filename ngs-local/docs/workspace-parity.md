@@ -5,8 +5,8 @@ Local NGS, Space, and the local Viewer are deployment targets of the same produc
 Keep differences at transport boundaries:
 - Local uses its authenticated local intake. Space uses the authenticated Binari roster and the existing CSRF-checked browser intake. Viewer uses the same authenticated Space intake via Codex MCP; the local Viewer must not invent its own write grant or persist a request for replay.
 - Space queue entries are transport tickets, not official receipts. The Request Service must re-fetch the ticket through its configured trusted Space reader before applying the same typed contract and PDS readiness checks as Local.
-- The Viewer reads its verified local P2 snapshot. Filex remains authoritative for mutations. Local and hosted asset replication, deployment sequencing, and auth credentials are not interchangeable.
-- A capability that needs a live service or an asset should use the same readiness predicate with an adapter for that environment. Never add `!hosted` to a production action or weaken project/CSRF/target checks to make a button appear.
+- The Viewer reads its verified local Miniflare R2/D1 snapshot. Filex remains authoritative for mutations. Local and hosted asset replication, deployment sequencing, and auth credentials are not interchangeable.
+- The published workspace capabilities are defined in `workspace-release-capabilities.mjs`. The same release exposes the same actions to every authenticated team member, not by host flags or owner/editor/viewer distinctions. An unavailable transport or missing asset is an operational error, not a rollout policy. Preserve project, CSRF and target validation and leave Site administration separate.
 
 ## Current rollout candidate
 

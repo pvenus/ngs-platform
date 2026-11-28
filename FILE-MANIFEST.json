@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 385,
+  "fileCountIncludingManifest": 392,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1260,8 +1260,8 @@
       "sha256": "a67071f139e415caf9cc5b1823ad6212e6177974d0e14baa2414c2252da245b4"
     },
     "ngs-local/source-manifest.json": {
-      "bytes": 19621,
-      "sha256": "2988ce8a8c0d66f75c30000ee583e693d76f9e65f3edcd472554834ea048d885"
+      "bytes": 19750,
+      "sha256": "87f33ef1ff824149d8ea1edd6e5f300e5e1be57ce9b98d1333591cb40ab57df6"
     },
     "ngs-local/sites/npcgen/build/rs-mcp.mjs": {
       "bytes": 15831,
@@ -1324,8 +1324,8 @@
       "sha256": "f5ea48bc1a225270c27fe5549676f939d49a34c409ff66ddfdeaac6f5603273f"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
-      "bytes": 15100,
-      "sha256": "f54bd4cf82db4af05e721d62ac7da6cf64d7b01a8f990c3f87e0ed127b86f8c7"
+      "bytes": 14203,
+      "sha256": "e71947b1e2989fe86015aae2eac4604df3b7da107883b3709b944193dd22ada6"
     },
     "space-hosting/overlay/build/space-file-replica.d.mts": {
       "bytes": 825,
@@ -1384,8 +1384,8 @@
       "sha256": "6e44b6bb8ded4883d76fbb37e751d7d24357a17553a6aaf01804c6c19a25e091"
     },
     "space-hosting/overlay/build/space-machine-routes.mjs": {
-      "bytes": 16854,
-      "sha256": "3f22d7ffc94a735b66f6038110f8236892e62b20c7d87f039e4d1f8c98a37b80"
+      "bytes": 16301,
+      "sha256": "4ff888e1b9f42d5d3699c3d56465e3c9fe47e347bd634a764a54f4bc1bd07836"
     },
     "space-hosting/overlay/build/space-request-queue.mjs": {
       "bytes": 12558,
@@ -1484,12 +1484,12 @@
       "sha256": "076ef9130ac0399dcb1cc6a1800dcda463369d00cb109e25d801efa7bea986bc"
     },
     "ngs-local/docs/workspace-parity.md": {
-      "bytes": 2769,
-      "sha256": "ccd5e54c6c54154e3b1d122a17cf3e9e9977919a6ad8f48b5fa46b5cf2461ac8"
+      "bytes": 2945,
+      "sha256": "944d0a5e4a72a965ef28b5ea9c3c6b03c6b2377d84c38b0f5dfedcd775676b83"
     },
     "ngs-local/sites/npcgen/build/local-project-page-server.mjs": {
-      "bytes": 46227,
-      "sha256": "33b219feb6df1a37a521f0d065c61cde95bd7c4ca273d7071e9e679a6883aded"
+      "bytes": 46941,
+      "sha256": "4af1965f30ba3f4d28e634ea8b5ca05e99ae38048547ce86884010cbb71b43b9"
     },
     "ngs-local/sites/npcgen/build/local-project-page.js": {
       "bytes": 51062,
@@ -1508,12 +1508,12 @@
       "sha256": "e4597f8c047fa959cb3e539a1ceacd1d7fc0db9d190d0176cb47d2e525d4f178"
     },
     "space-hosting/overlay/build/space-map-assembly.mjs": {
-      "bytes": 810,
-      "sha256": "b3e4cca77fedeb7d179f79b3cfd4ef96f235f2b1b62752efca2c551665067959"
+      "bytes": 769,
+      "sha256": "1e50a46b60902602ac2b1afec66a0f5377e7e649e582d9c29fb2989a1e042f7b"
     },
     "space-hosting/overlay/tests/space-machine-queue.mjs": {
-      "bytes": 46963,
-      "sha256": "6346a0f92acd1f51937f73b421c471c6e3a4f1b5a9b11664b45f311f26aab9e5"
+      "bytes": 45737,
+      "sha256": "60843c7a89d2200a297f30f83fb1c5f694a51621c6988c35f9ee5bb476ada84c"
     },
     "ngs-local/sites/npcgen/build/cinematic-workspace-ui.mjs": {
       "bytes": 34982,
@@ -1538,6 +1538,34 @@
     "ngs-local/sites/npcgen/tests/prop-workspace.mjs": {
       "bytes": 26770,
       "sha256": "5cd829799f689318edc251d3ee83df9449e357bace917cfb3bc43727fc41d491"
+    },
+    "ngs-local/sites/npcgen/build/prop-workspace-contract.mjs": {
+      "bytes": 3636,
+      "sha256": "77da86b5ee190e8a274166993c59358a89b7a21e8e29a80f27049606cca78b0d"
+    },
+    "ngs-local/sites/npcgen/build/workspace-release-capabilities.mjs": {
+      "bytes": 1001,
+      "sha256": "dde3201ff0299c3b99165e9209e19aa9ce6618b25e5ea0408408c989493b4fc2"
+    },
+    "ngs-local/sites/npcgen/tests/local-audio-workspace.mjs": {
+      "bytes": 38606,
+      "sha256": "5885c03eb55c64a796954980c9785ab596ef46665c5448453ff312df5e3e8df1"
+    },
+    "ngs-local/sites/npcgen/tests/local-project-page.mjs": {
+      "bytes": 5874,
+      "sha256": "3576a20fa56f2305d2c5e01eba94f0b4062be88c2aafdd4784bc0cc3685e7f1d"
+    },
+    "space-hosting/README.md": {
+      "bytes": 2200,
+      "sha256": "07ea21cfa6180d905e400ac5491848ecfbed61065a507d83e68577ef50144047"
+    },
+    "space-hosting/overlay/build/space-machine-env.d.ts": {
+      "bytes": 209,
+      "sha256": "fc303f8ae1e6ffd9d8a2ba38c595fd2ee61d14cfdf7af5578a8bf5d33da18c7e"
+    },
+    "space-hosting/overlay/build/space-machine-routes.d.mts": {
+      "bytes": 2075,
+      "sha256": "653622d76769b8e620c9cb331b0e94f5d88223c70123dcd7135fd2a58b7142e5"
     }
   }
 }

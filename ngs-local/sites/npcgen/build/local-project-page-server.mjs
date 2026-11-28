@@ -1,3 +1,4 @@
+import {workspaceReleaseCapabilities as released} from './workspace-release-capabilities.mjs';
 import {fileUpdateType,fileUpdatePds} from './file-update-envelope.mjs';
 import {admitWorkspaceMapAssembly} from './workspace-map-assembly-admission.mjs';
 import {assemblyTypes,assemblyPath,assemblyPds,assemblyCapability} from './assembly-contract.mjs';
@@ -203,16 +204,16 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
  if(!Number.isInteger(port)||port<1||port>65535)throw failure('LOCAL_PROJECT_PORT_INVALID',503);
  const root=env.NGS_PROJECT_CATALOG_ROOT??join(homedir(),'Workspaces','NGS','data','project-catalog');
  if(!isAbsolute(root)||resolve(root)!==root)throw failure('LOCAL_PROJECT_ROOT_INVALID',503);
- return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,
+ return {port,root,requestQueueDb:env.NGS_REQUEST_QUEUE_DB,releaseCapabilities:released,
   readFileUpdateReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(fileUpdatePds,'workflow.file-update.v1'):undefined,
   readMapReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(mapPds,mapCapability):undefined,
   readAssemblyReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(assemblyPds,assemblyCapability):undefined,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
   ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readBackgroundPixelReady:readLocalBackgroundPixelReady,readBackgroundAnimationReady:readLocalBackgroundAnimationReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady,readCinematicDeleteReady:readLocalCinematicDeleteReady,readMapDeleteReady:readLocalMapDeleteReady,readAssemblyDeleteReady:readLocalAssemblyDeleteReady,readCinematicDeleteInventory:readLocalCinematicDeleteInventory}:{}),
-  audioWorkspaceEnabled:env.NGS_AUDIO_WORKSPACE_ENABLED==='1',audioSeparationEnabled:env.NGS_AUDIO_SEPARATION_ENABLED==='1',poseSelectionV2Enabled:env.NGS_POSE_SELECTION_V2_ENABLED==='1',npcBasicPortraitEnabled:env.NGS_NPC_BASIC_PORTRAIT_ENABLED!=='0',npcScopedPortraitEnabled:env.NGS_NPC_SCOPED_PORTRAIT_ENABLED==='1',brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint),localPuzzleCoreRoot:env.NGS_LOCAL_PUZZLE_CORE_ROOT??(isNativeMac(platform,entryPoint)?join(homedir(),'Workspaces','NGS','runtime','puzzle-core-v1'):undefined)};
+  audioWorkspaceEnabled:released.audioFullLengthEnabled,audioSeparationEnabled:released.audioSeparationEnabled,poseSelectionV2Enabled:released.poseSelectionV2Enabled,npcBasicPortraitEnabled:released.npcBasicPortraitEnabled,npcScopedPortraitEnabled:false,brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint),localPuzzleCoreRoot:env.NGS_LOCAL_PUZZLE_CORE_ROOT??(isNativeMac(platform,entryPoint)?join(homedir(),'Workspaces','NGS','runtime','puzzle-core-v1'):undefined)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot,localPuzzleCoreRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,releaseCapabilities,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot,localPuzzleCoreRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -230,19 +231,20 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
  const ownedQueue=requestQueueDb&&!requestQueue?openLocalRequestQueue(requestQueueDb):null;
  const queue=requestQueue??ownedQueue;
  const cinematicReads={[cinematicType]:readCinematicReady,[cinematicSequenceType]:readCinematicSequenceReady,[cinematicPlaybackUpdateType]:readCinematicPlaybackReady,[cinematicSourceGenerateType]:readCinematicSourceReady,[backgroundSourceType]:readBackgroundReady,[backgroundPixelType]:readBackgroundPixelReady,[backgroundAnimationType]:readBackgroundAnimationReady,[cinematicSequencesRemoveType]:readCinematicRemoveReady};
- const activeCinematic=async(type)=>Boolean(queue&&typeof cinematicReads[type]==='function'&&await cinematicReads[type]());
- const activeAssembly=async()=>Boolean(queue&&typeof readAssemblyReady==='function'&&await readAssemblyReady());
- const activeMap=async()=>Boolean(queue&&typeof readMapReady==='function'&&await readMapReady());
- const activePropRemoval=async()=>Boolean(queue&&typeof readPropAnimationRemoveReady==='function'&&await readPropAnimationRemoveReady());
- const propFolderDeleteReady=async()=>Boolean(queue&&typeof readPropFolderDeleteReady==='function'&&await readPropFolderDeleteReady());
- const npcFolderDeleteReady=async()=>Boolean(queue&&typeof readNpcFolderDeleteReady==='function'&&await readNpcFolderDeleteReady());
- const backgroundDeleteReady=async()=>Boolean(queue&&typeof readBackgroundDeleteReady==='function'&&await readBackgroundDeleteReady());
- const assemblyDeleteReady=async()=>Boolean(queue&&typeof readAssemblyDeleteReady==='function'&&await readAssemblyDeleteReady());
- const fileUpdateReady=async()=>Boolean(queue&&typeof readFileUpdateReady==='function'&&await readFileUpdateReady());
- const mapDeleteReady=async()=>Boolean(queue&&typeof readMapDeleteReady==='function'&&await readMapDeleteReady());
- const cinematicDeleteReady=async()=>Boolean(queue&&typeof readCinematicDeleteReady==='function'&&await readCinematicDeleteReady());
+ const activeCinematic=async(type)=>Boolean(queue&&(releaseCapabilities||typeof cinematicReads[type]==='function'&&await cinematicReads[type]()));
+ const activeAssembly=async()=>Boolean(queue&&(releaseCapabilities||typeof readAssemblyReady==='function'&&await readAssemblyReady()));
+ const activeMap=async()=>Boolean(queue&&(releaseCapabilities||typeof readMapReady==='function'&&await readMapReady()));
+ const activePropRemoval=async()=>Boolean(queue&&(releaseCapabilities||typeof readPropAnimationRemoveReady==='function'&&await readPropAnimationRemoveReady()));
+ const propFolderDeleteReady=async()=>Boolean(queue&&(releaseCapabilities||typeof readPropFolderDeleteReady==='function'&&await readPropFolderDeleteReady()));
+ const npcFolderDeleteReady=async()=>Boolean(queue&&(releaseCapabilities||typeof readNpcFolderDeleteReady==='function'&&await readNpcFolderDeleteReady()));
+ const backgroundDeleteReady=async()=>Boolean(queue&&(releaseCapabilities||typeof readBackgroundDeleteReady==='function'&&await readBackgroundDeleteReady()));
+ const assemblyDeleteReady=async()=>Boolean(queue&&(releaseCapabilities||typeof readAssemblyDeleteReady==='function'&&await readAssemblyDeleteReady()));
+ const fileUpdateReady=async()=>Boolean(queue&&(releaseCapabilities||typeof readFileUpdateReady==='function'&&await readFileUpdateReady()));
+ const mapDeleteReady=async()=>Boolean(queue&&(releaseCapabilities||typeof readMapDeleteReady==='function'&&await readMapDeleteReady()));
+ const cinematicDeleteReady=async()=>Boolean(queue&&(releaseCapabilities||typeof readCinematicDeleteReady==='function'&&await readCinematicDeleteReady()));
  const activePropActions=async()=>{
   if(!queue)return [];
+  if(releaseCapabilities)return releaseCapabilities.propActions;
   const actions=typeof readPropActions==='function'?await readPropActions():propActions;
   return validPropActions(actions)?actions:[];
  };
@@ -353,6 +355,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const command=parseRequestSubmission(await readSmallBody(req,64*1024));
     if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     projectPermission(session.principal,command.payload.projectId,undefined,false);
+    if(releaseCapabilities&&!queue)throw failure('NGS_REQUEST_QUEUE_UNAVAILABLE',503);
     if(Object.hasOwn(cinematicReads,command.requestType)){
      if(!await activeCinematic(command.requestType))throw failure('CINEMATIC_GENERATION_UNAVAILABLE',404);
      await admitCinematicRequest({openProject,command,authorize:id=>projectPermission(session.principal,id,undefined,false)});
@@ -471,6 +474,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     const session=auth.bootstrap(req);
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
+    if(releaseCapabilities)return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
+     ...releaseCapabilities,...(readCinematicDeleteInventory?{cinematicLegacyInventoryEnabled:true}:{})});
     const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady(),deleteBackground=await backgroundDeleteReady(),deleteCinematic=await cinematicDeleteReady();
     const [mapReady,deleteMap,assemblyReady,deleteAssembly,updateReady]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly(),assemblyDeleteReady(),fileUpdateReady()]);
     const [pixelBackground,animateBackground]=await Promise.all([activeCinematic(backgroundPixelType),activeCinematic(backgroundAnimationType)]);

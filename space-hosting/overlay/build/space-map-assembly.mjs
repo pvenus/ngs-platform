@@ -3,7 +3,7 @@ export {mapAssemblyAction,validWorkspaceMapAssemblyCommand as validSpaceMapAssem
 
 export function spaceMapAssemblyCapabilities(grant,writable,cinematicSceneDelete=false){
  if(grant?.projectId!=='binari'||!['owner','editor','viewer'].includes(grant.role))return {};
- const editable=writable&&['owner','editor'].includes(grant.role);
+ const editable=writable;
  return {mapReadEnabled:true,assemblyReadEnabled:true,
   ...(editable?{mapEnabled:true,assemblyEnabled:true,fileUpdateEnabled:true,mapDeleteEnabled:true,assemblyDeleteEnabled:true,
    npcFolderDeleteEnabled:true,propFolderDeleteEnabled:true,backgroundDeleteEnabled:true,...(cinematicSceneDelete?{cinematicDeleteEnabled:true}:{})}:{})};
