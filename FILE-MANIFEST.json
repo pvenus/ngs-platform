@@ -1472,8 +1472,8 @@
       "sha256": "6d7d0a4c80a48beb5ff1165d779a52cbb99ae34bedf465228edd9bc71476a57b"
     },
     ".github/workflows/team-viewer.yml": {
-      "bytes": 3115,
-      "sha256": "311df8bc81233a71b0f57c99aa652b41d6ddc3e47e3afc2c4d526bb23b8aea39"
+      "bytes": 3111,
+      "sha256": "e1852ff5764b710bf78de1af094d55c247009c69e24a8040cbf95e1818f58e1a"
     }
   }
 }

@@ -57,7 +57,7 @@ jobs:
             space-hosting/overlay/build/shared-ngs-assets.ts space-hosting/overlay/build/shared-ngs-response.mjs
           printf '%s\n' "$GITHUB_SHA" > output/commit.txt
           (cd output && sha256sum team-viewer-source.tar.gz > SHA256SUMS)
-      - name: Save the signed-off build for this commit
+      - name: Save the tested build for this commit
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: team-viewer-${{ github.sha }}
