@@ -1,6 +1,6 @@
 import {sha256Hex} from './browser-sha256.mjs';
 import {mountMapWorkspace} from './map-workspace-ui.mjs';
-import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,cinematicSceneDeletePayload,mapFolderDeletePayload,assemblyFolderDeletePayload} from './prop-folder-delete-contract.mjs';
+import {fileDeleteType,propFolderDeletePayload,npcFolderDeletePayload,backgroundDeletePayloads,cinematicDeletePayloads,cinematicSceneDeletePayload,cinematicSequenceDeletePayload,mapFolderDeletePayload,assemblyFolderDeletePayload} from './prop-folder-delete-contract.mjs';
 import {mountUiWorkspace} from './ui-workspace-ui.mjs';
 import {uiStagePath} from './ui-asset-contract.mjs';
 import {mountCinematicWorkspace,mountBackgroundWorkspace} from './cinematic-workspace-ui.mjs';
@@ -719,7 +719,9 @@ async function loadWorkspace(search){
     const inventory=await request('/api/cinematic-delete-inventory?'+query);
     for(const payload of cinematicDeletePayloads(row.id,inventory))await submitFolderDelete(submit,payload);
    }:undefined;
-   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,deleteItem,enabled:session.cinematicSequenceEnabled===true,playbackEnabled:session.cinematicPlaybackEnabled===true,upscaleEnabled:session.cinematicUpscaleEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,cropEnabled:session.cinematicCropEnabled===true,removeEnabled:session.cinematicRemoveEnabled===true,legacyDeleteEnabled:session.cinematicLegacyInventoryEnabled===true});
+   const deleteAnimation=session.cinematicDeleteEnabled===true&&submit?row=>submitFolderDelete(submit,
+    cinematicSequenceDeletePayload({sourceSha256:row.sourceSha256,sequenceId:row.id,sceneFolder:row.expected?.sceneFolder})):undefined;
+   await mountCinematicWorkspace({items,detail,tools:listToolbar,request,submit,projectId,item,source:search.get('cineSource'),panel:search.get('cineTab'),navigate:next,signal,deleteItem,deleteAnimation,enabled:session.cinematicSequenceEnabled===true,upscaleEnabled:session.cinematicUpscaleEnabled===true,sourceEnabled:session.cinematicSourceEnabled===true,cropEnabled:session.cinematicCropEnabled===true,legacyDeleteEnabled:session.cinematicLegacyInventoryEnabled===true});
    if(!signal.aborted)note('');
    return;
   }

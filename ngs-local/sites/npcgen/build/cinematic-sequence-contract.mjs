@@ -7,11 +7,16 @@ export const validCinematicUpscale=p=>exact(p,['schemaVersion','projectId','sequ
  p.schemaVersion===cinematicUpscaleSchema&&p.projectId==='binari'&&cinematicId(p.sequenceId)&&cinematicHash(p.sourceSha256)&&
  Number.isSafeInteger(p.expectedRevision)&&p.expectedRevision>=0&&p.expectedRevision<Number.MAX_SAFE_INTEGER&&validCinematicPlayback(p.playback);
 export const cinematicSequenceSchema='ngs.cinematic-sequence-generate.v1';
+export const cinematicSequenceNamedSchema='ngs.cinematic-sequence-generate.v2';
+export const nativeCinematicPlayback=count=>({durationFrames:count,speedCurve:[{frame:0,rate:1}],cameraCurve:[{frame:0,zoom:1,x:.5,y:.5}]});
 export const cinematicSequenceResultSchema='ngs.cinematic-sequence-result.v1';
 export const cinematicSequencePrefix='cinematics/sequences';
 export const cinematicSequenceFrameLimit=4*1024*1024;
 const exact=(v,keys)=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 export function validCinematicSequencePayload(p){
+ if(p?.schemaVersion===cinematicSequenceNamedSchema)
+  return exact(p,['schemaVersion','projectId','sourceSha256','motionPrompt','title'])&&p.projectId==='binari'&&
+   cinematicHash(p.sourceSha256)&&cinematicMotion(p.motionPrompt)&&boundedText(p.title,480,120);
  return exact(p,['schemaVersion','projectId','sourceSha256','motionPrompt','playback'])&&p.schemaVersion===cinematicSequenceSchema&&
   p.projectId==='binari'&&cinematicHash(p.sourceSha256)&&cinematicMotion(p.motionPrompt)&&validCinematicPlayback(p.playback);
 }
@@ -19,6 +24,7 @@ export function validCinematicSequenceResult(m){
  const upscale=Object.hasOwn(m??{},'upscale'),grouped=Object.hasOwn(m??{},'group');
  const fields=['schemaVersion','projectId','officialRequestId','sourceSha256','width','height','masterFps','frameCount','frames','playback'];
  if(grouped)fields.push('group');
+ if(Object.hasOwn(m??{},'title')){if(grouped||!boundedText(m.title,480,120))return false;fields.push('title');}
  if(upscale)fields.push('upscale');
  const baseSize=n=>Number.isInteger(n)&&n>=128&&n<=512&&n%32===0;
  const u=m?.upscale;

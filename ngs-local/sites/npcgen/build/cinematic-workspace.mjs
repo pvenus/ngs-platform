@@ -92,7 +92,7 @@ export async function admitCinematicRequest({command,openProject,authorize}){
 }
 const stamp=meta=>Number.isSafeInteger(meta?.modifiedAtMs)&&meta.modifiedAtMs>0?meta.modifiedAtMs:0;
 const newest=(times)=>(a,b)=>(times.get(b)??0)-(times.get(a)??0)||a.localeCompare(b);
-async function sceneList(p,sources,clips,sequences,sequenceTimes){
+async function sceneList(p,sources,clips,sequences,sequenceTimes,details=false){
  const sourceTimes=new Map(),clipTimes=new Map();
  const bySource=new Map(sources.map(sourceSha256=>[sourceSha256,{sourceSha256,title:null,sequences:[],clips:[]}]));
  const jobs=[
@@ -112,6 +112,8 @@ async function sceneList(p,sources,clips,sequences,sequenceTimes){
    if(!m.group){
     const scene=bySource.get(m.sourceSha256);
     scene?.sequences.push(id);
+    if(scene&&details&&m.title)(scene.animationTitles??={})[id]=m.title;
+    if(scene&&details)(scene.animationFolders??={})[id]=location.source!==null;
     if(scene&&m.upscale)(scene.upscaledSequences??=[]).push(id);
    }
   }),
@@ -132,7 +134,7 @@ export async function cinematicWorkspaceRead({query,openProject,authorize}){
   throw failure('CINEMATIC_QUERY_INVALID',400);
  const sha=query.get('source'),id=query.get('clip'),video=query.get('video'),
   sequenceId=query.get('sequence'),frame=query.get('frame'),sourceInfo=query.get('sourceInfo'),grouped=query.get('grouped');
- if(grouped!==null&&(grouped!=='1'||query.size!==2))throw failure('CINEMATIC_QUERY_INVALID',400);
+ if(grouped!==null&&(!['1','2'].includes(grouped)||query.size!==2))throw failure('CINEMATIC_QUERY_INVALID',400);
  if(sourceInfo!==null&&(!['1','2'].includes(sourceInfo)||sha===null))throw failure('CINEMATIC_QUERY_INVALID',400);
  if(sequenceId!==null&&(!cinematicId(sequenceId)||sha!==null||id!==null||video!==null)||
    frame!==null&&(sequenceId===null||!/^(?:0|[1-9][0-9]?)$/.test(frame)))throw failure('CINEMATIC_QUERY_INVALID',400);
@@ -206,7 +208,7 @@ export async function cinematicWorkspaceRead({query,openProject,authorize}){
   const meta=await p.head(root+'/'+id+'/manifest.json');
   if(meta){sequences.push(id);sequenceTimes.set(id,stamp(meta));}
  }
- if(grouped==='1')return {json:{scenes:await sceneList(p,sources,clips,sequences,sequenceTimes)}};
+ if(grouped!==null)return {json:{scenes:await sceneList(p,sources,clips,sequences,sequenceTimes,grouped==='2')}};
  return {json:{sources,clips,sequences:sequences.sort()}};
 }
 // Only used for a verified bounded MP4. Ignore non-single-range syntaxes per

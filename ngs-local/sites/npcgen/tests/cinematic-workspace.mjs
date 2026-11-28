@@ -149,15 +149,17 @@ test('formal source, native animation, timeline update and selected archive stay
 test('prop-style scene controls create a single original and add only versions of the selected source',async t=>{
  const {mountCinematicWorkspace}=await import('../build/cinematic-workspace-ui.mjs');
  const other='f'.repeat(64),sibling='request.official.'+'b'.repeat(64),otherId='request.official.'+'c'.repeat(64);
- const sceneList=[{sourceSha256,title:'빈 문턱',sequences:[id,sibling],clips:[]},{sourceSha256:other,title:'다른 장면',sequences:[otherId],clips:[]}];
+ const sceneList=[{sourceSha256,title:'빈 문턱',sequences:[id,sibling],clips:[],animationTitles:{[id]:'처마의 종'},animationFolders:{[id]:true,[sibling]:true}},{sourceSha256:other,title:'다른 장면',sequences:[otherId],clips:[]}];
  class Element{
   constructor(tag,doc){this.tag=tag;this.ownerDocument=doc;this.events={};this.attrs={};this.children=[];this.style={};this.value='';
-   this.classList={add:(...c)=>{this.className=[this.className,...c].filter(Boolean).join(' ');}};
+   this.classList={add:(...c)=>{this.className=[this.className,...c].filter(Boolean).join(' ');},toggle(){}};
   }
   setAttribute(k,v){this.attrs[k]=v;}
   addEventListener(k,v){this.events[k]=v;}
   append(...els){for(const e of els){e.parentElement=this;this.children.push(e);}}
   replaceChildren(...els){this.children=[];this.append(...els);}
+  prepend(el){el.parentElement=this;this.children.unshift(el);}
+  contains(el){return this===el||this.children.some(e=>e.contains(el));}
   before(...els){const i=this.parentElement.children.indexOf(this);for(const e of els)e.parentElement=this.parentElement;this.parentElement.children.splice(i,0,...els);}
   click(){if(!this.disabled)return this.events.click?.({});}
   focus(){}
@@ -175,7 +177,7 @@ test('prop-style scene controls create a single original and add only versions o
   const items=doc.createElement('ul'),detail=doc.createElement('article'),tools=doc.createElement('div');
   doc.createElement('section').append(items);
   await mountCinematicWorkspace({items,detail,tools,projectId:'binari',signal:new AbortController().signal,
-   request:async path=>{assert.match(path,/grouped=1/);return {scenes:sceneList};},
+   request:async path=>{assert.match(path,/grouped=2/);return {scenes:sceneList};},
    navigate:params=>'/?'+new URLSearchParams(params),sourceEnabled:true,enabled:true,playbackEnabled:true,removeEnabled:true,
    submit:async command=>{submissions.push(command);return Response.json({status:'queued',queueId:'ngs.local.a82bf7f5-c880-49e5-b490-3712b02eef72'},{status:202});},...opts});
   return {items,detail,tools};
@@ -221,15 +223,25 @@ test('prop-style scene controls create a single original and add only versions o
  assert.equal(cropRequests[0].payload.label,undefined);
  const already=await cropView(1536,768);
  assert.equal(walk(already.detail,x=>x.textContent==='2:1 자르기').length,0);
- const versions=await mount({source:sourceSha256,panel:'animations'});
- assert.equal(walk(versions.detail,x=>x.type==='checkbox').length,2);
- assert.equal(walk(versions.detail,x=>x.tag==='button'&&x.textContent==='수정').length,2);
+ const deleted=[];
+ const versions=await mount({source:sourceSha256,panel:'animations',deleteAnimation:async row=>{deleted.push(row);}});
+ const boxes=walk(versions.detail,x=>x.type==='checkbox');assert.equal(boxes.length,2);
+ assert.ok(boxes.every(x=>x.hidden));assert.equal(walk(versions.detail,x=>x.textContent==='수정').length,0);
+ assert.ok(walk(versions.detail,x=>x.textContent==='처마의 종').length);
+ assert.equal(walk(versions.detail,x=>x.className==='cinematic-animation-split').length,1);
+ const modify=walk(versions.detail,x=>x.attrs['aria-label']==='목록 편집')[0];modify.click();
+ assert.ok(boxes.every(x=>!x.hidden));
+ const remove=walk(versions.detail,x=>x.textContent==='선택 삭제')[0];assert.ok(remove.disabled);
+ boxes[0].checked=true;boxes[0].events.change?.();assert.ok(!remove.disabled);remove.click();
+ await walk(versions.detail,x=>x.textContent==='삭제 요청')[0].click();
+ assert.deepEqual(deleted.map(x=>[x.id,x.expected.sceneFolder]),[[id,true]]);
  assert.ok(!walk(versions.detail,x=>x.href?.includes(otherId)).length);
  const add=walk(versions.detail,x=>x.attrs['aria-label']==='애니메이션 추가')[0];
  for(let n=0;n<2;n++){
   add.click();
   const form=walk(versions.detail,x=>x.tag==='form')[0];
   assert.equal(walk(form,x=>x.tag==='select').length,0);
+  walk(form,x=>x.tag==='input')[0].value='문이 열린다 '+(n+1);
   walk(form,x=>x.tag==='textarea')[0].value='문이 조금 열린다';
   await form.events.submit({preventDefault(){}});
  }
@@ -238,6 +250,8 @@ test('prop-style scene controls create a single original and add only versions o
   assert.equal(c.requestType,'cinematic.sequence.generate');
   assert.equal(c.payload.sourceSha256,sourceSha256);
   assert.equal(c.payload.motionPrompt,'문이 조금 열린다');
+  assert.match(c.payload.title,/문이 열린다/);
+  assert.equal(c.payload.playback,undefined);
  }
  assert.notEqual(submissions[1].idempotencyKey,submissions[2].idempotencyKey);
 });
@@ -257,7 +271,7 @@ test('scene-folder writes resolve through the common Local, Space and Viewer pro
  const digest=sha(source),root='cinematics/scenes/'+digest,sequence=root+'/sequences/'+id;
  const playback={durationFrames:135,speedCurve:[{frame:0,rate:1/3}],cameraCurve:[{frame:0,zoom:1,x:.5,y:.5}]};
  const meta={schemaVersion:'ngs.cinematic-source-result.v1',projectId:'binari',officialRequestId:id,title:'새 장면',sha256:digest,bytes:source.length,width:1536,height:768};
- const m={schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,sourceSha256:digest,width:128,height:128,masterFps:24,frameCount:45,
+ const m={schemaVersion:'ngs.cinematic-sequence-result.v1',projectId:'binari',officialRequestId:id,sourceSha256:digest,title:'처마 너머',width:128,height:128,masterFps:24,frameCount:45,
   frames:Array.from({length:45},(_,index)=>({index,bytes:frame.length,sha256:sha(frame)})),playback};
  const json=x=>Buffer.from(JSON.stringify(x));
  const objects=new Map([[root+'/source.png',source],[root+'/source.json',json(meta)],[sequence+'/manifest.json',json(m)],
@@ -271,6 +285,7 @@ test('scene-folder writes resolve through the common Local, Space and Viewer pro
  const read=query=>cinematicWorkspaceRead({query:new URLSearchParams({projectId:'binari',...query}),openProject:async()=>storage,authorize:async()=>true});
  assert.deepEqual((await read({source:digest,sourceInfo:'1'})).json,{sourceSha256:digest,title:'새 장면',sceneFolder:true});
  assert.deepEqual((await read({grouped:'1'})).json.scenes,[{sourceSha256:digest,title:'새 장면',sequences:[id],clips:[],sceneFolder:true}]);
+ assert.deepEqual((await read({grouped:'2'})).json.scenes,[{sourceSha256:digest,title:'새 장면',sequences:[id],clips:[],sceneFolder:true,animationTitles:{[id]:'처마 너머'},animationFolders:{[id]:true}}]);
  assert.deepEqual((await read({sequence:id,frame:'0'})).bytes,frame);
  assert.equal(cinematicSceneDeletePayload(digest).target.path,'scenes/'+digest);
  objects.set('cinematics/scene-index/sequences/'+id+'.json',json({sourceSha256:'b'.repeat(64)}));
