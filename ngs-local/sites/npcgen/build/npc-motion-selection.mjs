@@ -38,10 +38,10 @@ export function validNpcAnimationRegenerate(value){
   validNpcAnimationTarget(value.npcId)&&validMotionSelection(value.motionSelection);
 }
 export const isPoseSelectionV2=schema=>[selectionSchemaVersion,selectionReplaceSchemaVersion,animationRegenerateSchema].includes(schema);
-export function npcAnimationRegenerateRequest(npcId,selected,catalog,poseSelectionV2Enabled=false){
+export function npcAnimationRegenerateRequest(npcId,selected,_catalog,poseSelectionV2Enabled=false){
  const payload={schemaVersion:poseSelectionV2Enabled===true?animationRegenerateSchema:animationRegenerateLegacySchema,projectId:'binari',npcId,motionSelection:selected};
- if(!validNpcAnimationRegenerate(payload)||!selected.every(choice=>catalog.some(row=>sameMotionChoice(choice,row))))
-  throw Error('게시된 모션 프리셋을 다시 골라 주세요.');
+ if(!validNpcAnimationRegenerate(payload))
+  throw Error('모션 프리셋 요청 내용을 확인해 주세요.');
  return payload;
 }
 export function npcPublishedMotionLabel(posePreset,presetId,catalog=[]){
@@ -134,4 +134,20 @@ export function validNpcPortraitRegeneration(value){
   ['idle','combat'].includes(value.posePreset)&&npcPortraitEditScopes.includes(value.scope)&&
   typeof value.intent==='string'&&value.intent.isWellFormed()&&value.intent===value.intent.trim()&&[...value.intent].length<=3500&&
   !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(value.intent);
+}
+
+export function validNpcWorkflowRequest(v){
+ if(v?.projectId!=='binari')return false;
+ if(v.schemaVersion===npcBasicSchema)return validNpcBasicRequest(v);
+ if(isSelectionSchema(v.schemaVersion))return validNpcMotionSelectionRequest(v);
+ const fields=['schemaVersion','projectId','character','intent','sourceRefs','includeCombat'];
+ if(v.includeCombat===true)fields.push('combatMotionPresets');
+ const c=v.character,text=(x,n)=>typeof x==='string'&&x.trim()===x&&x.length>0&&x.length<=n,
+  ids=(x,n)=>typeof x==='string'&&x.length<=n&&/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(x);
+ return ['ngs.npc-one-stop.v1','ngs.npc-one-stop.replace.v1'].includes(v.schemaVersion)&&exact(v,fields)&&
+   exact(c,['npcId','name','slug','role','actId','chapterId'])&&ids(c.npcId,128)&&ids(c.slug,128)&&validNpcWorkflowIdentity(c,v.schemaVersion)&&
+   text(c.name,120)&&text(c.role,600)&&ids(c.actId,128)&&ids(c.chapterId,128)&&text(v.intent,7000)&&
+   Array.isArray(v.sourceRefs)&&v.sourceRefs.length>=1&&v.sourceRefs.length<=64&&v.sourceRefs.every(x=>text(x,600))&&
+   (v.includeCombat===false||v.includeCombat===true&&Array.isArray(v.combatMotionPresets)&&
+    v.combatMotionPresets.length>=1&&v.combatMotionPresets.length<=16&&v.combatMotionPresets.every(x=>ids(x,128)));
 }

@@ -82,7 +82,7 @@ test('Codex background mode syncs without a popup or browser, displays loss, and
   if(disconnected)throw Error('VIEWER_CODEX_CONNECTION_REQUIRED');
   if(name==='ngs_viewer_request_session'){
    sessionArgs.push(args);
-   if(args.workspaceProtocol===2)throw Error('old Space rejects the new read shape');
+   if(args.workspaceProtocol)throw Error('old Space rejects the new read shape');
    return {structuredContent:{status:200,data:{
     backend:'space',state:'authenticated',readOnly:false,queueEnabled:true,workspaceReady:true,requestWritable:true}}};
   }
@@ -110,7 +110,7 @@ test('Codex background mode syncs without a popup or browser, displays loss, and
  assert.deepEqual(calls,['ngs_viewer_manifest','ngs_viewer_file_chunk']);
  assert.equal((await get('/api/project-folders')).status,200);
  assert.equal((await (await get('/__npcgen_session')).json()).requestWritable,true);
- assert.deepEqual(sessionArgs,[{workspaceProtocol:2},{}]);
+ assert.deepEqual(sessionArgs,[{workspaceProtocol:3},{workspaceProtocol:2},{}]);
  const submit=()=>get('/api/requests',{method:'POST',headers:{Origin:config.port?'http://127.0.0.1:'+config.port:'',
   'Content-Type':'application/json','X-NPCGen-Csrf':'0'.repeat(64),'X-NPCGen-Frontend-Context':'space.'+'0'.repeat(64)},
   body:JSON.stringify({requestType:'test',payload:{}})});
@@ -173,4 +173,15 @@ test('update pause refuses in-progress sync and prevents a new download or reque
  assert.equal(reads,1);
  assert.equal((await write('update/resume',{})).status,200);
  assert.equal((await write('sync/now',{})).status,202);
+});
+
+
+test('Viewer serves the bundled C# browser runtime at the version in its shell',async t=>{
+ const {get}=await fixture(t);
+ const response=await get('/'),html=await response.text(),version=/data-puzzle-core="([a-f0-9]{64})"/u.exec(html)?.[1];
+ assert.ok(version);
+ assert.match(response.headers.get('content-security-policy'),/wasm-unsafe-eval/);
+ const result=await get('/puzzle-core/'+version+'/_framework/dotnet.js');
+ assert.equal(result.status,200);assert.match(result.headers.get('content-type'),/javascript/);
+ assert.ok((await result.text()).length>100);
 });

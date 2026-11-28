@@ -1,5 +1,5 @@
 import {isQueuedRequest} from './local-request-queue-browser.mjs';
-import {motionCatalogSchema,motionSelectionOf,npcReplacementSlug,quickMotionSelection,sameMotionChoice,selectionReplaceSchemaVersion,
+import {motionCatalogSchema,motionSelectionOf,npcReplacementSlug,quickMotionSelection,selectionReplaceSchemaVersion,
  selectionSchemaVersion,selectionLegacySchemaVersion,selectionLegacyReplaceSchemaVersion,validMotionChoice,validMotionSelection,validNpcMotionSelectionRequest,npcBasicSchema,validNpcBasicRequest} from './npc-motion-selection.mjs';
 /** The roster '+' creates a new NPC; the detail action targets the selected NPC ID. */
 const directions=['n','ne','e','se','s','sw','w','nw'];
@@ -44,7 +44,7 @@ export function composeNpcBasicIntent(values){
  return lines.join('\n\n');
 }
 
-function oneStopRequest(values,motionCatalog,target,poseSelectionV2Enabled,basic=false){
+function oneStopRequest(values,_motionCatalog,target,poseSelectionV2Enabled,basic=false){
  const {name,role,actId,chapterId}=values,slug=target?.slug??values.slug?.trim();
  if(!text(name,60)||!text(role,300)||!validId(slug)||!slugPattern.test(slug)||(!target&&!validId('npc.'+slug))||!validId(actId)||!validId(chapterId)){
   throw Error('이름, 식별 이름, 역할과 스토리 위치를 확인해 주세요.');
@@ -62,8 +62,8 @@ function oneStopRequest(values,motionCatalog,target,poseSelectionV2Enabled,basic
   return body;
  }
  const chosen=values.motionSelection;
- if((!validMotionSelection(chosen)&&!(Array.isArray(chosen)&&chosen.length===0&&!target))||!chosen.every(choice=>motionCatalog.some(row=>sameMotionChoice(choice,row)))){
-  throw Error('게시된 모션 프리셋을 한 개 이상 선택하세요. 변경된 선택은 해제한 뒤 다시 골라 주세요.');
+ if((!validMotionSelection(chosen)&&!(Array.isArray(chosen)&&chosen.length===0&&!target))){
+  throw Error('모션 프리셋을 한 개 이상 선택하고 요청 내용을 확인해 주세요.');
  }
  const schemaVersion=poseSelectionV2Enabled===true
   ?(target?selectionReplaceSchemaVersion:selectionSchemaVersion)
@@ -252,16 +252,14 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   // Keep one immutable command for an ambiguous receipt, never send a second key.
   const carry=intake?.waitingConfirmation===true;
   if(!carry)intake=createNpcOneStopIntake(submit);
-  let pending=false,ended=false,motionCatalog=null,catalogError=false,pollTimer=null,catalogKey=null;
+  let pending=false,ended=false,motionCatalog=null,catalogError=false;
   const catalogController=new AbortController(),selected=new Map(),checkBoxes=new Map();
   if(carry)error.textContent='앞서 보낸 요청의 접수를 먼저 확인해 주세요.';
-  const liveRow=choice=>motionCatalog?.find(row=>row.presetId===choice.presetId);
-  const staleChoice=choice=>!sameMotionChoice(choice,liveRow(choice));
   function updateControls(){
-   const frozen=intake.waitingConfirmation,stale=[...selected.values()].filter(staleChoice).length;
+   const frozen=intake.waitingConfirmation;
    fields.disabled=pending||frozen||intake.accepted;
    fields.hidden=carry&&frozen;
-   send.disabled=pending||intake.accepted||(!frozen&&(selected.size>0?(catalogError||!motionCatalog||stale>0):Boolean(target)));
+   send.disabled=pending||intake.accepted||(!frozen&&Boolean(target)&&selected.size===0);
    send.textContent=pending?'접수 중…':frozen?'같은 접수 다시 확인':action+' 요청';
    close.disabled=pending;
    noncombat.disabled=!quickMotionSelection('noncombat',motionCatalog??[])||catalogError;
@@ -271,10 +269,9 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
    for(const [id,{check,label,row}] of checkBoxes){
     const choice=selected.get(id);
     check.checked=!!choice;check.disabled=!choice&&catalogError;
-    label.textContent=row?row.label+' · '+row.presetId+(choice&&staleChoice(choice)?' · 게시 내용 변경, 다시 선택 필요':''):
-     id+' · 현재 게시되지 않음, 선택 해제 필요';
+    label.textContent=row.label+' · '+row.presetId;
    }
-   selectionInfo.textContent=!target&&selected.size===0?'0개 선택 · 기획과 포트레이트만 생성':selected.size+'개 선택'+(stale?' · '+stale+'개 다시 선택 필요':'');
+   selectionInfo.textContent=!target&&selected.size===0?'0개 선택 · 기획과 포트레이트만 생성':selected.size+'개 선택';
   }
   function renderMotions(){
    pick.replaceChildren();checkBoxes.clear();
@@ -295,12 +292,6 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
     for(const row of rows)add(row.presetId,row,group);
     pick.append(group);
    }
-   const removed=[...selected.keys()].filter(id=>!checkBoxes.has(id));
-   if(removed.length){
-    const group=node('div','one-stop-motion-group');group.append(node('strong','','재선택 필요'));
-    for(const id of removed)add(id,null,group);
-    pick.append(group);
-   }
    updateControls();
   }
   function prefill(kind){
@@ -313,27 +304,22 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
   }
   noncombat.addEventListener('click',()=>prefill('noncombat'));
   combat.addEventListener('click',()=>prefill('combat'));
-  async function pollCatalog(){
-   if(ended||catalogController.signal.aborted||intake.accepted)return;
-   if(!pending&&!intake.waitingConfirmation){
-    try{
-     const rows=await readOneStopMotionPresets(request,catalogController.signal);
-     if(ended||catalogController.signal.aborted)return;
-     catalogError=false;motionCatalog=rows;
-     motionInfo.textContent=rows.length?'필요한 동작과 스타일을 함께 고를 수 있습니다. 기본 버튼은 선택을 채울 뿐입니다.':'게시된 8방향 모션이 없습니다.';
-     const key=JSON.stringify(rows);
-     if(key!==catalogKey){catalogKey=key;renderMotions();}else updateControls();
-    }catch{
-     if(ended||catalogController.signal.aborted)return;
-     catalogError=true;motionInfo.textContent='게시된 모션을 확인하지 못했습니다. 다시 확인하고 있습니다.';updateControls();
-    }
+  async function loadCatalog(){
+   try{
+    const rows=await readOneStopMotionPresets(request,catalogController.signal);
+    if(ended||catalogController.signal.aborted)return;
+    motionCatalog=rows;
+    motionInfo.textContent=rows.length?'필요한 동작과 스타일을 함께 고를 수 있습니다. 기본 버튼은 선택을 채울 뿐입니다.':'게시된 8방향 모션이 없습니다.';
+    renderMotions();
+   }catch{
+    if(ended||catalogController.signal.aborted)return;
+    catalogError=true;motionInfo.textContent='게시된 모션을 불러오지 못했습니다. 창을 다시 열어 주세요.';updateControls();
    }
-   if(!ended&&!intake.accepted)pollTimer=setTimeout(pollCatalog,4000);
   }
   motionInfo.textContent='게시된 8방향 모션을 확인하고 있습니다.';
   function leave(force=false){
    if(ended||pending&&!force)return;
-   ended=true;catalogController.abort();clearTimeout(pollTimer);
+   ended=true;catalogController.abort();
    if(modal.open)modal.close();
    modal.remove();dialog=null;
    if(!intake.waitingConfirmation)intake=null;
@@ -364,7 +350,7 @@ export function mountNpcOneStop(owner,{submit,request,signal,replaceNpc,modalOwn
      :'접수 응답을 확인하지 못했습니다. 같은 접수를 다시 확인해 주세요.';
    }finally{if(!ended){pending=false;updateControls();if(intake.accepted)close.focus({preventScroll:true});}}
   });
-  updateControls();modalOwner.append(modal);modal.showModal();if(!basic)void pollCatalog();
+  updateControls();modalOwner.append(modal);modal.showModal();if(!basic)void loadCatalog();
   if(carry)send.focus();else name.input.focus();
  }
  trigger.addEventListener('click',open);

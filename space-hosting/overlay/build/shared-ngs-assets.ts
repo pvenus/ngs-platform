@@ -1,3 +1,4 @@
+import {withPuzzleCore,servePuzzleCore,puzzleCoreCsp} from "../ngs-local/sites/npcgen/build/puzzle-core-release.mjs";
 import assembly0 from "../ngs-local/sites/npcgen/build/assembly-catalog-ui.mjs?raw";
 import assembly1 from "../ngs-local/sites/npcgen/build/assembly-contract.mjs?raw";
 import assembly2 from "../ngs-local/sites/npcgen/build/well-assembly-ui.mjs?raw";
@@ -40,7 +41,7 @@ if (!logo.startsWith(pngPrefix)) throw Error("SHARED_NGS_LOGO_BUILD_UNCONFIRMED"
 const png = Uint8Array.from(atob(logo.slice(pngPrefix.length)), c => c.charCodeAt(0));
 const javascript = "text/javascript; charset=utf-8";
 const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>([
- ["/", {type: "text/html; charset=utf-8", body: withProductionAudio(html)}],
+ ["/", {type: "text/html; charset=utf-8", body: withPuzzleCore(withProductionAudio(html))}],
  ["/local-project-page.css", {type: "text/css; charset=utf-8", body: css}],
  ["/local-project-page.js", {type: javascript, body: page}],
  ["/prop-package-contract.mjs", {type: javascript, body: propPackageContract}],
@@ -77,4 +78,4 @@ const staticAssets = new Map<string, {type: string; body: string | Uint8Array}>(
  ["/assets/vinus-mark.png", {type: "image/png", body: png}],
 ]);
 
-export const sharedNgsResponse = createSharedNgsResponse(staticAssets);
+export const sharedNgsResponse = createSharedNgsResponse(staticAssets,{servePuzzleCore,puzzleCoreCsp});

@@ -241,7 +241,7 @@ test('authenticated deployment status reports only the serving artifact and no i
  assert.equal((await malformed.json()).error.code,-32602);
 });
 
-test('Space only queues a replacement for the exact published legacy ID and retains any-sized selection within transport',async t=>{
+test('Space queues shape-valid replacement and animation without reading replicas',async t=>{
  const db=store(t),seen=[];
  const options={db,secret:token,authorize:async()=>true,authorizeWrite:async()=>true,
   replicaReads:true,workspaceReady:true,poseSelectionV2Enabled:true,
@@ -262,7 +262,7 @@ test('Space only queues a replacement for the exact published legacy ID and reta
  assert.equal((await submit('incorrect-slug',{...payload,character:{...payload.character,slug:'yeonwoo'}})).status,400);
  assert.equal((await submit('cannot-create-character',{...payload,schemaVersion:'ngs.npc-one-stop.selection.v2'})).status,400);
  assert.deepEqual(seen,[]);
- assert.equal((await submit('matched-slug-absent-id',{...payload,character:{...payload.character,npcId:'character.missing',slug:'missing'}})).status,404);
+ assert.equal((await submit('matched-slug-absent-id',{...payload,character:{...payload.character,npcId:'character.missing',slug:'missing'}})).status,202);
  const {queueId}=await (await submit('keep-exact-legacy-id',payload)).json();
  assert.ok(queueId);
  const stored=await new SpaceRequestQueue(db).get({queueId});
@@ -275,7 +275,7 @@ test('Space only queues a replacement for the exact published legacy ID and reta
  const old={...legacy,schemaVersion:'ngs.npc-one-stop.replace.v1',includeCombat:false,
   character:{...legacy.character,npcId:'character.yeonwoo',slug:'yeonwoo',name:'연우'}};
  assert.equal((await submit('legacy-wire',old)).status,202);
- assert.deepEqual(seen,[['a','character.missing'],['a','character.seojin'],['a','character.seojin'],['a','character.yeonwoo']]);
+ assert.deepEqual(seen,[]);
  const regen={schemaVersion:'ngs.npc-animation.regenerate.v2',projectId:'binari',npcId:'character.seojin',
   motionSelection:[...motionSelection,{presetId:'sword-attack-flat',posePreset:'combat',assetSetSha256:'b'.repeat(64)}]};
  const receipt=await browser('/api/requests','POST',auth,{requestType:'npc.animation.regenerate',idempotencyKey:'regen-many',payload:regen});
@@ -525,7 +525,7 @@ test('Space browser and Viewer MCP share background generation and animation adm
   await import('../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs');
  const {backgroundLoopPlayback}=await import('../ngs-local/sites/npcgen/build/cinematic-timeline.mjs');
  const db=store(t),seen=[],a=headers('a');
- const opts={db,secret:token,replicaReads:true,workspaceReady:true,backgroundSourceEnabled:true,
+ const opts={db,secret:token,replicaReads:true,workspaceReady:true,backgroundSourceEnabled:true,puzzleCoreVersion:"c".repeat(64),
   authorize:async()=>true,authorizeWrite:async u=>u.userId==='a',
   admitCinematic:async(u,command)=>{assert.equal(u.userId,'a');
    if(command.requestType===backgroundAnimationType&&!validBackgroundAnimation(command.payload))
@@ -551,6 +551,9 @@ test('Space browser and Viewer MCP share background generation and animation adm
  assert.equal(bridge.result.structuredContent.data.backgroundPixelEnabled,true);
  assert.equal(bridge.result.structuredContent.data.backgroundAnimationEnabled,true);
  assert.equal(bridge.result.structuredContent.data.csrfToken,undefined);
+ assert.equal(bridge.result.structuredContent.data.puzzleCoreVersion,undefined);
+ const versioned=await (await macMcp('ngs_viewer_request_session',{workspaceProtocol:3})).json();
+ assert.equal(versioned.result.structuredContent.data.puzzleCoreVersion,'c'.repeat(64));
  const projectId='binari', pixel='a'.repeat(64);
  const inputs=[
   {requestType:backgroundPixelType,idempotencyKey:'full-background',payload:{schemaVersion:backgroundPixelSchema,projectId,
@@ -605,4 +608,26 @@ test('published workspace capability list is identical for all signed-in team ro
  const nonTeam=await (await browserQueueResponse(request('/__npcgen_session','GET',headers('other')),opts)).json();
  assert.equal(nonTeam.requestWritable,false);
  for(const key of Object.keys(workspaceReleaseCapabilities))assert.equal(nonTeam[key],undefined);
+});
+
+test('C# proof requests enter the formal hosted queue when the release provides the core',async t=>{
+ const {admitSpaceMapAssembly}=await import('../build/space-map-assembly.mjs');
+ const puzzleCoreVersion='a'.repeat(64),db=store(t);
+ const grant=async()=>({projectId:'binari',role:'viewer'});
+ const mapId='request.official.'+'b'.repeat(64);
+ const opts={db,secret:token,replicaReads:true,workspaceReady:true,puzzleCoreVersion,authorize:async()=>true,
+  authorizeWrite:async()=>true,mapAssemblyGrant:grant,admitMapAssembly:async(_user,command)=>admitSpaceMapAssembly({
+   command,puzzleProofReady:true,read:async(path,query)=>{
+    assert.equal(path,'/api/map-workspace');assert.equal(query.get('item'),mapId);return {};
+   }})};
+ const h=headers('viewer');
+ const session=await (await browserQueueResponse(request('/__npcgen_session','GET',h),opts)).json();
+ assert.equal(session.puzzleCoreVersion,puzzleCoreVersion);
+ const c={requestType:'assembly.generate',idempotencyKey:'puzzle-proof',payload:{
+  schemaVersion:'ngs.assembly-generate.v4',projectId:'binari',title:'Fixture',mapId,intent:'Verify',
+  puzzles:[{id:'water',type:'binari.ritual-well-water-demo',intent:''}]}};
+ const a={...h,Origin:origin,'X-NPCGen-Csrf':session.csrfToken,'X-NPCGen-Frontend-Context':session.contextId};
+ const response=await browserQueueResponse(request('/api/requests','POST',a,c),opts);
+ assert.equal(response.status,202,JSON.stringify((await response.clone().json())));
+ assert.deepEqual((await new SpaceRequestQueue(db).get({queueId:(await response.json()).queueId})).payload,c.payload);
 });

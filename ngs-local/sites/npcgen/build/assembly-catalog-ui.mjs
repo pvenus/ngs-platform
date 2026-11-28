@@ -7,7 +7,7 @@ const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text)n.textCont
 const field=(label,node)=>{const n=el('label',label,'prop-form-field');n.append(node);return n;};
 const keyOf=text=>text.normalize('NFC').trim().toLocaleLowerCase();
 
-export async function mountAssemblyCatalog({items,detail,tools,request,projectId,item,panel,navigate,signal,submit,deleteItem,updateEnabled}){
+export async function mountAssemblyCatalog({items,detail,tools,request,projectId,item,panel,navigate,signal,submit,deleteItem,updateEnabled,puzzleCoreVersion}){
  const q=new URLSearchParams({projectId}),api=assemblyPath+'?'+q;
  const [catalog,{maps}]=await Promise.all([request(api),request('/api/map-workspace?'+q)]);
  let {assemblies}=catalog;
@@ -45,7 +45,7 @@ export async function mountAssemblyCatalog({items,detail,tools,request,projectId
    for(const row of maps){const o=el('option',row.title);o.value=row.mapId;map.append(o);}
    const puzzleFields=el('div',null,'assembly-request-puzzles'),newPuzzle=el('button','퍼즐 추가','prop-control');newPuzzle.type='button';
    const proof=el('input');proof.type='checkbox';
-   const proofChoice=document.documentElement.dataset.puzzleCore?field('공용 C# 코어 검증 · 물 올리기 하나',proof):null;
+   const proofChoice=puzzleCoreVersion&&document.documentElement.dataset.puzzleCore===puzzleCoreVersion?field('공용 C# 코어 검증 · 물 올리기 하나',proof):null;
    const entries=[];let props=null,catalogJob=null;
    const loadProps=()=>catalogJob??=request('/api/prop-workspace?'+q).then(v=>{
     if(!Array.isArray(v.props))throw Error('ASSEMBLY_PROP_CATALOG_MISSING');

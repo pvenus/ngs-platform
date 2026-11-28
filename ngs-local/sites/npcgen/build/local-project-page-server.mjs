@@ -1,3 +1,4 @@
+import {puzzleCoreVersion,withPuzzleCore,servePuzzleCore,puzzleCoreCsp} from './puzzle-core-release.mjs';
 import {workspaceReleaseCapabilities as released} from './workspace-release-capabilities.mjs';
 import {fileUpdateType,fileUpdatePds} from './file-update-envelope.mjs';
 import {admitWorkspaceMapAssembly} from './workspace-map-assembly-admission.mjs';
@@ -7,7 +8,6 @@ import {mapTypes,mapPds,mapCapability} from './map-contract.mjs';
 import {fileDeleteType,propsDeleteRoot,npcDeleteRoot,backgroundDeleteRoot,cinematicDeleteRoot,cinematicDeletePayloads,mapDeleteRoot,assemblyDeleteRoot,workspaceDeleteFamily} from './prop-folder-delete-contract.mjs';
 /** NGS browser app: serve the local replica and enqueue validated requests. */
 import {readFileSync,lstatSync,mkdirSync,realpathSync} from 'node:fs';
-import {createHash} from 'node:crypto';
 import {createServer,get as loopbackGet} from 'node:http';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
@@ -38,7 +38,7 @@ import {audioResponseRange,localAudioResults,localAudioSeparationSource} from '.
 import {openPuzzleBundle,puzzlePrefix} from './local-puzzle-media.mjs';
 import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from './local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from './motion-preset-convert-2d.mjs';
-import {isSelectionSchema,isPoseSelectionV2,isNpcWorkflowReplaceSchema,validNpcMotionSelectionRequest,sameMotionChoice,animationRegenerateType,validNpcAnimationRegenerate,npcBasicSchema,validNpcBasicRequest,portraitRegenerateType,validNpcPortraitRegeneration} from './npc-motion-selection.mjs';
+import {isPoseSelectionV2,validNpcWorkflowRequest,animationRegenerateType,validNpcAnimationRegenerate,npcBasicSchema,portraitRegenerateType,validNpcPortraitRegeneration} from './npc-motion-selection.mjs';
 
 const canonicalPolicy=new URL('../../../dev/catalog-read-policy.json',import.meta.url);
 const assets=new Map([
@@ -135,29 +135,6 @@ async function readWorkflowCapability(path,schema){
   return v?.schemaVersion===schema&&v.enabled===true;
  }catch{return false;}
 }
-// The external pack is an ordinary release artifact, never generated request content.
-function openPuzzleCorePack(root){
- if(typeof root!=='string'||!isAbsolute(root))return null;
- try{
-  if(realpathSync(root)!==root)return null;
-  const manifestPath=join(root,'manifest.json');
-  if(realpathSync(manifestPath)!==manifestPath||!lstatSync(manifestPath).isFile()||lstatSync(manifestPath).size>16384)return null;
-  const body=readFileSync(manifestPath), manifest=JSON.parse(body);
-  if(manifest.schemaVersion!=='ngs.puzzle-core-pack.v1'||!Array.isArray(manifest.files)||manifest.files.length<1||manifest.files.length>64)return null;
-  const key=createHash('sha256').update(body).digest('hex'), members=new Map();
-  let total=0;
-  for(const {name,sha256} of manifest.files){
-   if(typeof name!=='string'||!/^[-a-zA-Z0-9_.]{1,160}\.(js|json|wasm|dll)$/.test(name)||members.has(name)||!(/^[0-9a-f]{64}$/.test(sha256)))return null;
-   const path=join(root,name),st=lstatSync(path);
-   if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||st.size<1||st.size>6*1024*1024||(total+=st.size)>12*1024*1024)return null;
-   const bytes=readFileSync(path);
-   if(bytes.length!==st.size||createHash('sha256').update(bytes).digest('hex')!==sha256)return null;
-   const type=name.endsWith('.js')?'text/javascript; charset=utf-8':name.endsWith('.json')?'application/json':name.endsWith('.wasm')?'application/wasm':'application/octet-stream';
-   members.set(name,{type,body:bytes});
-  }
-  return members.has('dotnet.js')?{key,members}:null;
- }catch{return null;}
-}
 const readLocalCinematicReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow','workflow.cinematic-write.v1');
 const readLocalSequenceReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence','workflow.cinematic-sequence-write.v1');
 const readLocalBackgroundAnimationReady=()=>readWorkflowCapability('/v1/cinematics/ownership/workflow-sequence/background-status','workflow.background-animation-write.v1');
@@ -210,10 +187,10 @@ export function configuration(env=process.env,{platform=process.platform,entryPo
   readAssemblyReady:isNativeMac(platform,entryPoint)?()=>readWorkflowCapability(assemblyPds,assemblyCapability):undefined,
   readPropActions:isNativeMac(platform,entryPoint)?createRSPropReadiness():undefined,
   ...(isNativeMac(platform,entryPoint)?{readCinematicReady:readLocalCinematicReady,readCinematicSequenceReady:readLocalSequenceReady,readCinematicPlaybackReady:readLocalPlaybackReady,readCinematicSourceReady:readLocalSourceReady,readBackgroundReady:readLocalBackgroundReady,readBackgroundPixelReady:readLocalBackgroundPixelReady,readBackgroundAnimationReady:readLocalBackgroundAnimationReady,readCinematicRemoveReady:readLocalRemoveReady,readPropAnimationRemoveReady:readLocalPropRemoveReady,readPropFolderDeleteReady:readLocalPropFolderDeleteReady,readNpcFolderDeleteReady:readLocalNpcFolderDeleteReady,readBackgroundDeleteReady:readLocalBackgroundDeleteReady,readCinematicDeleteReady:readLocalCinematicDeleteReady,readMapDeleteReady:readLocalMapDeleteReady,readAssemblyDeleteReady:readLocalAssemblyDeleteReady,readCinematicDeleteInventory:readLocalCinematicDeleteInventory}:{}),
-  audioWorkspaceEnabled:released.audioFullLengthEnabled,audioSeparationEnabled:released.audioSeparationEnabled,poseSelectionV2Enabled:released.poseSelectionV2Enabled,npcBasicPortraitEnabled:released.npcBasicPortraitEnabled,npcScopedPortraitEnabled:false,brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint),localPuzzleCoreRoot:env.NGS_LOCAL_PUZZLE_CORE_ROOT??(isNativeMac(platform,entryPoint)?join(homedir(),'Workspaces','NGS','runtime','puzzle-core-v1'):undefined)};
+  audioWorkspaceEnabled:released.audioFullLengthEnabled,audioSeparationEnabled:released.audioSeparationEnabled,poseSelectionV2Enabled:released.poseSelectionV2Enabled,npcBasicPortraitEnabled:released.npcBasicPortraitEnabled,npcScopedPortraitEnabled:false,brandMarkPath:env.NGS_BRAND_MARK_PATH,localPuzzleMediaRoot:env.NGS_LOCAL_PUZZLE_MEDIA_ROOT??macPuzzleDefault(platform,entryPoint)};
 }
 
-export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,releaseCapabilities,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot,localPuzzleCoreRoot}){
+export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,objectReplica,closeReplica,readFileUpdateReady,readMapReady,readAssemblyReady,readCinematicReady,readCinematicSequenceReady,readCinematicPlaybackReady,readCinematicSourceReady,readBackgroundReady,readBackgroundPixelReady,readBackgroundAnimationReady,readCinematicRemoveReady,readPropAnimationRemoveReady,readPropFolderDeleteReady,readNpcFolderDeleteReady,readBackgroundDeleteReady,readCinematicDeleteReady,readMapDeleteReady,readAssemblyDeleteReady,readCinematicDeleteInventory,releaseCapabilities,audioWorkspaceEnabled=false,audioSeparationEnabled=false,poseSelectionV2Enabled=false,npcBasicPortraitEnabled=false,npcScopedPortraitEnabled=false,propActions=[],readPropActions,brandMarkPath,localPuzzleMediaRoot}){
  const projects=approvedProjectReads();
  const object=objectReplica?localObjectReplicaViews(objectReplica):null;
  if(!object)prepareFreshParent(root);
@@ -248,29 +225,19 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
   const actions=typeof readPropActions==='function'?await readPropActions():propActions;
   return validPropActions(actions)?actions:[];
  };
- async function allowedCombat(preset){
-  if(preset==='walk'||preset==='run')return false;
-  const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',item:preset});
-  const {json:items}=await readWorkspace('/api/project-workspace',query,()=>{});
-  const motion=items?.motionPreset;
-  return motion?.posePreset==='combat'&&!Object.hasOwn(motion,'variant')&&motion.directions.filter(row=>row.path).length===8&&
-   new Set(motion.directions.map(row=>row.direction)).size===8;
- }
  const deleteReadyByAction={assemblyDeleteEnabled:assemblyDeleteReady,mapDeleteEnabled:mapDeleteReady,cinematicDeleteEnabled:cinematicDeleteReady,
   backgroundDeleteEnabled:backgroundDeleteReady,npcFolderDeleteEnabled:npcFolderDeleteReady,propFolderDeleteEnabled:propFolderDeleteReady};
  const sourceAssets=new Map([...assets].map(([url,[type,path]])=>[url,{type,body:readFileSync(path)}]));
  sourceAssets.set('/assets/vinus-mark.png',{type:'image/png',body:brandMark(brandMarkPath)});
  const puzzle=openPuzzleBundle(localPuzzleMediaRoot);
- const puzzleCore=openPuzzleCorePack(localPuzzleCoreRoot);
  const flags=[
   ...(audioWorkspaceEnabled===true?['data-audio-workspace="enabled"']:[]),
   ...(puzzle?['data-puzzle-workspace="enabled"']:[]),
   'data-well-puzzle-demo="enabled"',
-  ...(puzzleCore?['data-puzzle-core="'+puzzleCore.key+'"']:[]),
  ];
- if(flags.length){
+ {
   const page=sourceAssets.get('/');
-  sourceAssets.set('/',{...page,body:Buffer.from(page.body.toString('utf8').replace('<html lang="ko">',`<html lang="ko" ${flags.join(' ')}>`))});
+  sourceAssets.set('/',{...page,body:Buffer.from(withPuzzleCore(page.body.toString('utf8').replace('<html lang="ko">',`<html lang="ko"${flags.length?' '+flags.join(' '):''}>`)))});
  }
  const puzzleAssets=puzzle?new Map([...puzzleCode].map(([name,[type,file]])=>
   [name,{type,body:readFileSync(new URL('./'+file,import.meta.url))}])):null;
@@ -289,19 +256,18 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
    if(!req.url?.startsWith('/'))throw failure('NOT_FOUND',404);
    const url=new URL(req.url,origin);
    if(url.origin!==origin)throw failure('NOT_FOUND',404);
-   if(url.pathname==='/'&&puzzleCore)res.setHeader('Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; img-src 'self' blob:");
+   if(url.pathname==='/')res.setHeader('Content-Security-Policy',
+    `default-src 'self'; ${puzzleCoreCsp} object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; img-src 'self' blob:`);
    if(url.pathname.startsWith('/puzzle-core/')){
-    if(!puzzleCore||req.url!==url.pathname||!['GET','HEAD'].includes(req.method))throw failure('NOT_FOUND',404);
+    if(req.url!==url.pathname||!['GET','HEAD'].includes(req.method))throw failure('NOT_FOUND',404);
     if(req.headers['sec-fetch-site']&&!['same-origin','none'].includes(req.headers['sec-fetch-site']))throw failure('LOCAL_IPV4_LOOPBACK_ORIGIN_REQUIRED',403);
     const session=auth.read(req);
     if(!session)throw failure('LOCAL_SIGN_IN_REQUIRED',401);
     projectPermission(session.principal,'binari',undefined,false);
-    const prefix='/puzzle-core/'+puzzleCore.key+'/_framework/';
-    const member=url.pathname.startsWith(prefix)&&puzzleCore.members.get(url.pathname.slice(prefix.length));
+    const member=await servePuzzleCore(url.pathname,req.method);
     if(!member)throw failure('NOT_FOUND',404);
-    res.setHeader('Content-Type',member.type);res.setHeader('Content-Length',String(member.body.length));
-    return res.end(req.method==='HEAD'?undefined:member.body);
+    for(const [key,value] of member.headers)res.setHeader(key,value);
+    return res.end(req.method==='HEAD'?undefined:Buffer.from(await member.arrayBuffer()));
    }
    if(url.pathname.startsWith(puzzlePrefix)){
     if(!puzzleAssets||req.url!==url.pathname)throw failure('NOT_FOUND',404);
@@ -365,7 +331,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      const family=assemblyTypes.includes(command.requestType)?[activeAssembly,'ASSEMBLY_WORKFLOW_UNAVAILABLE']:
       mapTypes.includes(command.requestType)?[activeMap,'MAP_WORKFLOW_UNAVAILABLE']:[fileUpdateReady,'FILE_UPDATE_WORKFLOW_UNAVAILABLE'];
      if(!await family[0]())throw failure(family[1],404);
-     await admitWorkspaceMapAssembly({command,puzzleProofReady:!!puzzleCore,read:async(path,query)=>
+     await admitWorkspaceMapAssembly({command,puzzleProofReady:true,read:async(path,query)=>
       (path===assemblyPath?await assemblyWorkspaceRead({query,openProject,authorize:()=>{}}):await readWorkspace(path,query,()=>{})).json});
      if(auth.read(req)?.contextId!==session.contextId)throw failure('LOCAL_SESSION_EXPIRED_OR_REVOKED',401);
     }
@@ -417,16 +383,8 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if((command.requestType==='npc.workflow'||command.requestType===animationRegenerateType)&&
        isPoseSelectionV2(command.payload.schemaVersion)&&poseSelectionV2Enabled!==true)
      throw failure('NPC_POSE_SELECTION_V2_UNAVAILABLE',404);
-    if(command.requestType===animationRegenerateType){
-     if(!validNpcAnimationRegenerate(command.payload))throw failure('NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID',400);
-     const {projectId,npcId,motionSelection}=command.payload;
-     const {json:{npcs}}=await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId}),()=>{});
-     if(!npcs?.some(npc=>npc.id===npcId))throw failure('NPC_ANIMATION_REGENERATE_TARGET_NOT_FOUND',404);
-     const query=new URLSearchParams({projectId,tab:'motion-presets',view:'selection'});
-     const {json:{presets}}=await readWorkspace('/api/project-workspace',query,()=>{});
-     if(!motionSelection.every(choice=>presets.some(row=>sameMotionChoice(choice,row))))
-      throw failure('NPC_ANIMATION_REGENERATE_PRESETS_STALE',409);
-    }
+    if(command.requestType===animationRegenerateType&&!validNpcAnimationRegenerate(command.payload))
+     throw failure('NGS_NPC_ANIMATION_REGENERATE_PAYLOAD_INVALID',400);
     if(command.requestType===portraitRegenerateType){
      if(!npcScopedPortraitEnabled)throw failure('NPC_PORTRAIT_EDIT_UNAVAILABLE',404);
      if(!validNpcPortraitRegeneration(command.payload))throw failure('NGS_NPC_PORTRAIT_REGENERATE_PAYLOAD_INVALID',400);
@@ -435,32 +393,9 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
      if(!npcs?.some(npc=>npc.id===npcId))throw failure('NPC_PORTRAIT_EDIT_TARGET_NOT_FOUND',404);
     }
     if(command.requestType==='npc.workflow'){
-     const {character,includeCombat,combatMotionPresets,schemaVersion,motionSelection}=command.payload;
-     if(schemaVersion===npcBasicSchema){
-      if(!npcBasicPortraitEnabled)throw failure('NPC_BASIC_PORTRAIT_UNAVAILABLE',404);
-      if(!validNpcBasicRequest(command.payload))throw failure('NGS_ONE_STOP_PAYLOAD_INVALID',400);
-     }else if(isSelectionSchema(schemaVersion)){
-      if(!validNpcMotionSelectionRequest(command.payload))throw failure('NGS_ONE_STOP_PAYLOAD_INVALID',400);
-      if(motionSelection.length){
-       const query=new URLSearchParams({projectId:'binari',tab:'motion-presets',view:'selection'});
-       const {json:{presets}}=await readWorkspace('/api/project-workspace',query,()=>{});
-       if(!motionSelection.every(choice=>presets.some(row=>sameMotionChoice(choice,row))))
-        throw failure('ONE_STOP_MOTION_SELECTION_STALE',409);
-      }
-     }else if(includeCombat===true&&(!Array.isArray(combatMotionPresets)||combatMotionPresets.length<1||combatMotionPresets.length>16||
-       !((await Promise.all(combatMotionPresets.map(preset=>allowedCombat(preset).catch(()=>false)))).every(Boolean)))){
-      throw failure('ONE_STOP_COMBAT_PRESETS_REQUIRED',400);
-     }
-     const replace=isNpcWorkflowReplaceSchema(schemaVersion);
-     if(replace||typeof character?.npcId==='string'){
-      const roster=(await readWorkspace('/api/npc-workspace',new URLSearchParams({projectId:command.payload.projectId}),()=>{})).json.npcs;
-      if(replace){
-       const target=roster.find(npc=>npc.id===character?.npcId);
-       if(!target)throw failure('ONE_STOP_REPLACE_TARGET_NOT_FOUND',404);
-      }else if(roster.some(npc=>npc.id===character.npcId||npc.id==='character.'+character.slug)){
-       throw failure('ONE_STOP_TARGET_ALREADY_ACTIVE',409);
-      }
-     }
+     if(command.payload.schemaVersion===npcBasicSchema&&!npcBasicPortraitEnabled)
+      throw failure('NPC_BASIC_PORTRAIT_UNAVAILABLE',404);
+     if(!validNpcWorkflowRequest(command.payload))throw failure('NGS_ONE_STOP_PAYLOAD_INVALID',400);
     }
     if(!queue)throw failure('NGS_REQUEST_QUEUE_UNAVAILABLE',503);
     return json(202,queue.enqueue(command));
@@ -475,7 +410,7 @@ export function createLocalProjectPageServer({root,requestQueueDb,requestQueue,o
     if(session.setCookie)res.setHeader('Set-Cookie',
      'npcgen_local_session='+session.sid+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=900');
     if(releaseCapabilities)return json(200,{state:'authenticated',contextId:session.contextId,csrfToken:session.csrfToken,
-     ...releaseCapabilities,...(readCinematicDeleteInventory?{cinematicLegacyInventoryEnabled:true}:{})});
+     ...releaseCapabilities,puzzleCoreVersion,...(readCinematicDeleteInventory?{cinematicLegacyInventoryEnabled:true}:{})});
     const deleteProp=await propFolderDeleteReady(),deleteNpc=await npcFolderDeleteReady(),deleteBackground=await backgroundDeleteReady(),deleteCinematic=await cinematicDeleteReady();
     const [mapReady,deleteMap,assemblyReady,deleteAssembly,updateReady]=await Promise.all([activeMap(),mapDeleteReady(),activeAssembly(),assemblyDeleteReady(),fileUpdateReady()]);
     const [pixelBackground,animateBackground]=await Promise.all([activeCinematic(backgroundPixelType),activeCinematic(backgroundAnimationType)]);

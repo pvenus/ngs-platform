@@ -129,7 +129,7 @@ test('Local auth/CSRF and queue admission to exact existing RS, never a worker o
  assert.deepEqual(queue.list().requests,[]);
 });
 
-test('Local NPC admission rejects a published 2D combat variant even if posted outside the picker',async t=>{
+test('Local NPC admission forwards shape-valid combat presets without resolving variants',async t=>{
  const temp=await mkdtemp(join(realpathSync(tmpdir()),'ngs-motion-variant-npc-'));
  const queue=openLocalRequestQueue(join(temp,'queue.sqlite')),root=join(temp,'workspace');
  const write=async(path,data)=>{
@@ -157,8 +157,8 @@ test('Local NPC admission rejects a published 2D combat variant even if posted o
    character:{npcId:'npc.fixture',slug:'fixture',name:'Fixture',role:'Test',actId:'act1',chapterId:'ch1'},
    intent:'Fixture',sourceRefs:['Test'],includeCombat:true,combatMotionPresets:[preset]},
  })});
- const denied=await post('slash-2d');
- assert.equal(denied.status,400);assert.deepEqual(await denied.json(),{error:'ONE_STOP_COMBAT_PRESETS_REQUIRED'});
- assert.equal(queue.list().requests.length,0);
+ const accepted=await post('slash-2d');
+ assert.equal(accepted.status,202);
+ assert.equal(queue.list().requests.length,1);
  const original=await post('slash');assert.equal(original.status,202,JSON.stringify(await original.json()));
 });

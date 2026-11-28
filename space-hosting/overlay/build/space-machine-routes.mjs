@@ -4,7 +4,7 @@ import {mapAssemblyAction,spaceMapAssemblyCapabilities,validSpaceMapAssemblyComm
 import {SpaceRequestQueue,exact,record,machineTools,validMachineToken} from './space-request-queue.mjs';
 import {wholeFileSyncPath,parseWholeFileHeaders,wholeFileError} from '../ngs-local/sites/npcgen/build/replica-whole-file-wire.mjs';
 import {audioSeparationType,validAudioSeparationPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
-import {npcBasicSchema,isPoseSelectionV2,isNpcWorkflowReplaceSchema,validNpcWorkflowIdentity} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
+import {npcBasicSchema,isPoseSelectionV2} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 export const machineTokenConfigured=validMachineToken;
 // Only call with the server-resolved participant, never browser-supplied roles.
 export const spaceQueueParticipant=grant=>grant?.projectId==='binari'&&
@@ -123,7 +123,7 @@ export async function machineResponse(request,{db,secret,fileReplica,fileTools=[
   }
  }catch(error){return responseError(error);}
 }
-export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,releaseCapabilities,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasPublishedNpc,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,backgroundSourceEnabled=false,cinematicRemoveEnabled=false,cinematicSceneDeleteEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic,mapAssemblyGrant,admitMapAssembly}={}){
+export async function browserQueueResponse(request,{db,secret,authorize,authorizeWrite,replicaReads=false,workspaceReady=false,releaseCapabilities,puzzleCoreVersion,npcBasicPortraitEnabled=false,poseSelectionV2Enabled=false,hasAudioSeparationSource,propActions,admitProp,cinematicEnabled=false,cinematicSequenceEnabled=false,cinematicPlaybackEnabled=false,cinematicSourceEnabled=false,backgroundSourceEnabled=false,cinematicRemoveEnabled=false,cinematicSceneDeleteEnabled=false,propAnimationRemoveEnabled=false,admitPropAnimationRemove,admitCinematic,mapAssemblyGrant,admitMapAssembly}={}){
  const url=new URL(request.url);
  if(![queue,session].includes(url.pathname))return null;
  // Keep the exact existing session shape when the machine relay is disabled.
@@ -151,7 +151,7 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(request.method==='GET'&&!url.search,405,'METHOD_NOT_ALLOWED');
    await service.ready();
    const requestWritable=typeof authorizeWrite==='function'&&await authorizeWrite({userId:id,email})===true;
-   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&replicaReads&&workspaceReady?{audioFullLengthEnabled:true}:{}),...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeBackground?{backgroundSourceEnabled:true,backgroundPixelEnabled:true,backgroundAnimationEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...await workspaceCapabilities(requestWritable),...(requestWritable&&replicaReads&&workspaceReady&&releaseCapabilities?releaseCapabilities:{}),...tokens});
+   return json({state:'authenticated',backend:'space',readOnly:!replicaReads,queueEnabled:true,requestWritable,...(requestWritable&&replicaReads&&workspaceReady?{audioFullLengthEnabled:true}:{}),...(requestWritable&&activeCinematic?{cinematicEnabled:true}:{}),...(requestWritable&&activeSequence?{cinematicSequenceEnabled:true}:{}),...(requestWritable&&activePlayback?{cinematicPlaybackEnabled:true}:{}),...(requestWritable&&activeSource?{cinematicSourceEnabled:true}:{}),...(requestWritable&&activeBackground?{backgroundSourceEnabled:true,backgroundPixelEnabled:true,backgroundAnimationEnabled:true}:{}),...(requestWritable&&activeRemove?{cinematicRemoveEnabled:true}:{}),...(requestWritable&&activePropRemove?{propAnimationRemoveEnabled:true}:{}),...(requestWritable&&activeProps.length?{propActions:activeProps}:{}),...(replicaReads&&workspaceReady?{workspaceReady:true}:{}),...(requestWritable&&activeNpcBasic?{npcBasicPortraitEnabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&poseSelectionV2Enabled===true?{poseSelectionV2Enabled:true}:{}),...(requestWritable&&replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function'?{audioSeparationEnabled:true}:{}),...await workspaceCapabilities(requestWritable),...(requestWritable&&replicaReads&&workspaceReady&&releaseCapabilities?releaseCapabilities:{}),...(requestWritable&&replicaReads&&workspaceReady&&puzzleCoreVersion?{puzzleCoreVersion}:{}),...tokens});
   }
   if(request.method==='GET'){
    if(!url.search)return json(await service.browserSummary(actor));
@@ -197,12 +197,6 @@ export async function browserQueueResponse(request,{db,secret,authorize,authoriz
    need(replicaReads&&workspaceReady&&typeof hasAudioSeparationSource==='function',404,'AUDIO_SEPARATION_UNAVAILABLE');
    need(validAudioSeparationPayload(value.payload),400,'NGS_AUDIO_SEPARATE_PAYLOAD_INVALID');
    need(await hasAudioSeparationSource(value.payload),404,'AUDIO_SEPARATION_SOURCE_NOT_FOUND');
-  }
-  if(value?.requestType==='npc.workflow'&&isNpcWorkflowReplaceSchema(value.payload?.schemaVersion)){
-   const {character,projectId,schemaVersion}=value.payload;
-   need(projectId==='binari'&&validNpcWorkflowIdentity(character,schemaVersion),400,'ONE_STOP_REPLACE_IDENTITY_INVALID');
-   need(typeof hasPublishedNpc==='function',503,'SPACE_NPC_REPLICA_UNAVAILABLE');
-   need(await hasPublishedNpc({userId:id,email},character.npcId),404,'ONE_STOP_REPLACE_TARGET_NOT_FOUND');
   }
   return json(await service.enqueue(actor,value),202);
  }catch(error){return responseError(error);}

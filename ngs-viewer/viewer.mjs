@@ -1,3 +1,4 @@
+import {servePuzzleCore,puzzleCoreCsp} from '../ngs-local/sites/npcgen/build/puzzle-core-release.mjs';
 import {openViewerReplica} from './lib/replica.mjs';
 /** Team-side NGS workspace. No server-side Space session, OPS or write gateway. */
 import {readFileSync} from 'node:fs';
@@ -26,7 +27,7 @@ const oneMiB=1024*1024;
 const fault=(code,status)=>Object.assign(Error(code),{status});
 const sourceHeaders={'Cache-Control':'private, no-store','X-Frame-Options':'DENY',
  'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',
- 'Content-Security-Policy':"default-src 'self'; img-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';"};
+ 'Content-Security-Policy':"default-src 'self'; "+puzzleCoreCsp+" img-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';"};
 async function body(req,max=16*oneMiB){
  const header=req.headers['content-length'];
  if(req.headers['transfer-encoding']||typeof header!=='string'||!/^\d{1,9}$/u.test(header)||Number(header)>max)
@@ -81,6 +82,12 @@ export async function createViewer({root,space=binariSpace,mirror=null,codexClie
    if(!req.url?.startsWith('/')||req.url.startsWith('//')||req.url.includes('\\'))throw fault('NOT_FOUND',404);
    const url=new URL(req.url,'http://127.0.0.1:'+port);
    const path=url.pathname,method=req.method;
+   if(path.startsWith('/puzzle-core/')){
+    const asset=!url.search&&await servePuzzleCore(path,method);
+    if(!asset)throw fault('NOT_FOUND',404);
+    res.setHeader('Cache-Control',asset.headers.get('Cache-Control'));
+    return await send(res,asset,method);
+   }
    if(path==='/__viewer/config'&&method==='GET'&&!url.search)
     return json(200,{spaceOrigin:origin,guardKey,committed:snapshot!==null,port,...(replica?{storage:'miniflare-r2'}:{}),...(background?{backend:'codex'}:{}),...(releaseCommit?{releaseCommit}:{})});
    if(background&&path==='/__viewer/status'&&method==='GET'&&!url.search)return json(200,{...state,committed:snapshot!==null});
@@ -88,7 +95,10 @@ export async function createViewer({root,space=binariSpace,mirror=null,codexClie
     if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
     // Prefer the current response shape; older deployed Space accepts only {}.
     let r;
-    try{r=(await codexClient.tool('ngs_viewer_request_session',{workspaceProtocol:2}))?.structuredContent;}catch{}
+    for(const workspaceProtocol of [3,2]){
+     try{r=(await codexClient.tool('ngs_viewer_request_session',{workspaceProtocol}))?.structuredContent;}catch{}
+     if(r&&r.status!==400)break;
+    }
     if(!r||r.status===400)r=(await codexClient.tool('ngs_viewer_request_session',{}))?.structuredContent;
     if(r?.status!==200||r.data?.state!=='authenticated'||r.data?.backend!=='space')
      throw fault('VIEWER_CODEX_CONNECTION_REQUIRED',503);

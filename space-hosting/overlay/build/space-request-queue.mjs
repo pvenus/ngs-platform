@@ -4,7 +4,7 @@ import {validConceptCategoryRequest} from '../ngs-local/sites/npcgen/build/local
 import {validNpcPlanningAdd,validNpcPlanningUpdate} from '../ngs-local/sites/npcgen/build/local-npc-planning-ui.mjs';
 import {audioSeparationType,validAudioSeparationPayload,validLocalAudioPayload} from '../ngs-local/sites/npcgen/build/local-audio-workspace.mjs';
 import {motionPresetConvertType,validMotionPresetConvert} from '../ngs-local/sites/npcgen/build/motion-preset-convert-2d.mjs';
-import {npcBasicSchema,validNpcBasicRequest,isSelectionSchema,validNpcMotionSelectionRequest,validNpcWorkflowIdentity,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
+import {validNpcWorkflowRequest,animationRegenerateType,validNpcAnimationRegenerate} from '../ngs-local/sites/npcgen/build/npc-motion-selection.mjs';
 import {propAction,validPropPayload,propAnimationRemoveType,validPropAnimationRemove} from '../ngs-local/sites/npcgen/build/prop-workspace-contract.mjs';
 import {cinematicSequenceType,cinematicPlaybackUpdateType,validCinematicSequencePayload,validCinematicPlaybackUpdate,cinematicSourceGenerateType,validCinematicSourceGenerate,backgroundSourceType,validBackgroundRequest,backgroundPixelType,validBackgroundPixelRequest,backgroundAnimationType,validBackgroundAnimation,cinematicSequencesRemoveType,validCinematicSequencesRemove} from '../ngs-local/sites/npcgen/build/cinematic-sequence-contract.mjs';
 import {cinematicType,validCinematicPayload} from '../ngs-local/sites/npcgen/build/cinematic-contract.mjs';
@@ -34,20 +34,6 @@ function canonical(value,depth=0){
  if(Array.isArray(value))return '['+value.map(v=>canonical(v,depth+1)).join(',')+']';
  return '{'+Object.keys(value).sort().map(k=>json(k)+':'+canonical(value[k],depth+1)).join(',')+'}';
 }
-function validOneStop(v){
- if(v.schemaVersion===npcBasicSchema)return validNpcBasicRequest(v);
- if(isSelectionSchema(v.schemaVersion))return validNpcMotionSelectionRequest(v);
- const fields=['schemaVersion','projectId','character','intent','sourceRefs','includeCombat'];
- if(v.includeCombat===true)fields.push('combatMotionPresets');
- const c=v.character,text=(x,n)=>typeof x==='string'&&x.trim()===x&&x.length>0&&x.length<=n,
-  ids=(x,n)=>typeof x==='string'&&x.length<=n&&clientPattern.test(x);
- return ['ngs.npc-one-stop.v1','ngs.npc-one-stop.replace.v1'].includes(v.schemaVersion)&&exact(v,fields)&&
-   exact(c,['npcId','name','slug','role','actId','chapterId'])&&ids(c.npcId,128)&&ids(c.slug,128)&&validNpcWorkflowIdentity(c,v.schemaVersion)&&
-   text(c.name,120)&&text(c.role,600)&&ids(c.actId,128)&&ids(c.chapterId,128)&&text(v.intent,7000)&&
-   Array.isArray(v.sourceRefs)&&v.sourceRefs.length>=1&&v.sourceRefs.length<=64&&v.sourceRefs.every(x=>text(x,600))&&
-   (v.includeCombat===false||v.includeCombat===true&&Array.isArray(v.combatMotionPresets)&&
-    v.combatMotionPresets.length>=1&&v.combatMotionPresets.length<=16&&v.combatMotionPresets.every(x=>ids(x,128)));
-}
 function commandOK(cmd){
  if(!exact(cmd,['idempotencyKey','payload','requestType'])||typeof cmd.idempotencyKey!=='string'||
     !clientPattern.test(cmd.idempotencyKey)||!record(cmd.payload)||cmd.payload.projectId!=='binari')return false;
@@ -70,7 +56,7 @@ function commandOK(cmd){
  case 'npc.planning.add':return validNpcPlanningAdd(p);
  case 'npc.planning.update':return validNpcPlanningUpdate(p);
  case 'concept.category.workflow':return validConceptCategoryRequest(p);
- case 'npc.workflow':return validOneStop(p);
+ case 'npc.workflow':return validNpcWorkflowRequest(p);
  case animationRegenerateType:return validNpcAnimationRegenerate(p);
  default:return validSpaceMapAssemblyCommand(cmd.requestType,p)||!!propAction(cmd.requestType)&&validPropPayload(cmd.requestType,p);
  }

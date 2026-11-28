@@ -1,3 +1,4 @@
+import { puzzleCoreVersion } from "../ngs-local/sites/npcgen/build/puzzle-core-release.mjs";
 import handler from "vinext/server/fetch-handler";
 import { sharedNgsResponse } from "./shared-ngs-assets";
 import { appendViewerDiscovery, spaceViewerMcpResponse } from "./space-viewer-mcp.mjs";
@@ -91,24 +92,10 @@ export default {
       authorizeParticipant:authorizeViewerParticipant,authorizeResource:workspaceAuthorize};
     const viewer=await spaceViewerResponse(request,viewerOptions);
     if(viewer)return viewer;
-    const hasPublishedNpc = replicaReads ? async (user:{userId:string,email:string},npcId:string) => {
-      // The hosted queue must prove the same exact ID from the existing
-      // authenticated roster, never trust an ID or alias from the browser.
-      const {json:result} = await dispatchWorkspaceRead({
-        pathname:"/api/npc-workspace",query:new URLSearchParams({projectId:"binari"}),
-        openProject:projectId=>openSpaceWorkspaceProject(fileReplica,projectId),
-        authorize:async projectId=>{
-          if (!await workspaceAuthorize(user,projectId,"npcs"))
-            throw Object.assign(Error("PROJECT_OR_RESOURCE_DENIED"),{status:403});
-        },
-      });
-      if (!Array.isArray(result?.npcs)) throw Object.assign(Error("SPACE_NPC_REPLICA_UNAVAILABLE"),{status:503});
-      return result.npcs.some((npc:{id:string})=>npc.id===npcId);
-    } : undefined;
-    const queueOptions:Parameters<typeof browserQueueResponse>[1]={db,secret,authorize,replicaReads,workspaceReady:replicaReads,hasPublishedNpc,
+    const queueOptions:Parameters<typeof browserQueueResponse>[1]={db,secret,authorize,replicaReads,workspaceReady:replicaReads,
       mapAssemblyGrant,
       admitMapAssembly:replicaReads?async (user,command)=>admitSpaceMapAssembly({
-        command,read:async (pathname,query)=>{
+        command,puzzleProofReady:true,read:async (pathname,query)=>{
           const {json}=await dispatchWorkspaceRead({pathname,query,
             openProject:projectId=>openSpaceWorkspaceProject(fileReplica!,projectId),
             authorize:async projectId=>{
@@ -120,7 +107,7 @@ export default {
           return json;
         },
       }):undefined,
-      releaseCapabilities:released,
+      releaseCapabilities:released,puzzleCoreVersion,
       cinematicEnabled:released.cinematicEnabled,
       cinematicSequenceEnabled:released.cinematicSequenceEnabled,
       cinematicPlaybackEnabled:released.cinematicPlaybackEnabled,
@@ -185,7 +172,7 @@ export default {
       }});
       if (view) return view;
     }
-    const shared = sharedNgsResponse(request, {catalogRelay:true});
+    const shared = await sharedNgsResponse(request, {catalogRelay:true});
     if (shared) return shared;
     const catalog = await projectCatalogResponse(request, db, {authorize});
     if (catalog) return catalog;

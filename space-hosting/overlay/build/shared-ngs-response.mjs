@@ -18,10 +18,15 @@ export function withProductionAudio(html){
  return html.replace(opening,'<html lang="ko" data-audio-workspace="enabled">');
 }
 
-export function createSharedNgsResponse(assets){
+export function createSharedNgsResponse(assets,{servePuzzleCore,puzzleCoreCsp=""}={}){
  return (request,{catalogRelay=false}={})=>{
   const url=new URL(request.url),path=url.pathname,method=request.method;
   if(catalogRelay&&['/__npcgen_session','/api/space/project-catalog'].includes(path))return null;
+  if(path.startsWith('/puzzle-core/')&&servePuzzleCore){
+   if(!auth(request))return errors(401,'SIGN_IN_REQUIRED');
+   if(url.search||!['GET','HEAD'].includes(method))return errors(404,'CLEAN_SITE_ROUTE_NOT_FOUND');
+   return Promise.resolve(servePuzzleCore(path,method)).then(asset=>asset??errors(404,'CLEAN_SITE_ROUTE_NOT_FOUND'));
+  }
   if(previousHostedBgm.has(path))return errors(404,'CLEAN_SITE_ROUTE_NOT_FOUND');
   const expected=unavailable.get(path);
   if(expected){
@@ -40,6 +45,6 @@ export function createSharedNgsResponse(assets){
    return new Response(null,{status:302,headers:{...headers,Location:'/signin-with-chatgpt?'+new URLSearchParams({return_to:returnTo})}});
   }
   return new Response(method==='HEAD'?null:asset.body,{headers:{...headers,'Content-Type':asset.type,
-   ...(path==='/'?{'Content-Security-Policy':csp}:{})}});
+   ...(path==='/'?{'Content-Security-Policy':csp+(puzzleCoreCsp?'; '+puzzleCoreCsp:'')}:{})}});
  };
 }

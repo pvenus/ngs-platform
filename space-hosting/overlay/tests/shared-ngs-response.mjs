@@ -64,3 +64,16 @@ test('hosted bundling uses the single authored Local source tree, with no parall
  }
  assert(!/shared-ngs-frontend|catalog\/bgm-workspace/.test(imports));
 });
+
+test('Space serves the same authenticated release-versioned WASM runtime as Local and Viewer',async()=>{
+ const {puzzleCoreVersion,withPuzzleCore,servePuzzleCore,puzzleCoreCsp}=await import('../ngs-local/sites/npcgen/build/puzzle-core-release.mjs');
+ const path='/puzzle-core/'+puzzleCoreVersion+'/_framework/dotnet.js';
+ const release=new Map([['/',{body:withPuzzleCore('<html lang="ko"></html>'),type:'text/html'}]]);
+ const server=createSharedNgsResponse(release,{servePuzzleCore,puzzleCoreCsp});
+ assert.equal((await server(request(path,'GET',{}))).status,401);
+ assert.equal((await server(request(path+'?bad=1'))).status,404);
+ const result=await server(request(path));
+ assert.equal(result.status,200);
+ assert.equal(await result.text(),await (await servePuzzleCore(path,'GET')).text());
+ assert.match(server(request('/')).headers.get('content-security-policy'),/wasm-unsafe-eval/);
+});

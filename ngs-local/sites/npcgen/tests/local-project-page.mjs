@@ -84,4 +84,10 @@ test('installed Local release exposes its workspace actions without probing Work
  const session=await response.json();
  for(const [key,value] of Object.entries(config.releaseCapabilities))assert.deepEqual(session[key],value);
  assert.equal(session.npcScopedPortraitEnabled,undefined);
+ assert.match(session.puzzleCoreVersion,/^[a-f0-9]{64}$/u);
+ const path='/puzzle-core/'+session.puzzleCoreVersion+'/_framework/dotnet.js';
+ assert.equal((await fetch(origin+path)).status,401);
+ const asset=await fetch(origin+path,{headers:{cookie:response.headers.get('set-cookie').split(';')[0]}});
+ assert.equal(asset.status,200);assert.match(asset.headers.get('content-type'),/javascript/);
+ assert.ok((await asset.text()).length>100);
 });

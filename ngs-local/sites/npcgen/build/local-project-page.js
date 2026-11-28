@@ -217,10 +217,11 @@ const spaceTicket=/^space\.catalog\.[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).sort().join(',')===keys;
 const queueSpaceSession='backend,contextId,csrfToken,queueEnabled,readOnly,requestWritable,state';
 const spaceSession=value=>{
- const {audioFullLengthEnabled,npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
+ const {puzzleCoreVersion,audioFullLengthEnabled,npcBasicPortraitEnabled,poseSelectionV2Enabled,propActions,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled,mapReadEnabled,assemblyReadEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,...session}=value??{};
  if([mapReadEnabled,assemblyReadEnabled].some(v=>v!==undefined&&(v!==true||session.workspaceReady!==true)))return false;
  if([audioFullLengthEnabled,fileUpdateEnabled,mapEnabled,assemblyEnabled,mapDeleteEnabled,assemblyDeleteEnabled,npcFolderDeleteEnabled,propFolderDeleteEnabled,backgroundDeleteEnabled,npcBasicPortraitEnabled,cinematicEnabled,cinematicSequenceEnabled,cinematicPlaybackEnabled,cinematicSourceEnabled,backgroundSourceEnabled,backgroundPixelEnabled,backgroundAnimationEnabled,cinematicRemoveEnabled,cinematicDeleteEnabled,propAnimationRemoveEnabled].some(v=>v!==undefined&&(v!==true||session.requestWritable!==true||session.workspaceReady!==true)))return false;
  if(propActions!==undefined&&(!validPropActions(propActions)||session.requestWritable!==true||session.workspaceReady!==true))return false;
+ if(puzzleCoreVersion!==undefined&&(!/^[a-f0-9]{64}$/u.test(puzzleCoreVersion)||session.requestWritable!==true||session.workspaceReady!==true))return false;
  if(poseSelectionV2Enabled!==undefined&&poseSelectionV2Enabled!==true)return false;
  return session?.state==='authenticated'&&session.backend==='space'&&
  (exact(session,'backend,readOnly,state')&&session.readOnly===true||
@@ -725,7 +726,7 @@ async function loadWorkspace(search){
   if(tab==='assembly'){
    const {mountAssemblyCatalog}=await import('./assembly-catalog-ui.mjs');
    const deleteItem=session.assemblyDeleteEnabled===true&&submit?row=>submitFolderDelete(submit,assemblyFolderDeletePayload(row)):undefined;
-   if(!signal.aborted)await mountAssemblyCatalog({items,detail,tools:listToolbar,request,projectId,item,panel:search.get('assemblyTab'),navigate:next,signal,deleteItem,submit:session.assemblyEnabled?submit:undefined,updateEnabled:session.fileUpdateEnabled===true});
+   if(!signal.aborted)await mountAssemblyCatalog({items,detail,tools:listToolbar,request,projectId,item,panel:search.get('assemblyTab'),navigate:next,signal,deleteItem,submit:session.assemblyEnabled?submit:undefined,updateEnabled:session.fileUpdateEnabled===true,puzzleCoreVersion:session.puzzleCoreVersion});
    if(!signal.aborted)note('');
    return;
   }

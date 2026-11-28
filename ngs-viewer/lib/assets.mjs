@@ -1,3 +1,4 @@
+import {withPuzzleCore} from '../../ngs-local/sites/npcgen/build/puzzle-core-release.mjs';
 // Expose only the exact frontend dependency closure already exposed by Space.
 import {readFileSync} from 'node:fs';
 import {withProductionAudio} from '../../space-hosting/overlay/build/shared-ngs-response.mjs';
@@ -7,7 +8,7 @@ const spaceMap=new URL('../../space-hosting/overlay/build/shared-ngs-assets.ts',
 const text=(file,base)=>readFileSync(new URL(file,base),'utf8');
 const moduleType='text/javascript; charset=utf-8';
 export function viewerAssets(){
- const map=new Map(), source=withProductionAudio(text('local-project-page.html',ui));
+ const map=new Map(), source=withPuzzleCore(withProductionAudio(text('local-project-page.html',ui)));
  const tag='<script type="module" src="/local-project-page.js"></script>';
  const body='<body>';
  if(source.split(tag).length!==2||source.split(body).length!==2)throw Error('VIEWER_SHARED_UI_CONTRACT');
