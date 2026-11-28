@@ -1,6 +1,6 @@
 {
   "scope": "source-only-unconfigured-frontend-and-prerequisites",
-  "fileCountIncludingManifest": 369,
+  "fileCountIncludingManifest": 371,
   "backendConnected": false,
   "files": {
     ".gitignore": {
@@ -1280,8 +1280,8 @@
       "sha256": "1f5c7e2b62101fdffc78f7344afbee77a8378c32a1458cc3105b6d527865e671"
     },
     "ngs-viewer/README.md": {
-      "bytes": 4219,
-      "sha256": "18d5a28c93815492fb23834762315a6d715bed9572d83801d920a910a0d2f217"
+      "bytes": 5352,
+      "sha256": "2f8a05dab8fb2726d12ac19fc4ebcc247ff3291c6266db32cb98a67e3729104a"
     },
     "ngs-viewer/lib/assets.mjs": {
       "bytes": 2529,
@@ -1316,12 +1316,12 @@
       "sha256": "a062a67ba0e9e8b58b8b183af5cbcd232dd2e0fec81b69eddc681eff03dc94f5"
     },
     "ngs-viewer/tests/viewer.test.mjs": {
-      "bytes": 8617,
-      "sha256": "ca3f78b0e116c1dcd989860f8ff86e85a5e0d59eddf84b5293d2dbb91116ef04"
+      "bytes": 10004,
+      "sha256": "b0015ba2a38e999823b13f605bdcfc32ce923f19043b6a202260601fc34c6283"
     },
     "ngs-viewer/viewer.mjs": {
-      "bytes": 11171,
-      "sha256": "d6f61fe9aede0ca70d0bba76a12ac59be9d44ce496a2e6992b2cc07cfbe01b9c"
+      "bytes": 12207,
+      "sha256": "1a310d84d339e99b228e4fec19b2e51b92e4390024ee1ecccbfb572cb8ed2706"
     },
     "space-hosting/overlay/build/sites-worker.ts": {
       "bytes": 14953,
@@ -1372,12 +1372,12 @@
       "sha256": "6d40950fe4b42a48163b45360542a26a76c47cfa1bbd6f32d873955936b5bad3"
     },
     "ngs-viewer/setup/os-targets.mjs": {
-      "bytes": 8061,
-      "sha256": "82845df82635586ff66763ed8ae754b313ef95dc2443a3a0529f73ed9d91ccbc"
+      "bytes": 8629,
+      "sha256": "81ad2216c8daa7ea9c00779da36f093db1b9cc314c36da1588069172318e2cbf"
     },
     "ngs-viewer/tests/install.test.mjs": {
-      "bytes": 6706,
-      "sha256": "e4764a7fb12a54d94c4416965e88a1085633644a85e9ffa78d38b7779fee0908"
+      "bytes": 7466,
+      "sha256": "d32294e1dc52f1689ab7b813dcbab62c3bc534def6d5f2ce0b315fdbdfdc1af7"
     },
     "space-hosting/overlay/build/space-browser-auth.mjs": {
       "bytes": 1344,
@@ -1432,8 +1432,8 @@
       "sha256": "68062726f78c07efd903cdaea4ad3de25c8d2e2dee0abe9c00f304c57d0f701c"
     },
     "ngs-viewer/lib/background.mjs": {
-      "bytes": 1772,
-      "sha256": "c4f629ebc7bb18814919299342208a353545d3d3145143315b1837dc07dad35c"
+      "bytes": 2031,
+      "sha256": "4dd2ddebe76b1a04411a673abe5bd998c144e040ed36cf7b74029fb9e3bbadde"
     },
     "ngs-viewer/lib/native-mcp.mjs": {
       "bytes": 3921,
@@ -1472,8 +1472,16 @@
       "sha256": "6d7d0a4c80a48beb5ff1165d779a52cbb99ae34bedf465228edd9bc71476a57b"
     },
     ".github/workflows/team-viewer.yml": {
-      "bytes": 3111,
-      "sha256": "dabc76d7f58e49a9b368e6da9642acb2fb3cf5c9bd518fed0044f033583a475a"
+      "bytes": 3616,
+      "sha256": "53bc866366f4d95a75b928a2a5f256f46328e713c9bec93ae0beb5151561a85e"
+    },
+    "ngs-viewer/setup/check-update-root.mjs": {
+      "bytes": 198,
+      "sha256": "a5ebf30f85a57dc29454542ec26225e7936a10540d979902c8e2d4d7d4a3b3f5"
+    },
+    "ngs-viewer/update-windows.ps1": {
+      "bytes": 7095,
+      "sha256": "076ef9130ac0399dcb1cc6a1800dcda463369d00cb109e25d801efa7bea986bc"
     }
   }
 }

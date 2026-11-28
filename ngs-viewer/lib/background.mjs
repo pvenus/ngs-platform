@@ -2,9 +2,9 @@ import {pullSpaceToP2} from './sync.mjs';
 
 /** Single serial pull loop, independent of the browser and request relay. */
 export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot=()=>{},onState=()=>{}}){
- let control=null,timer=null,closed=false,pending=null;
+ let control=null,timer=null,closed=false,pending=null,paused=false;
  const start=()=>{
-  if(closed||pending)return pending;
+  if(closed||paused||pending)return pending;
   clearTimeout(timer);
   control=new AbortController();
   const {signal}=control;
@@ -39,6 +39,14 @@ export function backgroundViewerSync({mirror,remote,intervalMs=60_000,onSnapshot
   });
   return pending;
  };
+ const pause=()=>{
+  if(pending||closed)return false;
+  paused=true;clearTimeout(timer);return true;
+ };
+ const resume=()=>{
+  if(!paused||closed)return;
+  paused=false;timer=setTimeout(start,intervalMs);timer.unref?.();
+ };
  const close=async()=>{closed=true;clearTimeout(timer);control?.abort(Error('VIEWER_SYNC_CLOSED'));await pending;};
- return {start,close};
+ return {start,pause,resume,close};
 }

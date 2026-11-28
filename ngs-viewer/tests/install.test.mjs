@@ -106,3 +106,16 @@ test('team setup uses Codex with no legacy popup and defaults to the approved Si
   {discover:()=>assert.fail('explicit binary should win')});
  assert.deepEqual(fixed.codex,{binary:'/fixed/codex',server:'test',socket:'/fixed/socket',mode:'proxy'});
 });
+
+test('Windows updater exits for same SHA before fetching or changing tasks',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const script=await readFile(new URL('../update-windows.ps1',import.meta.url),'utf8');
+ const exit=script.indexOf('if ($before.releaseCommit -eq $expectedSha)');
+ assert.ok(exit>0);
+ assert.match(script.slice(exit,script.indexOf('fetch --no-tags')),/exit 0/);
+ for(const step of ['fetch --no-tags','New-Item','Stop-ScheduledTask','Set-ScheduledTask','Start-ScheduledTask'])
+  assert.ok(script.indexOf(step)>exit);
+ assert.ok(script.indexOf("Set-ViewerGate 'pause'")<script.indexOf('Stop-ScheduledTask'));
+ assert.match(script,/ -Action \$old \| Out-Null/u);
+ assert.match(script,/\$live\.releaseCommit -eq \$sha/u);
+});

@@ -37,6 +37,16 @@ jobs:
           npm --prefix ngs-viewer test
           node --test space-hosting/overlay/tests/{space-viewer-export,space-viewer-install}.mjs ngs-local/sites/npcgen/tests/pds-mcp-file-sync.mjs
 
+      - name: Parse the Windows setup and update scripts on native PowerShell
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          foreach ($source in @('ngs-viewer/install-windows.ps1','ngs-viewer/update-windows.ps1')) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-Location) $source), [ref]$null, [ref]$errors)
+            if ($errors.Count -gt 0) { $errors | Write-Error; exit 1 }
+          }
+
   package:
     if: github.repository == 'pvenus/ngs-platform' && github.ref == 'refs/heads/team-viewer'
     needs: test

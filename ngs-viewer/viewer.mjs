@@ -1,4 +1,5 @@
 /** Team-side NGS workspace. No server-side Space session, OPS or write gateway. */
+import {readFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {resolve,isAbsolute} from 'node:path';
@@ -58,14 +59,14 @@ async function send(res,response,method){
  await pipeline(Readable.fromWeb(response.body),res);
 }
 
-export async function createViewer({root,space=binariSpace,mirror=null,codexClient=null}={}){
+export async function createViewer({root,space=binariSpace,mirror=null,codexClient=null,releaseCommit=null}={}){
  if(typeof root!=='string'||!isAbsolute(root)||resolve(root)!==root)throw Error('VIEWER_P2_ABSOLUTE_REQUIRED');
  const origin=viewerSpaceOrigin(space);
  const assets=viewerAssets(), guardKey=randomBytes(32).toString('hex'), validKey=comparator(guardKey);
  const receiver=mirror??await openMirror(root);
  let snapshot=null;
  const sync=codexClient?null:createViewerSyncQueue(receiver,{onFinish:()=>{snapshot=receiver.snapshot();},onAccessLost:()=>{snapshot=null;}});
- let state={state:'waiting'};
+ let state={state:'waiting'}, updating=false, submissions=0, lease=null;
  const background=codexClient&&backgroundViewerSync({mirror:receiver,remote:codexViewerRemote({origin,client:codexClient}),
   onSnapshot:v=>{snapshot=v;},onState:v=>{state=v;}});
 
@@ -79,7 +80,7 @@ export async function createViewer({root,space=binariSpace,mirror=null,codexClie
    const url=new URL(req.url,'http://127.0.0.1:'+port);
    const path=url.pathname,method=req.method;
    if(path==='/__viewer/config'&&method==='GET'&&!url.search)
-    return json(200,{spaceOrigin:origin,guardKey,committed:snapshot!==null,port,...(background?{backend:'codex'}:{})});
+    return json(200,{spaceOrigin:origin,guardKey,committed:snapshot!==null,port,...(background?{backend:'codex'}:{}),...(releaseCommit?{releaseCommit}:{})});
    if(background&&path==='/__viewer/status'&&method==='GET'&&!url.search)return json(200,{...state,committed:snapshot!==null});
    if(background&&path==='/__npcgen_session'&&method==='GET'&&!url.search){
     if(!snapshot)throw fault('VIEWER_SYNC_REQUIRED',503);
@@ -99,15 +100,30 @@ export async function createViewer({root,space=binariSpace,mirror=null,codexClie
     if(req.headers['x-npcgen-csrf']!=='0'.repeat(64)||req.headers['x-npcgen-frontend-context']!=='space.'+'0'.repeat(64))
      throw fault('VIEWER_WRITE_DENIED',403);
     const command=await jsonBody(req,64*1024);
-    const result=await forwardViewerRequest(command,async payload=>{
-     const reply=(await codexClient.tool('ngs_viewer_request_submit',{command:payload}))?.structuredContent;
-     return {status:reply?.status,receipt:reply?.data};
-    });
-    return json(result.status,result.body);
+    if(updating)throw fault('VIEWER_UPDATE_IN_PROGRESS',409);
+    submissions++;
+    try{
+     const result=await forwardViewerRequest(command,async payload=>{
+      const reply=(await codexClient.tool('ngs_viewer_request_submit',{command:payload}))?.structuredContent;
+      return {status:reply?.status,receipt:reply?.data};
+     });
+     return json(result.status,result.body);
+    }finally{submissions--;}
    }
    if(path.startsWith('/__viewer/')&&method==='POST'){
     if(!validKey(req.headers['x-ngs-viewer-key']))throw fault('VIEWER_WRITE_DENIED',403);
     if(background){
+     if(path==='/__viewer/update/pause'&&!url.search){
+      await jsonBody(req);
+      if(updating||submissions||!background.pause())throw fault('VIEWER_UPDATE_BUSY',409);
+      updating=true;
+      lease=setTimeout(()=>{updating=false;background.resume();},120_000);lease.unref();
+      return json(200,{paused:true});
+     }
+     if(path==='/__viewer/update/resume'&&!url.search){
+      await jsonBody(req);clearTimeout(lease);updating=false;background.resume();return json(200,{paused:false});
+     }
+     if(updating)throw fault('VIEWER_UPDATE_IN_PROGRESS',409);
      if(path==='/__viewer/sync/now'&&!url.search){await jsonBody(req);void background.start();return json(202,{ok:true});}
      throw fault('NOT_FOUND',404);
     }
@@ -149,7 +165,7 @@ export async function createViewer({root,space=binariSpace,mirror=null,codexClie
   }
  });
  if(background)server.on('listening',()=>void background.start());
- server.on('close',()=>{sync?.close();codexClient?.close();void (async()=>{await background?.close();await receiver.close?.();})();});
+ server.on('close',()=>{clearTimeout(lease);sync?.close();codexClient?.close();void (async()=>{await background?.close();await receiver.close?.();})();});
  return server;
 }
 
@@ -176,7 +192,11 @@ if(import.meta.url===pathToFileURL(process.argv[1]??'').href){
   const binary=codex?.binary??process.env.NGS_VIEWER_CODEX_BIN, mcp=codex?.server??process.env.NGS_VIEWER_CODEX_MCP_NAME;
   if(Boolean(binary)!==Boolean(mcp))throw Error('VIEWER_CODEX_CONFIGURATION');
   const codexClient=binary?codexViewerClient({binary,server:mcp,socket:codex?.socket??process.env.NGS_VIEWER_CODEX_SOCKET,mode:codex?.mode??process.env.NGS_VIEWER_CODEX_MODE}):null;
-  const server=await createViewer({root,space,codexClient});
+  let releaseCommit;
+  try{const v=readFileSync(new URL('./runtime-commit.txt',import.meta.url),'utf8').trim();
+   if(/^[0-9a-f]{40}$/u.test(v))releaseCommit=v;
+  }catch{}
+  const server=await createViewer({root,space,codexClient,releaseCommit});
   server.on('error',error=>{console.error(error?.code==='EADDRINUSE'?'That Viewer port is already in use.':'Viewer startup failed.');process.exitCode=1;});
   const stop=()=>server.close();
   process.once('SIGINT',stop);process.once('SIGTERM',stop);

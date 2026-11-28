@@ -24,7 +24,7 @@ cd ngs-platform
 별도로 빌드 파일과 SHA-256 해시는 해당 [Actions 실행](https://github.com/pvenus/ngs-platform/actions/workflows/team-viewer.yml)에서 확인할 수 있습니다.
 
 이미 설치한 서비스는 설치 시점의 실행본을 사용합니다. 브랜치가 갱신돼도 팀원
-PC가 자동으로 바뀌지는 않습니다.
+PC가 자동으로 바뀌지는 않습니다. Windows에서는 아래 업데이트 스크립트를 실행하세요.
 
 ## 3. 설치 및 실행
 
@@ -60,6 +60,24 @@ ChatGPT 설치 경로와 PATH를 사용합니다.
 주소의 포트도 바꿉니다. 첫 동기화가 끝나면 로컬 P2에서 화면이 열립니다.
 Viewer 탭이나 Space 팝업을 계속 열어둘 필요는 없습니다. Codex 연결이 끊기면
 오류를 표시하고 이미 내려받은 파일은 그대로 둡니다.
+
+## Windows 업데이트
+
+처음 스크립트를 받으려면 저장소에서 `git pull --ff-only origin team-viewer-stable`을
+한 번 실행하세요. 이후 아래 스크립트가 최신 검증 버전을 확인합니다.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ngs-viewer\update-windows.ps1
+```
+
+설치 버전과 같으면 조회만 하고, 다운로드·복사·재시작을 하지 않습니다.
+새 버전이 있을 때만 별도 폴더에 받은 뒤 예약 작업의 실행 경로를 교체합니다.
+동기화나 제작 요청이 진행 중이면 종료하므로, 완료 후 다시 실행하세요.
+새 버전이 지정 포트에서 응답하지 않으면 이전 실행본을 다시 시작합니다.
+P2, 포트, Codex 연결은 그대로 유지됩니다. 포트가 5281이 아니면 `-Port <포트>`를 추가하세요.
+
+업데이트 일시 중지 기능이 없던 옛 버전은 첫 동기화가 끝나고 제작 요청이 없는
+상태를 확인한 뒤 한 번만 `-AllowLegacyIdle`을 추가해서 업데이트하세요.
 
 ## 동작
 

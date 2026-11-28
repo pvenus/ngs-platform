@@ -143,3 +143,29 @@ test('a formal request is sent while the first file sync is still waiting',{skip
  assert.equal((await (await get('/__viewer/status')).json()).state,'running');
  release();
 });
+
+test('update pause refuses in-progress sync and prevents a new download or request until resumed',{skip:process.platform==='win32'},async t=>{
+ let release,entered,reads=0;
+ const blocked=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+ t.after(()=>release());
+ const client={close:release,async tool(name){
+  assert.equal(name,'ngs_viewer_manifest');reads++;entered();await blocked;
+  return {isError:false,structuredContent:{status:200,manifest:{projectId:'binari',resources:['project'],files:[]}}};
+ }};
+ const {write,get,origin}=await fixture(t,{codexClient:client,releaseCommit:'c'.repeat(40)});
+ await started;
+ assert.equal((await write('update/pause',{})).status,409);
+ release();
+ for(let i=0;i<50;i++){
+  if((await (await get('/__viewer/status')).json()).state==='completed')break;
+  await new Promise(r=>setTimeout(r,5));
+ }
+ assert.equal((await write('update/pause',{})).status,200);
+ assert.equal((await write('sync/now',{})).status,409);
+ const denied=await get('/api/requests',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',
+  'X-NPCGen-Csrf':'0'.repeat(64),'X-NPCGen-Frontend-Context':'space.'+'0'.repeat(64)},body:'{}'});
+ assert.equal(denied.status,409);
+ assert.equal(reads,1);
+ assert.equal((await write('update/resume',{})).status,200);
+ assert.equal((await write('sync/now',{})).status,202);
+});

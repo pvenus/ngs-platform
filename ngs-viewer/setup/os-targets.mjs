@@ -66,13 +66,20 @@ function stageRuntime(base,windows){
  if(windows)mkdirSync(destination,{mode:0o700});
  else makeOwned(destination);
  try{
-  for(const rel of ['ngs-viewer/viewer.mjs','ngs-viewer/lib','ngs-viewer/public',
-   'ngs-local/sites/npcgen/build','space-hosting/overlay/build/shared-ngs-assets.ts','space-hosting/overlay/build/shared-ngs-response.mjs']){
+  const runtimePaths=['ngs-viewer/viewer.mjs','ngs-viewer/lib','ngs-viewer/public',
+   'ngs-local/sites/npcgen/build','space-hosting/overlay/build/shared-ngs-assets.ts','space-hosting/overlay/build/shared-ngs-response.mjs'];
+  for(const rel of runtimePaths){
    const target=join(destination,rel);
    mkdirSync(dirname(target),{recursive:true,mode:0o700});
    cpSync(join(repo,rel),target,{recursive:true,dereference:false,force:false,errorOnExist:true,
     filter:source=>{if(lstatSync(source).isSymbolicLink())throw Error('VIEWER_RUNTIME_SYMLINK');return true;}});
   }
+  try{
+   const options={cwd:repo,encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','ignore']};
+   const sha=execFileSync('git',['rev-parse','HEAD'],options).trim();
+   const clean=execFileSync('git',['status','--porcelain=v1','--untracked-files=all','--',...runtimePaths],options);
+   if(/^[a-f0-9]{40}$/u.test(sha)&&clean==='')writeFileSync(join(destination,'ngs-viewer','runtime-commit.txt'),sha+'\n',{flag:'wx',mode:0o600});
+  }catch{/* Source archive without .git stays usable; first update will identify its runtime. */}
   return destination;
  }catch(e){rmSync(destination,{recursive:true,force:true});throw e;}
 }
